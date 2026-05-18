@@ -470,7 +470,12 @@ function App() {
       const raw = localStorage.getItem(STORE_KEY);
       if (raw) {
         const d = JSON.parse(raw);
-        if (d.assets)    setAssets(d.assets);
+        if (d.assets) {
+          // Normalise plant names to UPPERCASE on load (one-time migration)
+          const na = d.assets.map(a=>({...a,plant:(a.plant||'').toUpperCase()}));
+          setAssets(na);
+          try { localStorage.setItem(STORE_KEY, JSON.stringify({...d,assets:na})); } catch(_){}
+        } else setAssets([]);
         if (d.jobOrders) setJobOrders(d.jobOrders);
         if (d.joCounter) setJoCounter(d.joCounter);
       }
@@ -744,7 +749,7 @@ function App() {
           </div>
 
           <div className="main">
-            {page==='dashboard' && <DashboardPage assets={assets} jobOrders={jobOrders} setPage={setPage} setJoModal={setJoModal}/>}
+            {page==='dashboard' && <DashboardPage assets={assets} jobOrders={jobOrders} setPage={setPage} setJoModal={setJoModal} customPlants={customPlants}/>}
             {page==='assets'    && <AssetsPage assets={assets} setAssetModal={setAssetModal} setJoModal={setJoModal} onStatusChange={updateAssetStatus} onDeleteAsset={deleteAsset} customPlants={customPlants} onExportCSV={()=>exportAssetsCSV(assets)} onImportCSV={importAssetsFromCSV}/>}
             {page==='joborders' && <JobOrdersPage assets={assets} jobOrders={jobOrders} setJoModal={setJoModal} setJoViewModal={setJoViewModal} onStatusChange={updateJOStatus} onDeleteJO={deleteJO} onExportCSV={()=>exportJobOrdersCSV(jobOrders)} onImportCSV={importJOsFromCSV}/>}
             {page==='reports'   && <ReportsPage assets={assets} jobOrders={jobOrders}/>}
@@ -903,7 +908,7 @@ function AssetDoughnutChart({assets}) {
           legend:{
             position:'right',
             labels:{
-              color:'#e2e8f0',
+              color:'#ffffff',
               font:{size:11,family:"'Rajdhani',sans-serif"},
               padding:12, boxWidth:10, boxHeight:10,
               usePointStyle:true, pointStyle:'circle',
@@ -961,8 +966,8 @@ function AssetDoughnutChart({assets}) {
   );
 }
 
-function DashboardPage({assets, jobOrders, setPage, setJoModal}) {
-  const allCats = [...new Set(assets.map(a=>a.plant).filter(Boolean))].sort();
+function DashboardPage({assets, jobOrders, setPage, setJoModal, customPlants=[]}) {
+  const allCats = [...new Set([...customPlants,...assets.map(a=>a.plant)].filter(Boolean))].sort();
   const catStats = allCats.map(cat => {
     const ca = assets.filter(a=>a.plant===cat);
     return {
@@ -1053,7 +1058,7 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
   const allCats = [...new Set([...customPlants,...assets.map(a=>a.plant)].filter(Boolean))].sort();
   const filtered = assets.filter(a => {
     const hay = [a.num,a.plant,a.desc,a.code,a.model,a.loc,a.serial].join(' ').toLowerCase();
-    return (!q||hay.includes(q.toLowerCase())) && (!cat||a.plant===cat) && (!status||a.status===status);
+    return (!q||hay.includes(q.toLowerCase())) && (!cat||a.plant.toUpperCase()===cat) && (!status||a.status===status);
   });
   const total = Math.ceil(filtered.length/PER_PAGE);
   const slice = filtered.slice((pg-1)*PER_PAGE, pg*PER_PAGE);
