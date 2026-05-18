@@ -277,7 +277,13 @@ tr:last-child td{border-bottom:none;}tr:hover td{background:rgba(255,255,255,.02
 select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2px 8px;}
 @media(max-width:900px){.sidebar{display:none;}.main{padding:16px;margin-left:0;}.stats-row{grid-template-columns:1fr 1fr;}.dash-grid{grid-template-columns:1fr;}}
 .btn-csv{background:rgba(16,185,129,.1);color:#4ade80;border:1px solid rgba(16,185,129,.25);}.btn-csv:hover{background:rgba(16,185,129,.2);color:#6ee7b7;}
+/* ── Table action column: always stays on one line */
+.assets-tbl td:last-child,.assets-tbl th:last-child{white-space:nowrap;width:1%;}
 /* ── Responsive breakpoints ──────────────────────────────────────────── */
+/* Hide less-important table columns on smaller screens */
+@media(max-width:1400px){
+  .col-hide-md{display:none;}
+}
 @media(max-width:1440px){
   .main{padding:22px 28px;}
   .stats-row{gap:12px;margin-bottom:22px;}
@@ -1163,10 +1169,13 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
       </div>
       <div className="panel">
         <div className="tbl-wrap">
-          <table>
+          <table className="assets-tbl">
             <thead><tr>
-              <th>Asset No.</th><th>Asset Category</th><th>Description</th><th>Eq. Code</th>
-              <th>Model/Make</th><th>Capacity</th><th>Location</th><th>Status</th><th>Actions</th>
+              <th>Asset No.</th><th>Asset Category</th><th>Description</th>
+              <th className="col-hide-md">Eq. Code</th>
+              <th className="col-hide-md">Model/Make</th>
+              <th className="col-hide-md">Capacity</th>
+              <th>Location</th><th>Status</th><th>Actions</th>
             </tr></thead>
             <tbody>
               {slice.length===0&&<tr><td colSpan={9}><div className="empty-state">No assets found</div></td></tr>}
@@ -1175,9 +1184,9 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
                   <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)'}}>{a.num}</td>
                   <td style={{fontSize:12,fontWeight:500}}>{(a.plant||'').toUpperCase()}</td>
                   <td><strong>{a.desc}</strong></td>
-                  <td style={{fontFamily:'var(--fm)',fontSize:11}}>{a.code||'—'}</td>
-                  <td style={{fontSize:12}}>{a.model||'—'}</td>
-                  <td style={{fontSize:12}}>{a.cap||'—'}</td>
+                  <td className="col-hide-md" style={{fontFamily:'var(--fm)',fontSize:11}}>{a.code||'—'}</td>
+                  <td className="col-hide-md" style={{fontSize:12}}>{a.model||'—'}</td>
+                  <td className="col-hide-md" style={{fontSize:12}}>{a.cap||'—'}</td>
                   <td style={{fontSize:12}}>{a.loc||'—'}</td>
                   <td>
                     <select className={`sb-base ${statusCls(a.status)}`} value={a.status||''} onChange={e=>onStatusChange(a.num,e.target.value)}>
@@ -1185,10 +1194,10 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
                     </select>
                   </td>
                   <td>
-                    <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                    <div style={{display:'flex',gap:4,flexWrap:'nowrap'}}>
                       <button className="btn btn-ghost btn-sm btn-icon" title="View Asset" onClick={()=>setAssetModal({mode:'view',asset:a})}>👁</button>
                       <button className="btn btn-warning btn-sm btn-icon" title="Edit Asset" onClick={()=>setAssetModal({mode:'edit',asset:a})}>✏</button>
-                      <button className="btn btn-primary btn-sm" title="Raise Job Order" onClick={()=>setJoModal({mode:'add',preAsset:a.num})}>+ JO</button>
+                      <button className="btn btn-primary btn-sm btn-icon" title="Raise Job Order" onClick={()=>setJoModal({mode:'add',preAsset:a.num})}>＋</button>
                       <button className="btn btn-danger btn-sm btn-icon" title="Delete Asset" onClick={()=>{ if(window.confirm(`Delete asset ${a.num} — ${a.desc}?\n\nThis cannot be undone.`)) onDeleteAsset(a.num); }}>🗑</button>
                     </div>
                   </td>
@@ -1363,7 +1372,7 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
                     }
                   </td>
                   <td>
-                    <div style={{display:'flex',gap:4}}>
+                    <div style={{display:'flex',gap:4,flexWrap:'nowrap'}}>
                       <button className="btn btn-ghost btn-sm btn-icon" title="View" onClick={()=>setJoViewModal(jo)}>👁</button>
                       {!isClosed&&<button className="btn btn-warning btn-sm btn-icon" title="Edit" onClick={()=>setJoModal({mode:'edit',jo})}>✏</button>}
                       <button className="btn btn-primary btn-sm btn-icon" title="Download PDF" onClick={()=>printJOPDF(jo)}>↓</button>
