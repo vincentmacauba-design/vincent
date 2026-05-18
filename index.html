@@ -313,6 +313,15 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
 .sidebar-footer{margin-top:auto;padding:14px 18px 18px;border-top:1px solid var(--border);background:rgba(0,0,0,.12);}
 .sidebar-user-name{font-family:var(--fh);font-size:15px;font-weight:700;color:var(--white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .sidebar-user-role{font-family:var(--fm);font-size:9px;color:var(--gray);letter-spacing:1.5px;margin-top:3px;text-transform:uppercase;}
+/* ── Report Cards */
+.report-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.report-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:32px 28px;backdrop-filter:blur(6px);display:flex;flex-direction:column;gap:14px;transition:border-color .15s;}
+.report-card:hover{border-color:rgba(245,158,11,.3);}
+.report-card-icon{font-size:28px;line-height:1;}
+.report-card-title{font-family:var(--fh);font-size:19px;font-weight:700;letter-spacing:.5px;}
+.report-card-desc{font-size:13px;color:var(--gray);line-height:1.65;flex:1;}
+.report-card-meta{font-family:var(--fm);font-size:11px;color:var(--accent);letter-spacing:.5px;padding:6px 10px;background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.15);border-radius:4px;display:inline-block;}
+@media(max-width:900px){.report-grid{grid-template-columns:1fr;}}
 `;
 
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
@@ -834,63 +843,127 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
   );
 }
 
+// ─── PDF GENERATOR ────────────────────────────────────────────────────────────
+function openPrintWindow(title, bodyHtml) {
+  const win = window.open('', '_blank');
+  if (!win) { alert('Please allow pop-ups for PDF generation.'); return; }
+  const now = new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+  win.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:Arial,sans-serif;font-size:11px;color:#111;padding:24px 28px;}
+    .hdr{display:flex;align-items:center;gap:14px;border-bottom:2px solid #f59e0b;padding-bottom:12px;margin-bottom:16px;}
+    .hdr-icon{width:40px;height:32px;background:linear-gradient(135deg,#f59e0b,#1a56db);border-radius:5px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;color:#0a1628;letter-spacing:.5px;}
+    .hdr-title{font-size:18px;font-weight:700;letter-spacing:.5px;}
+    .hdr-sub{font-size:9px;color:#f59e0b;letter-spacing:1.5px;margin-top:2px;}
+    .meta{font-size:10px;color:#64748b;margin-bottom:14px;display:flex;gap:20px;}
+    table{width:100%;border-collapse:collapse;margin-top:4px;}
+    th{padding:7px 8px;text-align:left;background:#0a1628;color:#f59e0b;font-size:9px;letter-spacing:1px;text-transform:uppercase;white-space:nowrap;}
+    td{padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:10px;vertical-align:middle;}
+    tr:nth-child(even) td{background:#f8fafc;}
+    .b{font-weight:700;}
+    .badge{display:inline-block;padding:1px 7px;border-radius:3px;font-size:9px;font-weight:700;letter-spacing:.5px;}
+    .op{background:#d1fae5;color:#065f46;}.br{background:#fee2e2;color:#991b1b;}
+    .mn{background:#ffedd5;color:#9a3412;}.ot{background:#f1f5f9;color:#475569;}
+    .jop{background:#fef3c7;color:#92400e;}.jip{background:#dbeafe;color:#1e40af;}.jcl{background:#d1fae5;color:#065f46;}
+    .hi{color:#dc2626;font-weight:700;}.lo{color:#059669;}
+    .footer{margin-top:20px;font-size:9px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;}
+    @media print{body{padding:12px 16px;}}
+  </style></head><body>
+    <div class="hdr"><div class="hdr-icon">CMM</div><div><div class="hdr-title">${title}</div><div class="hdr-sub">VHPL TIC — ENGINEERING SOLUTIONS DEPT</div></div></div>
+    <div class="meta"><span>Generated: ${now}</span></div>
+    ${bodyHtml}
+    <div class="footer"><span>VHPL TIC · CMMS</span><span>${title} · ${now}</span></div>
+  </body></html>`);
+  win.document.close();
+  setTimeout(() => win.print(), 400);
+}
+
 // ─── REPORTS PAGE ─────────────────────────────────────────────────────────────
 function ReportsPage({assets, jobOrders}) {
-  const broken = assets.filter(a=>['BREAKDOWN','UNDER MAINTENANCE','Inactive','idle'].includes(a.status));
-  const openJOs = jobOrders.filter(j=>j.status!=='CLOSED');
+  function dlAssetMasterList() {
+    const rows = assets.map(a => {
+      const sc = a.status==='OPERATIONAL'?'op':a.status==='BREAKDOWN'?'br':a.status==='UNDER MAINTENANCE'?'mn':'ot';
+      return `<tr><td class="b" style="color:#f59e0b;font-family:monospace">${a.num}</td><td style="font-size:9px">${a.plant}</td><td class="b">${a.desc}</td><td style="font-family:monospace;font-size:9px">${a.code||'—'}</td><td>${a.model||'—'}</td><td>${a.cap||'—'}</td><td>${a.loc||'—'}</td><td style="font-family:monospace;font-size:9px">${a.serial||'—'}</td><td><span class="badge ${sc}">${a.status||'—'}</span></td></tr>`;
+    }).join('');
+    openPrintWindow('Asset Master List', `
+      <div class="meta" style="margin-bottom:10px"><span>Total Assets: <b>${assets.length}</b></span><span>Plants: <b>${[...new Set(assets.map(a=>a.plant))].length}</b></span><span>Operational: <b>${assets.filter(a=>a.status==='OPERATIONAL').length}</b></span></div>
+      <table><thead><tr><th>Asset No.</th><th>Plant</th><th>Description</th><th>Eq. Code</th><th>Model</th><th>Capacity</th><th>Location</th><th>Serial No.</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody></table>`);
+  }
+
+  function dlAllJobOrders() {
+    const rows = [...jobOrders].reverse().map(j => {
+      const sc = j.status==='OPEN'?'jop':j.status==='IN PROGRESS'?'jip':'jcl';
+      return `<tr><td class="b" style="color:#f59e0b;font-family:monospace">${j.jobNo}</td><td>${j.date}</td><td style="font-family:monospace;font-size:9px">${j.assetNum}</td><td>${j.assetDesc||'—'}</td><td>${j.dept||'—'}</td><td style="max-width:160px">${(j.problem||'—').substring(0,70)}</td><td><span class="${j.priority==='High'?'hi':'lo'}">${j.priority||'—'}</span></td><td><span class="badge ${sc}">${j.status}</span></td><td>${j.completionDate||'—'}</td></tr>`;
+    }).join('');
+    openPrintWindow('All Job Orders', `
+      <div class="meta" style="margin-bottom:10px"><span>Total: <b>${jobOrders.length}</b></span><span>Open: <b>${jobOrders.filter(j=>j.status==='OPEN').length}</b></span><span>In Progress: <b>${jobOrders.filter(j=>j.status==='IN PROGRESS').length}</b></span><span>Closed: <b>${jobOrders.filter(j=>j.status==='CLOSED').length}</b></span></div>
+      <table><thead><tr><th>Job No.</th><th>Date</th><th>Asset No.</th><th>Asset</th><th>Dept</th><th>Problem</th><th>Priority</th><th>Status</th><th>Completed</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:20px">No job orders recorded.</td></tr>'}</tbody></table>`);
+  }
+
+  function dlBreakdownReport() {
+    const broken = assets.filter(a=>['BREAKDOWN','UNDER MAINTENANCE','Inactive','idle'].includes(a.status));
+    const rows = broken.map(a => {
+      const sc = a.status==='BREAKDOWN'?'br':'mn';
+      return `<tr><td class="b" style="color:#f59e0b;font-family:monospace">${a.num}</td><td style="font-size:9px">${a.plant}</td><td class="b">${a.desc}</td><td>${a.loc||'—'}</td><td style="font-family:monospace;font-size:9px">${a.serial||'—'}</td><td><span class="badge ${sc}">${a.status}</span></td></tr>`;
+    }).join('');
+    openPrintWindow('Breakdown / Maintenance Report', `
+      <div class="meta" style="margin-bottom:10px"><span>Non-Operational Assets: <b>${broken.length}</b></span><span>Breakdown: <b>${assets.filter(a=>a.status==='BREAKDOWN').length}</b></span><span>Under Maintenance: <b>${assets.filter(a=>a.status==='UNDER MAINTENANCE').length}</b></span></div>
+      <table><thead><tr><th>Asset No.</th><th>Plant</th><th>Description</th><th>Location</th><th>Serial No.</th><th>Status</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:20px">All assets are operational.</td></tr>'}</tbody></table>`);
+  }
+
+  function dlOpenJobOrders() {
+    const open = jobOrders.filter(j=>j.status!=='CLOSED');
+    const rows = open.map(j => {
+      const sc = j.status==='OPEN'?'jop':'jip';
+      return `<tr><td class="b" style="color:#f59e0b;font-family:monospace">${j.jobNo}</td><td>${j.date}</td><td style="font-family:monospace;font-size:9px">${j.assetNum}</td><td>${j.assetDesc||'—'}</td><td>${j.dept||'—'}</td><td><span class="${j.priority==='High'?'hi':'lo'}">${j.priority||'—'}</span></td><td>${j.target||'—'}</td><td><span class="badge ${sc}">${j.status}</span></td></tr>`;
+    }).join('');
+    openPrintWindow('Open Job Orders', `
+      <div class="meta" style="margin-bottom:10px"><span>Pending: <b>${open.length}</b></span><span>Open: <b>${jobOrders.filter(j=>j.status==='OPEN').length}</b></span><span>In Progress: <b>${jobOrders.filter(j=>j.status==='IN PROGRESS').length}</b></span></div>
+      <table><thead><tr><th>Job No.</th><th>Date</th><th>Asset No.</th><th>Asset</th><th>Dept</th><th>Priority</th><th>Target</th><th>Status</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:20px">No open job orders.</td></tr>'}</tbody></table>`);
+  }
+
+  const brokenCount = assets.filter(a=>['BREAKDOWN','UNDER MAINTENANCE','Inactive','idle'].includes(a.status)).length;
+  const openCount   = jobOrders.filter(j=>j.status!=='CLOSED').length;
+  const plantCount  = [...new Set(assets.map(a=>a.plant))].length;
+
   return (
     <div>
       <div className="page-header">
-        <div className="page-title">REPORTS <span>& ANALYTICS</span></div>
-        <div className="page-sub">MAINTENANCE PERFORMANCE OVERVIEW</div>
+        <div className="page-title">REPORTS <span>& EXPORTS</span></div>
+        <div className="page-sub">GENERATE AND DOWNLOAD MAINTENANCE REPORTS AS PDF</div>
       </div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
-        <div className="panel">
-          <div className="panel-head"><div className="panel-title">⚠ Non-Operational Assets ({broken.length})</div></div>
-          <div className="tbl-wrap">
-            <table>
-              <thead><tr><th>Asset No.</th><th>Description</th><th>Location</th><th>Status</th></tr></thead>
-              <tbody>
-                {broken.length===0&&<tr><td colSpan={4} style={{textAlign:'center',color:'var(--gray)',padding:20}}>All assets operational ✓</td></tr>}
-                {broken.map(a=><tr key={a.num}>
-                  <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)'}}>{a.num}</td>
-                  <td><strong>{a.desc}</strong></td>
-                  <td style={{fontSize:12}}>{a.loc||'—'}</td>
-                  <td><span className={`sb-base ${statusCls(a.status)}`}>{a.status}</span></td>
-                </tr>)}
-              </tbody>
-            </table>
-          </div>
+      <div className="report-grid">
+        <div className="report-card">
+          <div className="report-card-icon">📋</div>
+          <div className="report-card-title">Asset Master List</div>
+          <div className="report-card-desc">Full asset registry with all equipment, status, capacity, serial numbers, and location details across all plants.</div>
+          <div className="report-card-meta">{assets.length} assets · {plantCount} plants</div>
+          <button className="btn btn-accent" onClick={dlAssetMasterList}>↓ Download PDF</button>
         </div>
-        <div className="panel">
-          <div className="panel-head"><div className="panel-title">📋 Open Job Orders ({openJOs.length})</div></div>
-          <div className="tbl-wrap">
-            <table>
-              <thead><tr><th>Job No.</th><th>Asset</th><th>Priority</th><th>Status</th></tr></thead>
-              <tbody>
-                {openJOs.length===0&&<tr><td colSpan={4} style={{textAlign:'center',color:'var(--gray)',padding:20}}>No open job orders ✓</td></tr>}
-                {openJOs.map(j=><tr key={j.jobNo}>
-                  <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)'}}>{j.jobNo}</td>
-                  <td style={{fontSize:12}}>{j.assetNum} {j.assetDesc}</td>
-                  <td><span className={j.priority==='High'?'prio-high':'prio-low'}>{j.priority}</span></td>
-                  <td><span className={`sb-base ${joStatusCls(j.status)}`}>{j.status}</span></td>
-                </tr>)}
-              </tbody>
-            </table>
-          </div>
+        <div className="report-card">
+          <div className="report-card-icon">🗂️</div>
+          <div className="report-card-title">All Job Orders</div>
+          <div className="report-card-desc">Complete log of all raised job orders including problem details, technician records, parts used, and completion status.</div>
+          <div className="report-card-meta">{jobOrders.length} total job orders</div>
+          <button className="btn btn-accent" onClick={dlAllJobOrders}>↓ Download PDF</button>
         </div>
-      </div>
-      <div className="panel" style={{marginTop:20}}>
-        <div className="panel-head"><div className="panel-title">📊 Asset Status Summary</div></div>
-        <div className="panel-body">
-          <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:12}}>
-            {[['OPERATIONAL','var(--green)'],['BREAKDOWN','var(--red)'],['UNDER MAINTENANCE','var(--orange)'],['NEW','#60a5fa'],['Inactive','var(--gray)'],['idle','var(--yellow)']].map(([s,c])=>(
-              <div key={s} style={{textAlign:'center',background:'rgba(255,255,255,.03)',border:'1px solid var(--border)',borderRadius:8,padding:'16px 8px'}}>
-                <div style={{fontFamily:'var(--fh)',fontSize:28,fontWeight:700,color:c}}>{assets.filter(a=>a.status===s).length}</div>
-                <div style={{fontSize:10,fontFamily:'var(--fm)',color:'var(--gray)',marginTop:4,letterSpacing:1}}>{s.toUpperCase()}</div>
-              </div>
-            ))}
-          </div>
+        <div className="report-card">
+          <div className="report-card-icon">⚠️</div>
+          <div className="report-card-title">Breakdown / Maintenance Report</div>
+          <div className="report-card-desc">Assets currently in BREAKDOWN, UNDER MAINTENANCE, or INACTIVE status requiring attention or ongoing repair.</div>
+          <div className="report-card-meta">{brokenCount} asset{brokenCount!==1?'s':''} affected</div>
+          <button className="btn btn-danger" onClick={dlBreakdownReport}>↓ Download PDF</button>
+        </div>
+        <div className="report-card">
+          <div className="report-card-icon">🔧</div>
+          <div className="report-card-title">Open Job Orders</div>
+          <div className="report-card-desc">All open and in-progress job orders pending completion, including priority levels and target dates.</div>
+          <div className="report-card-meta">{openCount} pending</div>
+          <button className="btn btn-primary" onClick={dlOpenJobOrders}>↓ Download PDF</button>
         </div>
       </div>
     </div>
