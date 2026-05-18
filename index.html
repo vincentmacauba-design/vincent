@@ -635,6 +635,22 @@ function App() {
       return next;
     });
   }
+  function renameCustomPlant(oldName, newName) {
+    const upper = newName.trim().toUpperCase();
+    if (!upper || upper === oldName) return;
+    setCustomPlants(prev => {
+      const next = prev.map(p => p===oldName ? upper : p);
+      try { localStorage.setItem(CUSTOM_PLANTS_KEY, JSON.stringify(next)); } catch(e) {}
+      return next;
+    });
+    setAssets(prev => {
+      const next = prev.map(a => a.plant===oldName ? {...a, plant:upper} : a);
+      persist(next, jobOrders, joCounter);
+      return next;
+    });
+    setJobOrders(prev => prev.map(j => j.assetCategory===oldName ? {...j, assetCategory:upper} : j));
+    addToast(`Renamed "${oldName}" → "${upper}"`);
+  }
   function importAssetsFromCSV(file) {
     importCSVFile(file, rows => {
       const newAssets = rows.map(v=>({num:v[0]||'',plant:(v[1]||'').toUpperCase(),desc:v[2]||'',code:v[3]||'',model:v[4]||'',cap:v[5]||'',reg:v[6]||'',eng:v[7]||'',serial:v[8]||'',loc:v[9]||'',status:v[10]||'OPERATIONAL'})).filter(a=>a.num&&a.desc);
@@ -733,7 +749,7 @@ function App() {
                 onJO={a=>{setAssetModal(null);setJoModal({mode:'add',preAsset:a.num});}} />
             : <AssetFormModal mode={assetModal.mode} asset={assetModal.asset}
                 assets={assets} onClose={()=>setAssetModal(null)} onSave={saveAsset}
-                customPlants={customPlants} onAddPlant={addCustomPlant}/>
+                customPlants={customPlants} onAddPlant={addCustomPlant} onRenameCategory={renameCustomPlant}/>
         )}
         {joModal && (
           <JOFormModal mode={joModal.mode} jo={joModal.jo} preAsset={joModal.preAsset}
@@ -826,36 +842,109 @@ function LoginPage({onLogin}) {
 function AssetDoughnutChart({assets}) {
   const canvasRef = useRef(null);
   const chartRef  = useRef(null);
-  const palette = ['#f59e0b','#1a56db','#10b981','#f97316','#8b5cf6','#06b6d4','#eab308','#ef4444','#14b8a6','#6366f1','#ec4899','#84cc16'];
+  const palette = ['#f59e0b','#3b82f6','#10b981','#f97316','#8b5cf6','#06b6d4','#facc15','#ef4444','#14b8a6','#6366f1','#ec4899','#84cc16'];
+
   useEffect(()=>{
     if (!canvasRef.current || typeof Chart==='undefined') return;
     const cats   = [...new Set(assets.map(a=>a.plant).filter(Boolean))].sort();
     const counts = cats.map(c=>assets.filter(a=>a.plant===c).length);
+    const total  = counts.reduce((a,b)=>a+b,0);
     if (chartRef.current) chartRef.current.destroy();
+
+    const centerPlugin = {
+      id:'centerLabel',
+      afterDraw(chart) {
+        const {ctx,chartArea:{left,top,width,height}} = chart;
+        const cx=left+width/2, cy=top+height/2;
+        ctx.save();
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.font=`700 ${Math.min(34,width*.16)}px 'Rajdhani',sans-serif`;
+        ctx.fillStyle='#f8fafc';
+        ctx.fillText(total, cx, cy-9);
+        ctx.font=`600 ${Math.min(9,width*.045)}px 'Source Code Pro',monospace`;
+        ctx.fillStyle='#94a3b8';
+        ctx.letterSpacing='2px';
+        ctx.fillText('TOTAL ASSETS', cx, cy+11);
+        ctx.restore();
+      }
+    };
+
     chartRef.current = new Chart(canvasRef.current,{
       type:'doughnut',
+      plugins:[centerPlugin],
       data:{
-        labels: cats.map(c=>c.length>22?c.slice(0,22)+'…':c),
-        datasets:[{data:counts,backgroundColor:cats.map((_,i)=>palette[i%palette.length]),borderColor:'#0f2044',borderWidth:2}]
+        labels: cats.map(c=>c.length>20?c.slice(0,20)+'…':c),
+        datasets:[{
+          data:counts,
+          backgroundColor: cats.map((_,i)=>palette[i%palette.length]+'bb'),
+          borderColor:      cats.map((_,i)=>palette[i%palette.length]),
+          borderWidth:2,
+          hoverBackgroundColor: cats.map((_,i)=>palette[i%palette.length]),
+          hoverBorderWidth:3,
+          hoverOffset:10,
+        }]
       },
       options:{
-        responsive:true,maintainAspectRatio:false,
+        responsive:true, maintainAspectRatio:false,
+        animation:{animateRotate:true,animateScale:true,duration:900,easing:'easeInOutQuart'},
         plugins:{
-          legend:{position:'right',labels:{color:'#e2e8f0',font:{size:11},padding:10,boxWidth:12}},
-          tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${ctx.parsed} (${assets.length?Math.round(ctx.parsed/assets.length*100):0}%)`}}
+          legend:{
+            position:'right',
+            labels:{
+              color:'#e2e8f0',
+              font:{size:11,family:"'Rajdhani',sans-serif"},
+              padding:12, boxWidth:10, boxHeight:10,
+              usePointStyle:true, pointStyle:'circle',
+              generateLabels:(chart)=>chart.data.labels.map((lbl,i)=>({
+                text:`${lbl}  ·  ${chart.data.datasets[0].data[i]}`,
+                fillStyle:chart.data.datasets[0].hoverBackgroundColor[i],
+                strokeStyle:chart.data.datasets[0].borderColor[i],
+                lineWidth:1,hidden:false,index:i,
+              }))
+            }
+          },
+          tooltip:{
+            backgroundColor:'rgba(10,22,40,.95)',
+            borderColor:'rgba(245,158,11,.4)',
+            borderWidth:1,
+            padding:12,
+            titleFont:{family:"'Rajdhani',sans-serif",size:13,weight:'bold'},
+            bodyFont:{family:"'Source Code Pro',monospace",size:11},
+            callbacks:{
+              title:([ctx])=>ctx.label,
+              label:ctx=>{
+                const pct=total?Math.round(ctx.parsed/total*100):0;
+                return `  ${ctx.parsed} assets  (${pct}%)`;
+              }
+            }
+          }
         },
-        cutout:'66%'
+        cutout:'64%',
       }
     });
     return ()=>{ if(chartRef.current){chartRef.current.destroy();chartRef.current=null;} };
   },[assets]);
+
+  const opCount = assets.filter(a=>a.status==='OPERATIONAL').length;
+  const brCount = assets.filter(a=>a.status==='BREAKDOWN').length;
+  const mnCount = assets.filter(a=>a.status==='UNDER MAINTENANCE').length;
+
   return (
-    <div className="panel" style={{marginTop:20}}>
-      <div className="panel-head">
+    <div className="panel" style={{marginTop:20,background:'linear-gradient(135deg,rgba(15,32,68,.9),rgba(10,22,40,.95))'}}>
+      <div className="panel-head" style={{borderBottom:'1px solid rgba(245,158,11,.15)'}}>
         <div className="panel-title">Asset Distribution by Category</div>
-        <div style={{fontSize:11,fontFamily:'var(--fm)',color:'var(--gray)'}}>Total: {assets.length} assets</div>
+        <div style={{display:'flex',gap:18,fontSize:11,fontFamily:'var(--fm)'}}>
+          <span><span style={{color:'var(--green)',fontWeight:700}}>{opCount}</span> <span style={{color:'var(--gray)'}}>OPER.</span></span>
+          <span><span style={{color:'var(--red)',fontWeight:700}}>{brCount}</span> <span style={{color:'var(--gray)'}}>BREAK.</span></span>
+          <span><span style={{color:'var(--orange)',fontWeight:700}}>{mnCount}</span> <span style={{color:'var(--gray)'}}>MAINT.</span></span>
+          <span><span style={{color:'var(--white)',fontWeight:700}}>{assets.length}</span> <span style={{color:'var(--gray)'}}>TOTAL</span></span>
+        </div>
       </div>
-      <div className="panel-body"><div style={{height:260,position:'relative'}}><canvas ref={canvasRef}/></div></div>
+      <div className="panel-body">
+        <div style={{height:300,position:'relative'}}>
+          <canvas ref={canvasRef}/>
+        </div>
+      </div>
     </div>
   );
 }
@@ -894,7 +983,7 @@ function DashboardPage({assets, jobOrders, setPage, setJoModal}) {
             <div className="panel-title">Recent Job Orders</div>
             <button className="btn btn-accent btn-sm" onClick={()=>setPage('joborders')}>View All</button>
           </div>
-          <div className="panel-body" style={{overflowY:'auto',flex:1,maxHeight:360}}>
+          <div className="panel-body" style={{overflowY:'auto',flex:1}}>
             {recent.length ? recent.map(jo=>(
               <div key={jo.jobNo} className="jo-item">
                 <div>
@@ -910,7 +999,7 @@ function DashboardPage({assets, jobOrders, setPage, setJoModal}) {
 
         <div className="panel" style={{display:'flex',flexDirection:'column'}}>
           <div className="panel-head"><div className="panel-title">Assets by Category</div></div>
-          <div className="tbl-wrap" style={{overflowY:'auto',flex:1,maxHeight:360}}>
+          <div className="tbl-wrap" style={{flex:1}}>
             <table>
               <thead><tr>
                 <th>Category</th>
@@ -922,11 +1011,11 @@ function DashboardPage({assets, jobOrders, setPage, setJoModal}) {
               <tbody>
                 {catStats.map(s=>(
                   <tr key={s.cat}>
-                    <td style={{fontFamily:'var(--fh)',fontWeight:600,fontSize:12}}>{s.cat.toUpperCase()}</td>
-                    <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:15,fontWeight:700,color:'var(--green)'}}>{s.operational}</td>
-                    <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:15,fontWeight:700,color:s.breakdown>0?'var(--red)':'var(--gray)'}}>{s.breakdown}</td>
-                    <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:15,fontWeight:700,color:s.maintenance>0?'var(--orange)':'var(--gray)'}}>{s.maintenance}</td>
-                    <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:15,fontWeight:700,color:s.openJOs>0?'var(--yellow)':'var(--gray)'}}>{s.openJOs}</td>
+                    <td style={{fontFamily:'var(--fh)',fontWeight:600,fontSize:11,padding:'5px 8px'}}>{s.cat.toUpperCase()}</td>
+                    <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:13,fontWeight:700,color:'var(--green)',padding:'5px 8px'}}>{s.operational}</td>
+                    <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:13,fontWeight:700,color:s.breakdown>0?'var(--red)':'var(--gray)',padding:'5px 8px'}}>{s.breakdown}</td>
+                    <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:13,fontWeight:700,color:s.maintenance>0?'var(--orange)':'var(--gray)',padding:'5px 8px'}}>{s.maintenance}</td>
+                    <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:13,fontWeight:700,color:s.openJOs>0?'var(--yellow)':'var(--gray)',padding:'5px 8px'}}>{s.openJOs}</td>
                   </tr>
                 ))}
                 {catStats.length===0&&<tr><td colSpan={5} style={{textAlign:'center',color:'var(--gray)',padding:20}}>No assets</td></tr>}
@@ -1041,8 +1130,21 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [activeTab, setActiveTab] = useState('OPEN');
-  const [confirmModal, setConfirmModal] = useState(null); // {jo, nextStatus}
+  const [confirmModal, setConfirmModal] = useState(null);
   const importRef = useRef(null);
+
+  // Smart search: auto-switch to the tab that has matches
+  useEffect(()=>{
+    if (!q.trim()) return;
+    const qLow = q.toLowerCase().trim();
+    const allMatches = jobOrders.filter(j=>[j.jobNo,j.assetNum,j.assetDesc,j.dept,j.problem].join(' ').toLowerCase().includes(qLow));
+    if (!allMatches.length) return;
+    setActiveTab(prev => {
+      if (allMatches.some(j=>j.status===prev)) return prev;
+      const best = ['OPEN','IN PROGRESS','CLOSED'].find(s=>allMatches.some(j=>j.status===s));
+      return best||prev;
+    });
+  },[q, jobOrders]);
 
   const filtered = jobOrders.filter(j=>{
     const hay=[j.jobNo,j.assetNum,j.assetDesc,j.dept,j.problem].join(' ').toLowerCase();
@@ -1058,35 +1160,30 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
   const isClosed = activeTab==='CLOSED';
 
   const TABS = [
-    {id:'OPEN',      label:'Open',        color:'var(--yellow)'},
-    {id:'IN PROGRESS',label:'In Progress', color:'#60a5fa'},
-    {id:'CLOSED',    label:'Closed',       color:'var(--green)'},
+    {id:'OPEN',        label:'Open',        color:'#f59e0b', bg:'rgba(245,158,11,.14)'},
+    {id:'IN PROGRESS', label:'In Progress', color:'#60a5fa', bg:'rgba(96,165,250,.14)'},
+    {id:'CLOSED',      label:'Closed',      color:'#10b981', bg:'rgba(16,185,129,.14)'},
   ];
 
   function requestAdvance(jo) {
-    if (jo.status==='OPEN')        setConfirmModal({jo, nextStatus:'IN PROGRESS'});
-    else if (jo.status==='IN PROGRESS') setConfirmModal({jo, nextStatus:'CLOSED'});
+    if (jo.status==='OPEN') setConfirmModal({jo,nextStatus:'IN PROGRESS'});
+    else if (jo.status==='IN PROGRESS') setConfirmModal({jo,nextStatus:'CLOSED'});
   }
-
   function doAdvance() {
     if (!confirmModal) return;
-    onStatusChange(confirmModal.jo.jobNo, confirmModal.nextStatus);
+    onStatusChange(confirmModal.jo.jobNo,confirmModal.nextStatus);
     setConfirmModal(null);
   }
 
   return (
-    <div>
-      {/* Header */}
-      <div className="page-header" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
+    <div style={{display:'flex',flexDirection:'column',height:'calc(100vh - 58px)'}}>
+      {/* Header row */}
+      <div className="page-header" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',flexWrap:'wrap',gap:12,flexShrink:0}}>
         <div>
           <div className="page-title">JOB <span>ORDERS</span></div>
           <div className="page-sub">MAINTENANCE JOB CARD REQUEST LOG</div>
         </div>
         <div className="controls">
-          <input className="search-box" value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search..."/>
-          <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} title="From date" style={{width:140}}/>
-          <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} title="To date" style={{width:140}}/>
-          {(dateFrom||dateTo)&&<button className="btn btn-ghost btn-sm" onClick={()=>{setDateFrom('');setDateTo('');}}>✕ Clear</button>}
           <button className="btn btn-accent" onClick={()=>setJoModal({mode:'add'})}>＋ Raise Job Order</button>
           <button className="btn btn-ghost btn-sm" onClick={onExportCSV}>↓ Export</button>
           <label className="btn btn-ghost btn-sm" style={{cursor:'pointer'}}>↑ Import
@@ -1097,41 +1194,66 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
       </div>
 
       {/* Compact stat row */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
-        {[['Total',jobOrders.length,'var(--blue)','sc-blue'],['Open',counts['OPEN'],'var(--yellow)','sc-yellow'],['In Progress',counts['IN PROGRESS'],'#60a5fa','sc-orange'],['Closed',counts['CLOSED'],'var(--green)','sc-green']].map(([lbl,num,c,cls])=>(
-          <div key={lbl} className={`stat-card ${cls}`} style={{padding:'10px 16px'}}>
-            <div style={{fontFamily:'var(--fh)',fontSize:26,fontWeight:700,color:c,lineHeight:1}}>{num}</div>
-            <div style={{fontSize:10,color:'var(--gray)',fontFamily:'var(--fm)',letterSpacing:1,marginTop:4,textTransform:'uppercase'}}>{lbl}</div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:16,flexShrink:0}}>
+        {[['Total',jobOrders.length,'#1a56db','sc-blue'],['Open',counts['OPEN'],'#f59e0b','sc-yellow'],['In Progress',counts['IN PROGRESS'],'#60a5fa','sc-orange'],['Closed',counts['CLOSED'],'#10b981','sc-green']].map(([lbl,num,c,cls])=>(
+          <div key={lbl} className={`stat-card ${cls}`} style={{padding:'8px 14px'}}>
+            <div style={{fontFamily:'var(--fh)',fontSize:24,fontWeight:700,color:c,lineHeight:1}}>{num}</div>
+            <div style={{fontSize:10,color:'var(--gray)',fontFamily:'var(--fm)',letterSpacing:1,marginTop:3,textTransform:'uppercase'}}>{lbl}</div>
           </div>
         ))}
       </div>
 
-      {/* Tab bar */}
-      <div style={{display:'flex',borderBottom:'2px solid var(--border)',marginBottom:0}}>
-        {TABS.map(t=>(
-          <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{
-            padding:'10px 22px', background: activeTab===t.id?'rgba(255,255,255,.06)':'transparent',
-            border:'none', borderBottom: activeTab===t.id?`2px solid ${t.color}`:'2px solid transparent',
-            color: activeTab===t.id?t.color:'var(--gray)', cursor:'pointer',
-            fontFamily:'var(--fh)', fontSize:14, fontWeight:600, letterSpacing:.5, marginBottom:-2,
-            display:'flex', alignItems:'center', gap:8, transition:'all .15s',
-          }}>
-            {t.label}
-            <span style={{fontFamily:'var(--fm)',fontSize:11,background:'rgba(255,255,255,.08)',padding:'1px 8px',borderRadius:10,color:activeTab===t.id?t.color:'var(--gray)'}}>{counts[t.id]}</span>
-          </button>
-        ))}
+      {/* Tab bar + inline search */}
+      <div style={{display:'flex',alignItems:'stretch',borderBottom:'2px solid var(--border)',flexShrink:0,background:'var(--navy2)',borderRadius:'8px 8px 0 0',overflow:'hidden'}}>
+        <div style={{display:'flex',flex:1}}>
+          {TABS.map(t=>{
+            const active = activeTab===t.id;
+            return (
+              <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{
+                padding:'11px 20px',
+                background: active ? t.bg : 'transparent',
+                border:'none', borderBottom: active?`2px solid ${t.color}`:'2px solid transparent',
+                color: active ? t.color : 'rgba(148,163,184,.7)',
+                cursor:'pointer', fontFamily:'var(--fh)', fontSize:14, fontWeight:700,
+                letterSpacing:.5, marginBottom:-2, display:'flex', alignItems:'center', gap:8,
+                transition:'all .15s',
+                outline: active ? `1px solid ${t.color}22` : 'none',
+              }}>
+                <span style={{
+                  display:'inline-block',width:8,height:8,borderRadius:'50%',
+                  background: active?t.color:t.color+'44',flexShrink:0,
+                  boxShadow: active?`0 0 6px ${t.color}`:'none',
+                }}/>
+                {t.label}
+                <span style={{
+                  fontFamily:'var(--fm)',fontSize:11,
+                  background: active?t.color+'22':'rgba(255,255,255,.07)',
+                  padding:'1px 8px',borderRadius:10,color:active?t.color:'rgba(148,163,184,.6)',
+                  border:`1px solid ${active?t.color+'44':'transparent'}`,
+                }}>{counts[t.id]}</span>
+              </button>
+            );
+          })}
+        </div>
+        {/* Search + date on right side of tab bar */}
+        <div style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderLeft:'1px solid var(--border)'}}>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search job orders..." style={{fontSize:12,padding:'5px 10px',minWidth:180,background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.12)',color:'var(--white)',borderRadius:5,outline:'none'}}/>
+          <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} title="From date" style={{fontSize:12,padding:'5px 8px',width:130}}/>
+          <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} title="To date" style={{fontSize:12,padding:'5px 8px',width:130}}/>
+          {(dateFrom||dateTo)&&<button className="btn btn-ghost btn-sm" onClick={()=>{setDateFrom('');setDateTo('');}}>✕</button>}
+        </div>
       </div>
 
-      {/* Table */}
-      <div className="panel" style={{borderTopLeftRadius:0,borderTopRightRadius:0,borderTop:'none'}}>
-        <div className="tbl-wrap">
+      {/* Scrollable table fills remaining page height */}
+      <div className="panel" style={{borderTopLeftRadius:0,borderTopRightRadius:0,borderTop:'none',flex:1,overflow:'hidden',display:'flex',flexDirection:'column',marginBottom:0}}>
+        <div className="tbl-wrap" style={{flex:1,overflowY:'auto'}}>
           <table>
             <thead><tr>
               <th>Job No.</th><th>Date</th><th>Asset</th><th>Asset Category</th><th>Problem</th>
               <th>Priority</th><th>Status</th><th>Actions</th>
             </tr></thead>
             <tbody>
-              {tabJOs.length===0 && <tr><td colSpan={8}><div className="empty-state" style={{padding:32}}>No {activeTab.toLowerCase()} job orders</div></td></tr>}
+              {tabJOs.length===0&&<tr><td colSpan={8}><div className="empty-state" style={{padding:48}}>No {activeTab.toLowerCase()} job orders{q?' matching search':''}</div></td></tr>}
               {tabJOs.map(jo=>(
                 <tr key={jo.jobNo}>
                   <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)'}}>{jo.jobNo}</td>
@@ -1166,8 +1288,8 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
         </div>
       </div>
 
-      {/* Status confirmation modal */}
-      {confirmModal && (
+      {/* Confirm modal */}
+      {confirmModal&&(
         <div className="modal-overlay" onClick={()=>setConfirmModal(null)}>
           <div className="modal" style={{width:440}} onClick={e=>e.stopPropagation()}>
             <div className="modal-head">
@@ -1176,11 +1298,11 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
             </div>
             <div className="modal-body">
               <div style={{marginBottom:16}}>
-                <div style={{fontSize:13,marginBottom:8}}>
+                <div style={{fontSize:13,marginBottom:10}}>
                   Move <span style={{fontFamily:'var(--fm)',color:'var(--accent)'}}>{confirmModal.jo.jobNo}</span> from{' '}
                   <span className={`sb-base ${joStatusCls(confirmModal.jo.status)}`}>{confirmModal.jo.status}</span>
-                  {' '}to{' '}
-                  <span className={`sb-base ${joStatusCls(confirmModal.nextStatus)}`}>{confirmModal.nextStatus}</span>?
+                  {' → '}
+                  <span className={`sb-base ${joStatusCls(confirmModal.nextStatus)}`}>{confirmModal.nextStatus}</span>
                 </div>
                 {confirmModal.nextStatus==='CLOSED'&&(
                   <div style={{background:'rgba(245,158,11,.1)',border:'1px solid rgba(245,158,11,.3)',borderRadius:6,padding:'8px 12px',fontSize:12,color:'var(--accent)',fontFamily:'var(--fm)'}}>
@@ -1503,10 +1625,12 @@ function AssetViewModal({asset:a, assets, jobOrders, onClose, onEdit, onJO}) {
 }
 
 // ─── ASSET FORM MODAL ─────────────────────────────────────────────────────────
-function AssetFormModal({mode, asset, assets, onClose, onSave, customPlants=[], onAddPlant}) {
+function AssetFormModal({mode, asset, assets, onClose, onSave, customPlants=[], onAddPlant, onRenameCategory}) {
   const [f, setF] = useState(asset ? {...asset} : {num:'',plant:'',desc:'',code:'',model:'',cap:'',reg:'',eng:'',serial:'',loc:'',status:'OPERATIONAL'});
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState('');
+  const [showManage, setShowManage] = useState(false);
+  const [editingCat, setEditingCat] = useState(null); // {name, draft}
   const allPlants = [...PLANTS, ...customPlants];
 
   function handleSave() {
@@ -1565,6 +1689,33 @@ function AssetFormModal({mode, asset, assets, onClose, onSave, customPlants=[], 
               : fld('Equipment Code','code')
             }
           </div>
+          {customPlants.length>0&&(
+            <div style={{marginBottom:14}}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={()=>setShowManage(!showManage)}>
+                ⚙ Manage Custom Categories ({customPlants.length})
+              </button>
+              {showManage&&(
+                <div style={{marginTop:8,background:'rgba(255,255,255,.03)',border:'1px solid var(--border)',borderRadius:6,padding:'10px 14px'}}>
+                  <div style={{fontSize:10,fontFamily:'var(--fm)',color:'var(--gray)',letterSpacing:1,marginBottom:8,textTransform:'uppercase'}}>Custom Categories — click ✏ to rename</div>
+                  {customPlants.map(p=>(
+                    <div key={p} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+                      {editingCat?.name===p
+                        ? <>
+                            <input value={editingCat.draft} onChange={e=>setEditingCat({...editingCat,draft:e.target.value})} style={{flex:1,fontSize:12}} onKeyDown={e=>{if(e.key==='Enter'){onRenameCategory&&onRenameCategory(p,editingCat.draft);setEditingCat(null);}if(e.key==='Escape')setEditingCat(null);}}/>
+                            <button className="btn btn-success btn-sm" onClick={()=>{onRenameCategory&&onRenameCategory(p,editingCat.draft);setEditingCat(null);}}>Save</button>
+                            <button className="btn btn-ghost btn-sm" onClick={()=>setEditingCat(null)}>✕</button>
+                          </>
+                        : <>
+                            <span style={{flex:1,fontFamily:'var(--fh)',fontSize:13,fontWeight:600}}>{p}</span>
+                            <button className="btn btn-warning btn-sm btn-icon" title="Rename" onClick={()=>setEditingCat({name:p,draft:p})}>✏</button>
+                          </>
+                      }
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <div className="form-row">{fld('Model / Make','model')}{fld('Capacity','cap')}</div>
           <div className="form-row">{fld('Register Number','reg')}{fld('Engine Number','eng')}</div>
           <div className="form-row">{fld('Serial / Chassis No.','serial')}{fld('Location','loc')}</div>
