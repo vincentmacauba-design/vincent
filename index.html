@@ -1059,7 +1059,7 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
   const allCats = [...new Set([...customPlants,...assets.map(a=>a.plant)].filter(Boolean))].sort();
   const filtered = assets.filter(a => {
     const hay = [a.num,a.plant,a.desc,a.code,a.model,a.loc,a.serial].join(' ').toLowerCase();
-    return (!q||hay.includes(q.toLowerCase())) && (!cat||a.plant.toUpperCase()===cat) && (!status||a.status===status);
+    return (!q||hay.includes(q.toLowerCase())) && (!cat||a.plant.toUpperCase()===cat) && (!status||(a.status||'').toUpperCase()===status);
   });
   const total = Math.ceil(filtered.length/PER_PAGE);
   const slice = filtered.slice((pg-1)*PER_PAGE, pg*PER_PAGE);
@@ -1079,7 +1079,7 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
           </select>
           <select value={status} onChange={e=>{setStatus(e.target.value);setPg(1);}}>
             <option value="">All Status</option>
-            {['OPERATIONAL','BREAKDOWN','UNDER MAINTENANCE','NEW','Inactive','idle'].map(s=><option key={s}>{s}</option>)}
+            {['OPERATIONAL','BREAKDOWN','UNDER MAINTENANCE','NEW','INACTIVE','IDLE'].map(s=><option key={s}>{s}</option>)}
           </select>
           <button className="btn btn-accent" onClick={()=>setAssetModal({mode:'add'})}>＋ Add Asset</button>
           <button className="btn btn-csv btn-sm" title="Export CSV" onClick={onExportCSV}>↓ Export</button>
