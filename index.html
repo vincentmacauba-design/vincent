@@ -123,7 +123,8 @@ const BASE_ASSETS = [
 const STORE_KEY = 'cmms_vg_state';
 const USERS_KEY = 'cmms_vg_users';
 const PER_PAGE = 20;
-const PLANTS = ['01 FUEL FARM','02 CEMENT PLANT','03 LPG PLANT','04 POWER HOUSE','05 ROOFING PLANT','06 OXYGEN PLANT','07 MOBILE MACHINERY','08 VEHICLES','09 Fire Pump System','10 Batching Plant'];
+const PLANTS = ['01 FUEL FARM','02 CEMENT PLANT','03 LPG PLANT','04 POWER HOUSE','05 ROOFING PLANT','06 OXYGEN PLANT','07 MOBILE MACHINERY','08 VEHICLES','09 FIRE PUMP SYSTEM','10 BATCHING PLANT'];
+const CUSTOM_PLANTS_KEY = 'cmms_vg_plants';
 
 // ─── DEFAULT USERS ──────────────────────────────────────────────────────────
 const DEFAULT_USERS = [
@@ -383,6 +384,54 @@ function printJOPDF(jo) {
   `);
 }
 
+// ─── CSV UTILITIES ───────────────────────────────────────────────────────────
+function dlCSV(content, filename) {
+  const blob = new Blob([content], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=filename; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function csvCell(v) { return '"'+(String(v||'')).replace(/"/g,'""')+'"'; }
+function parseCSVLine(line) {
+  const vals=[]; let cur='',inQ=false;
+  for(let i=0;i<line.length;i++){
+    if(line[i]==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}
+    else if(line[i]===','&&!inQ){vals.push(cur.trim());cur='';}
+    else cur+=line[i];
+  }
+  vals.push(cur.trim()); return vals;
+}
+function exportAssetsCSV(assets) {
+  const hdr=['Asset No.','Asset Category','Description','Eq. Code','Model/Make','Capacity','Register No.','Engine No.','Serial/Chassis No.','Location','Status'];
+  const rows=assets.map(a=>[a.num,a.plant,a.desc,a.code,a.model,a.cap,a.reg,a.eng,a.serial,a.loc,a.status].map(csvCell).join(','));
+  dlCSV([hdr.join(','),...rows].join('\n'),'assets_export.csv');
+}
+function exportJobOrdersCSV(jobOrders) {
+  const hdr=['Job No.','Date','Asset No.','Asset Desc.','Asset Category','Location','Eq. Code','Dept','Requested By','Priority','Repair Type','Problem','Status','Target','Section','Tech 1','Tech 1 Hrs','Tech 2','Tech 2 Hrs','Work Done','Work Status','Evaluation','Downtime','Acceptance','Completion Date','Received By','Approved By'];
+  const rows=jobOrders.map(j=>[j.jobNo,j.date,j.assetNum,j.assetDesc,j.assetCategory||j.plant||'',j.location,j.eqcode,j.dept,j.requester,j.priority,j.repairType,j.problem,j.status,j.target,j.section,j.tech1,j.tech1h,j.tech2,j.tech2h,j.workDone,j.workStatus,j.eval,j.downtime,j.accept,j.completionDate,j.recvName,j.approved].map(csvCell).join(','));
+  dlCSV([hdr.join(','),...rows].join('\n'),'joborders_export.csv');
+}
+function downloadAssetTemplate() {
+  const hdr='Asset No.,Asset Category,Description,Eq. Code,Model/Make,Capacity,Register No.,Engine No.,Serial/Chassis No.,Location,Status';
+  const ex='"A001","01 FUEL FARM","Sample Equipment","EQ-001","Model XYZ","100 KW","","","SN-0001","FUEL FARM","OPERATIONAL"';
+  dlCSV(hdr+'\n'+ex,'assets_template.csv');
+}
+function downloadJOTemplate() {
+  const hdr='Job No.,Date,Asset No.,Asset Desc.,Asset Category,Location,Eq. Code,Dept,Requested By,Priority,Repair Type,Problem,Status,Target,Section,Tech 1,Tech 1 Hrs,Tech 2,Tech 2 Hrs,Work Done,Work Status,Evaluation,Downtime,Acceptance,Completion Date,Received By,Approved By';
+  dlCSV(hdr+'\n"JO-9999","2024-01-01","A001","Sample Equipment","01 FUEL FARM","FUEL FARM","EQ-001","Engineering","John Doe","High","Unplanned","Describe problem","OPEN","2024-01-07","Maintenance","","","","","","","","","Accepted","","","Admin"','joborders_template.csv');
+}
+function importCSVFile(file, onRows) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const lines = e.target.result.split(/\r?\n/).filter(l=>l.trim());
+      if (lines.length < 2) { alert('CSV is empty or has no data rows.'); return; }
+      onRows(lines.slice(1).map(parseCSVLine));
+    } catch(err) { alert('Error reading CSV: '+err.message); }
+  };
+  reader.readAsText(file);
+}
+
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
 function App() {
   const [page, setPage] = useState('dashboard');
@@ -570,6 +619,48 @@ function App() {
     addToast(`${jobNo} deleted.`);
   }
 
+  // ── Custom Plants
+  const [customPlants, setCustomPlants] = useState(() => {
+    try { const r = localStorage.getItem(CUSTOM_PLANTS_KEY); if (r) return JSON.parse(r); } catch(e) {}
+    return [];
+  });
+  function addCustomPlant(name) {
+    const upper = name.trim().toUpperCase();
+    if (!upper) return;
+    setCustomPlants(prev => {
+      if ([...PLANTS,...prev].includes(upper)) return prev;
+      const next = [...prev, upper];
+      try { localStorage.setItem(CUSTOM_PLANTS_KEY, JSON.stringify(next)); } catch(e) {}
+      return next;
+    });
+  }
+  function importAssetsFromCSV(file) {
+    importCSVFile(file, rows => {
+      const newAssets = rows.map(v=>({num:v[0]||'',plant:(v[1]||'').toUpperCase(),desc:v[2]||'',code:v[3]||'',model:v[4]||'',cap:v[5]||'',reg:v[6]||'',eng:v[7]||'',serial:v[8]||'',loc:v[9]||'',status:v[10]||'OPERATIONAL'})).filter(a=>a.num&&a.desc);
+      setAssets(prev => {
+        const existing = new Set(prev.map(a=>a.num));
+        const toAdd = newAssets.filter(a=>!existing.has(a.num));
+        const next = [...prev, ...toAdd];
+        persist(next, jobOrders, joCounter);
+        addToast(`Imported ${toAdd.length} assets (${newAssets.length-toAdd.length} skipped).`);
+        return next;
+      });
+    });
+  }
+  function importJOsFromCSV(file) {
+    importCSVFile(file, rows => {
+      const newJOs = rows.map(v=>({jobNo:v[0]||'',date:v[1]||'',assetNum:v[2]||'',assetDesc:v[3]||'',assetCategory:v[4]||'',location:v[5]||'',eqcode:v[6]||'',dept:v[7]||'',requester:v[8]||'',priority:v[9]||'High',repairType:v[10]||'Planned',problem:v[11]||'',status:v[12]||'OPEN',target:v[13]||'',section:v[14]||'',tech1:v[15]||'',tech1h:v[16]||'',tech2:v[17]||'',tech2h:v[18]||'',workDone:v[19]||'',workStatus:v[20]||'',eval:v[21]||'',downtime:v[22]||'',accept:v[23]||'Accepted',completionDate:v[24]||'',recvName:v[25]||'',approved:v[26]||'',parts:[]})).filter(j=>j.jobNo&&j.assetNum);
+      setJobOrders(prev => {
+        const existing = new Set(prev.map(j=>j.jobNo));
+        const toAdd = newJOs.filter(j=>!existing.has(j.jobNo));
+        const next = [...prev, ...toAdd];
+        persist(assets, next, joCounter);
+        addToast(`Imported ${toAdd.length} job orders.`);
+        return next;
+      });
+    });
+  }
+
   const syncLabel = syncStatus==='loading' ? '⟳ Loading...' : syncStatus==='saving' ? '💾 Saving...' : '✓ Saved';
   const syncCls   = syncStatus==='loading' ? 'sync-loading' : syncStatus==='saving' ? 'sync-saving' : 'sync-ok';
 
@@ -625,8 +716,8 @@ function App() {
 
           <div className="main">
             {page==='dashboard' && <DashboardPage assets={assets} jobOrders={jobOrders} setPage={setPage} setJoModal={setJoModal}/>}
-            {page==='assets'    && <AssetsPage assets={assets} setAssetModal={setAssetModal} setJoModal={setJoModal} onStatusChange={updateAssetStatus} onDeleteAsset={deleteAsset}/>}
-            {page==='joborders' && <JobOrdersPage assets={assets} jobOrders={jobOrders} setJoModal={setJoModal} setJoViewModal={setJoViewModal} onStatusChange={updateJOStatus} onDeleteJO={deleteJO}/>}
+            {page==='assets'    && <AssetsPage assets={assets} setAssetModal={setAssetModal} setJoModal={setJoModal} onStatusChange={updateAssetStatus} onDeleteAsset={deleteAsset} customPlants={customPlants} onExportCSV={()=>exportAssetsCSV(assets)} onImportCSV={importAssetsFromCSV}/>}
+            {page==='joborders' && <JobOrdersPage assets={assets} jobOrders={jobOrders} setJoModal={setJoModal} setJoViewModal={setJoViewModal} onStatusChange={updateJOStatus} onDeleteJO={deleteJO} onExportCSV={()=>exportJobOrdersCSV(jobOrders)} onImportCSV={importJOsFromCSV}/>}
             {page==='reports'   && <ReportsPage assets={assets} jobOrders={jobOrders}/>}
             {page==='settings'  && <SettingsPage users={users} currentUser={currentUser} onSaveUser={saveUser} onDeleteUser={deleteUser}/>}
           </div>
@@ -640,7 +731,8 @@ function App() {
                 onEdit={a=>setAssetModal({mode:'edit',asset:a})}
                 onJO={a=>{setAssetModal(null);setJoModal({mode:'add',preAsset:a.num});}} />
             : <AssetFormModal mode={assetModal.mode} asset={assetModal.asset}
-                assets={assets} onClose={()=>setAssetModal(null)} onSave={saveAsset}/>
+                assets={assets} onClose={()=>setAssetModal(null)} onSave={saveAsset}
+                customPlants={customPlants} onAddPlant={addCustomPlant}/>
         )}
         {joModal && (
           <JOFormModal mode={joModal.mode} jo={joModal.jo} preAsset={joModal.preAsset}
@@ -731,8 +823,17 @@ function LoginPage({onLogin}) {
 
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 function DashboardPage({assets, jobOrders, setPage, setJoModal}) {
-  const plants = {};
-  assets.forEach(a => { plants[a.plant] = (plants[a.plant]||0)+1; });
+  const allCats = [...new Set(assets.map(a=>a.plant).filter(Boolean))].sort();
+  const catStats = allCats.map(cat => {
+    const ca = assets.filter(a=>a.plant===cat);
+    return {
+      cat,
+      operational: ca.filter(a=>a.status==='OPERATIONAL').length,
+      breakdown:   ca.filter(a=>a.status==='BREAKDOWN').length,
+      maintenance: ca.filter(a=>a.status==='UNDER MAINTENANCE').length,
+      openJOs:     jobOrders.filter(j=>{ const a=assets.find(x=>x.num===j.assetNum); return a&&a.plant===cat&&j.status!=='CLOSED'; }).length,
+    };
+  });
   const recent = [...jobOrders].reverse().slice(0,5);
   return (
     <div>
@@ -747,28 +848,44 @@ function DashboardPage({assets, jobOrders, setPage, setJoModal}) {
         <div className="stat-card sc-orange"><div className="stat-num">{assets.filter(a=>a.status==='UNDER MAINTENANCE').length}</div><div className="stat-label">Under Maintenance</div></div>
         <div className="stat-card sc-yellow"><div className="stat-num">{jobOrders.filter(j=>j.status!=='CLOSED').length}</div><div className="stat-label">Open Job Orders</div></div>
       </div>
-      <div className="dash-grid">
-        <div className="panel">
-          <div className="panel-head">
-            <div className="panel-title">Recent Job Orders</div>
-            <button className="btn btn-accent btn-sm" onClick={()=>setPage('joborders')}>View All</button>
-          </div>
-          <div className="panel-body">
-            {recent.length ? recent.map(jo=>(
-              <div key={jo.jobNo} className="jo-item">
-                <div><div className="jo-num">{jo.jobNo}</div><div className="jo-desc">{(jo.problem||'').substring(0,55)||jo.assetDesc||'—'}</div><div className="jo-meta">{jo.assetNum} · {jo.date}</div></div>
-                <span className={`sb-base ${joStatusCls(jo.status)}`}>{jo.status}</span>
-              </div>
-            )) : <div className="empty-state"><div>📋</div><div>No job orders yet</div></div>}
-          </div>
+      <div className="panel" style={{marginBottom:20}}>
+        <div className="panel-head">
+          <div className="panel-title">Recent Job Orders</div>
+          <button className="btn btn-accent btn-sm" onClick={()=>setPage('joborders')}>View All</button>
         </div>
-        <div className="panel">
-          <div className="panel-head"><div className="panel-title">Assets by Plant</div></div>
-          <div className="panel-body">
-            {Object.entries(plants).map(([p,c])=>(
-              <div key={p} className="plant-pill"><span>{p}</span><span className="pill-count">{c}</span></div>
-            ))}
-          </div>
+        <div className="panel-body">
+          {recent.length ? recent.map(jo=>(
+            <div key={jo.jobNo} className="jo-item">
+              <div><div className="jo-num">{jo.jobNo}</div><div className="jo-desc">{(jo.problem||'').substring(0,65)||jo.assetDesc||'—'}</div><div className="jo-meta">{jo.assetNum} · {jo.date}</div></div>
+              <span className={`sb-base ${joStatusCls(jo.status)}`}>{jo.status}</span>
+            </div>
+          )) : <div className="empty-state"><div>📋</div><div>No job orders yet</div></div>}
+        </div>
+      </div>
+      <div className="panel">
+        <div className="panel-head"><div className="panel-title">Assets by Category</div></div>
+        <div className="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Asset Category</th>
+              <th style={{textAlign:'center',color:'var(--green)'}}>Operational</th>
+              <th style={{textAlign:'center',color:'var(--red)'}}>Breakdown</th>
+              <th style={{textAlign:'center',color:'var(--orange)'}}>Under Maint.</th>
+              <th style={{textAlign:'center',color:'var(--yellow)'}}>Open Job Orders</th>
+            </tr></thead>
+            <tbody>
+              {catStats.map(s=>(
+                <tr key={s.cat}>
+                  <td style={{fontFamily:'var(--fh)',fontWeight:600,fontSize:13}}>{s.cat.toUpperCase()}</td>
+                  <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:16,fontWeight:700,color:'var(--green)'}}>{s.operational}</td>
+                  <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:16,fontWeight:700,color:s.breakdown>0?'var(--red)':'var(--gray)'}}>{s.breakdown}</td>
+                  <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:16,fontWeight:700,color:s.maintenance>0?'var(--orange)':'var(--gray)'}}>{s.maintenance}</td>
+                  <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:16,fontWeight:700,color:s.openJOs>0?'var(--yellow)':'var(--gray)'}}>{s.openJOs}</td>
+                </tr>
+              ))}
+              {catStats.length===0&&<tr><td colSpan={5} style={{textAlign:'center',color:'var(--gray)',padding:20}}>No assets recorded</td></tr>}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -776,15 +893,17 @@ function DashboardPage({assets, jobOrders, setPage, setJoModal}) {
 }
 
 // ─── ASSETS PAGE ─────────────────────────────────────────────────────────────
-function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDeleteAsset}) {
+function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDeleteAsset, customPlants=[], onExportCSV, onImportCSV}) {
   const [q, setQ] = useState('');
-  const [plant, setPlant] = useState('');
+  const [cat, setCat] = useState('');
   const [status, setStatus] = useState('');
   const [pg, setPg] = useState(1);
+  const importRef = useRef(null);
 
+  const allCats = [...new Set([...PLANTS,...customPlants,...assets.map(a=>a.plant)].filter(Boolean))].sort();
   const filtered = assets.filter(a => {
     const hay = [a.num,a.plant,a.desc,a.code,a.model,a.loc,a.serial].join(' ').toLowerCase();
-    return (!q||hay.includes(q.toLowerCase())) && (!plant||a.plant===plant) && (!status||a.status===status);
+    return (!q||hay.includes(q.toLowerCase())) && (!cat||a.plant===cat) && (!status||a.status===status);
   });
   const total = Math.ceil(filtered.length/PER_PAGE);
   const slice = filtered.slice((pg-1)*PER_PAGE, pg*PER_PAGE);
@@ -794,33 +913,40 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
       <div className="page-header" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
         <div>
           <div className="page-title">ASSET <span>REGISTRY</span></div>
-          <div className="page-sub">{assets.length} ASSETS ACROSS {[...new Set(assets.map(a=>a.plant))].length} PLANTS</div>
+          <div className="page-sub">{assets.length} ASSETS ACROSS {allCats.length} CATEGORIES</div>
         </div>
         <div className="controls">
           <input className="search-box" value={q} onChange={e=>{setQ(e.target.value);setPg(1);}} placeholder="🔍 Search assets..."/>
-          <select value={plant} onChange={e=>{setPlant(e.target.value);setPg(1);}}>
-            <option value="">All Plants</option>
-            {[...new Set(assets.map(a=>a.plant))].map(p=><option key={p}>{p}</option>)}
+          <select value={cat} onChange={e=>{setCat(e.target.value);setPg(1);}}>
+            <option value="">All Categories</option>
+            {allCats.map(p=><option key={p} value={p}>{p.toUpperCase()}</option>)}
           </select>
           <select value={status} onChange={e=>{setStatus(e.target.value);setPg(1);}}>
             <option value="">All Status</option>
             {['OPERATIONAL','BREAKDOWN','UNDER MAINTENANCE','NEW','Inactive','idle'].map(s=><option key={s}>{s}</option>)}
           </select>
           <button className="btn btn-accent" onClick={()=>setAssetModal({mode:'add'})}>＋ Add Asset</button>
+          <button className="btn btn-ghost btn-sm" title="Export CSV" onClick={onExportCSV}>↓ Export</button>
+          <label className="btn btn-ghost btn-sm" style={{cursor:'pointer'}} title="Import CSV">
+            ↑ Import
+            <input type="file" accept=".csv" style={{display:'none'}} ref={importRef} onChange={e=>{if(e.target.files[0]){onImportCSV(e.target.files[0]);e.target.value='';}}}/>
+          </label>
+          <button className="btn btn-ghost btn-sm" title="Download CSV Template" onClick={downloadAssetTemplate}>⬇ Template</button>
         </div>
       </div>
       <div className="panel">
         <div className="tbl-wrap">
           <table>
             <thead><tr>
-              <th>Asset No.</th><th>Plant</th><th>Description</th><th>Eq. Code</th>
+              <th>Asset No.</th><th>Asset Category</th><th>Description</th><th>Eq. Code</th>
               <th>Model/Make</th><th>Capacity</th><th>Location</th><th>Status</th><th>Actions</th>
             </tr></thead>
             <tbody>
+              {slice.length===0&&<tr><td colSpan={9}><div className="empty-state">No assets found</div></td></tr>}
               {slice.map(a=>(
                 <tr key={a.num}>
                   <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)'}}>{a.num}</td>
-                  <td style={{fontSize:12}}>{a.plant}</td>
+                  <td style={{fontSize:12,fontWeight:500}}>{(a.plant||'').toUpperCase()}</td>
                   <td><strong>{a.desc}</strong></td>
                   <td style={{fontFamily:'var(--fm)',fontSize:11}}>{a.code||'—'}</td>
                   <td style={{fontSize:12}}>{a.model||'—'}</td>
@@ -845,7 +971,7 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
           </table>
         </div>
         <div style={{padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',borderTop:'1px solid var(--border)'}}>
-          <div className="page-info-txt">Showing {Math.min((pg-1)*PER_PAGE+1,filtered.length)}–{Math.min(pg*PER_PAGE,filtered.length)} of {filtered.length} assets</div>
+          <div className="page-info-txt">Showing {filtered.length===0?0:Math.min((pg-1)*PER_PAGE+1,filtered.length)}–{Math.min(pg*PER_PAGE,filtered.length)} of {filtered.length} assets</div>
           <div className="pagination">
             {pg>1&&<button className="page-btn" onClick={()=>setPg(pg-1)}>‹</button>}
             {Array.from({length:total},(_,i)=>i+1).filter(i=>i===1||i===total||(i>=pg-1&&i<=pg+1)).map((i,idx,arr)=>[
@@ -861,13 +987,83 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
 }
 
 // ─── JOB ORDERS PAGE ─────────────────────────────────────────────────────────
-function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusChange, onDeleteJO}) {
+function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusChange, onDeleteJO, onExportCSV, onImportCSV}) {
   const [q, setQ] = useState('');
-  const [status, setStatus] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const importRef = useRef(null);
+
+  function advanceStatus(jo) {
+    if (jo.status==='OPEN') {
+      if (window.confirm(`Move ${jo.jobNo} to IN PROGRESS?\n\nConfirm to proceed.`))
+        onStatusChange(jo.jobNo,'IN PROGRESS');
+    } else if (jo.status==='IN PROGRESS') {
+      if (window.confirm(`Mark ${jo.jobNo} as CLOSED / COMPLETED?\n\nOnce closed it cannot be reopened or edited.`))
+        onStatusChange(jo.jobNo,'CLOSED');
+    }
+  }
+
   const filtered = jobOrders.filter(j=>{
-    const hay = [j.jobNo,j.assetNum,j.assetDesc,j.dept,j.problem].join(' ').toLowerCase();
-    return (!q||hay.includes(q.toLowerCase())) && (!status||j.status===status);
+    const hay=[j.jobNo,j.assetNum,j.assetDesc,j.dept,j.problem].join(' ').toLowerCase();
+    return (!q||hay.includes(q.toLowerCase()))&&(!dateFrom||j.date>=dateFrom)&&(!dateTo||j.date<=dateTo);
   }).reverse();
+
+  const openJOs = filtered.filter(j=>j.status==='OPEN');
+  const inProgJOs = filtered.filter(j=>j.status==='IN PROGRESS');
+  const closedJOs = filtered.filter(j=>j.status==='CLOSED');
+
+  const THead = ()=>(
+    <thead><tr>
+      <th>Job No.</th><th>Date</th><th>Asset</th><th>Asset Category</th><th>Problem</th>
+      <th>Priority</th><th>Status</th><th>Actions</th>
+    </tr></thead>
+  );
+
+  const JORows = ({jobs, canEdit=true}) => jobs.length===0
+    ? <tr><td colSpan={8}><div className="empty-state" style={{padding:24}}>No records</div></td></tr>
+    : jobs.map(jo=>(
+      <tr key={jo.jobNo}>
+        <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)'}}>{jo.jobNo}</td>
+        <td style={{fontSize:12}}>{jo.date}</td>
+        <td><strong>{jo.assetNum}</strong><div style={{fontSize:11,color:'var(--gray)'}}>{jo.assetDesc||''}</div></td>
+        <td style={{fontSize:11,color:'var(--gray)'}}>{(jo.assetCategory||jo.plant||'').toUpperCase()||'—'}</td>
+        <td style={{fontSize:12,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{jo.problem||'—'}</td>
+        <td><span className={jo.priority==='High'?'prio-high':'prio-low'}>{jo.priority}</span></td>
+        <td>
+          {jo.status==='CLOSED'
+            ? <span className="sb-base jcl">CLOSED ✓</span>
+            : <button className={`sb-base ${joStatusCls(jo.status)}`} style={{cursor:'pointer',border:'none',background:'inherit'}}
+                title={jo.status==='OPEN'?'Click to move to In Progress':'Click to mark as Closed'}
+                onClick={()=>advanceStatus(jo)}>
+                {jo.status} ›
+              </button>
+          }
+        </td>
+        <td>
+          <div style={{display:'flex',gap:4}}>
+            <button className="btn btn-ghost btn-sm btn-icon" title="View" onClick={()=>setJoViewModal(jo)}>👁</button>
+            {canEdit&&<button className="btn btn-warning btn-sm btn-icon" title="Edit" onClick={()=>setJoModal({mode:'edit',jo})}>✏</button>}
+            <button className="btn btn-primary btn-sm btn-icon" title="Download PDF" onClick={()=>printJOPDF(jo)}>↓</button>
+            {canEdit&&<button className="btn btn-danger btn-sm btn-icon" title="Delete" onClick={()=>{ if(window.confirm(`Delete ${jo.jobNo}? This cannot be undone.`)) onDeleteJO(jo.jobNo); }}>🗑</button>}
+          </div>
+        </td>
+      </tr>
+    ));
+
+  const Section = ({title, count, color, jobs, canEdit=true}) => (
+    <div className="panel" style={{marginBottom:16}}>
+      <div className="panel-head">
+        <div className="panel-title" style={{color}}>
+          {title}
+          <span style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--gray)',fontWeight:400,marginLeft:10}}>({count})</span>
+        </div>
+      </div>
+      <div className="tbl-wrap">
+        <table><THead/><tbody><JORows jobs={jobs} canEdit={canEdit}/></tbody></table>
+      </div>
+    </div>
+  );
+
   return (
     <div>
       <div className="page-header" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
@@ -876,51 +1072,29 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
           <div className="page-sub">MAINTENANCE JOB CARD REQUEST LOG</div>
         </div>
         <div className="controls">
-          <input className="search-box" value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search job orders..."/>
-          <select value={status} onChange={e=>setStatus(e.target.value)}>
-            <option value="">All Status</option>
-            <option>OPEN</option><option>IN PROGRESS</option><option>CLOSED</option>
-          </select>
+          <input className="search-box" value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search..."/>
+          <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} title="From date" style={{width:140}}/>
+          <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} title="To date" style={{width:140}}/>
+          {(dateFrom||dateTo)&&<button className="btn btn-ghost btn-sm" onClick={()=>{setDateFrom('');setDateTo('');}}>✕ Clear</button>}
           <button className="btn btn-accent" onClick={()=>setJoModal({mode:'add'})}>＋ Raise Job Order</button>
+          <button className="btn btn-ghost btn-sm" onClick={onExportCSV}>↓ Export</button>
+          <label className="btn btn-ghost btn-sm" style={{cursor:'pointer'}}>↑ Import
+            <input type="file" accept=".csv" style={{display:'none'}} ref={importRef} onChange={e=>{if(e.target.files[0]){onImportCSV(e.target.files[0]);e.target.value='';}}}/>
+          </label>
+          <button className="btn btn-ghost btn-sm" onClick={downloadJOTemplate}>⬇ Template</button>
         </div>
       </div>
-      <div className="panel" style={{marginTop:16}}>
-        <div className="tbl-wrap">
-          <table>
-            <thead><tr>
-              <th>Job No.</th><th>Date</th><th>Asset</th><th>Dept</th><th>Problem</th>
-              <th>Priority</th><th>Completed</th><th>Status</th><th>Actions</th>
-            </tr></thead>
-            <tbody>
-              {filtered.length===0 && <tr><td colSpan={9}><div className="empty-state"><div style={{fontSize:40}}>📋</div><div>No job orders yet</div></div></td></tr>}
-              {filtered.map(jo=>(
-                <tr key={jo.jobNo}>
-                  <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)'}}>{jo.jobNo}</td>
-                  <td style={{fontSize:12}}>{jo.date}</td>
-                  <td><strong>{jo.assetNum}</strong><div style={{fontSize:11,color:'var(--gray)'}}>{jo.assetDesc||''}</div></td>
-                  <td style={{fontSize:12}}>{jo.dept||'—'}</td>
-                  <td style={{fontSize:12,maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{jo.problem||'—'}</td>
-                  <td><span className={jo.priority==='High'?'prio-high':'prio-low'}>{jo.priority}</span></td>
-                  <td style={{fontFamily:'var(--fm)',fontSize:12,color:jo.completionDate?'var(--green)':'var(--gray)'}}>{jo.completionDate||'—'}</td>
-                  <td>
-                    <select className={`sb-base ${joStatusCls(jo.status)}`} value={jo.status} onChange={e=>onStatusChange(jo.jobNo,e.target.value)}>
-                      <option>OPEN</option><option>IN PROGRESS</option><option>CLOSED</option>
-                    </select>
-                  </td>
-                  <td>
-                    <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
-                      <button className="btn btn-ghost btn-sm btn-icon" title="View Job Order" onClick={()=>setJoViewModal(jo)}>👁</button>
-                      <button className="btn btn-warning btn-sm btn-icon" title="Edit Job Order" onClick={()=>setJoModal({mode:'edit',jo})}>✏</button>
-                      <button className="btn btn-primary btn-sm btn-icon" title="Download PDF" onClick={()=>printJOPDF(jo)}>↓</button>
-                      <button className="btn btn-danger btn-sm btn-icon" title="Delete Job Order" onClick={()=>{ if(window.confirm(`Delete ${jo.jobNo}?\n\nThis cannot be undone.`)) onDeleteJO(jo.jobNo); }}>🗑</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:16,marginBottom:24}}>
+        <div className="stat-card sc-blue"><div className="stat-num">{jobOrders.length}</div><div className="stat-label">Total</div></div>
+        <div className="stat-card sc-yellow"><div className="stat-num">{jobOrders.filter(j=>j.status==='OPEN').length}</div><div className="stat-label">Open</div></div>
+        <div className="stat-card sc-orange"><div className="stat-num">{jobOrders.filter(j=>j.status==='IN PROGRESS').length}</div><div className="stat-label">In Progress</div></div>
+        <div className="stat-card sc-green"><div className="stat-num">{jobOrders.filter(j=>j.status==='CLOSED').length}</div><div className="stat-label">Closed</div></div>
       </div>
+
+      <Section title="OPEN" count={openJOs.length} color="var(--yellow)" jobs={openJOs}/>
+      <Section title="IN PROGRESS" count={inProgJOs.length} color="#60a5fa" jobs={inProgJOs}/>
+      <Section title="CLOSED" count={closedJOs.length} color="var(--green)" jobs={closedJOs} canEdit={false}/>
     </div>
   );
 }
@@ -1223,23 +1397,31 @@ function AssetViewModal({asset:a, assets, jobOrders, onClose, onEdit, onJO}) {
 }
 
 // ─── ASSET FORM MODAL ─────────────────────────────────────────────────────────
-function AssetFormModal({mode, asset, assets, onClose, onSave}) {
+function AssetFormModal({mode, asset, assets, onClose, onSave, customPlants=[], onAddPlant}) {
   const [f, setF] = useState(asset ? {...asset} : {num:'',plant:'',desc:'',code:'',model:'',cap:'',reg:'',eng:'',serial:'',loc:'',status:'OPERATIONAL'});
-  const [otherPlant, setOtherPlant] = useState('');
-  const isOther = !PLANTS.includes(f.plant) && f.plant!=='';
+  const [showNew, setShowNew] = useState(false);
+  const [newName, setNewName] = useState('');
+  const allPlants = [...PLANTS, ...customPlants];
 
   function handleSave() {
     if (!f.num.trim()) { alert('Asset number required'); return; }
     if (!f.desc.trim()) { alert('Description required'); return; }
-    const plant = isOther ? otherPlant : f.plant;
-    if (!plant) { alert('Plant required'); return; }
-    onSave({...f, plant}, mode==='edit' ? asset.num : null);
+    if (!f.plant) { alert('Asset category required'); return; }
+    onSave(f, mode==='edit' ? asset.num : null);
+  }
+
+  function saveNewPlant() {
+    const name = newName.trim().toUpperCase();
+    if (!name) return;
+    onAddPlant && onAddPlant(name);
+    setF({...f, plant:name});
+    setShowNew(false); setNewName('');
   }
 
   const fld = (label, key, opts={}) => (
     <div className="form-group">
       <label>{label}</label>
-      <input type={opts.type||'text'} value={f[key]||''} onChange={e=>setF({...f,[key]:e.target.value})} placeholder={opts.placeholder||''}/>
+      <input type={opts.type||'text'} value={f[key]||''} onChange={e=>setF({...f,[key]:e.target.value})} placeholder={opts.placeholder||''} readOnly={opts.readonly}/>
     </div>
   );
 
@@ -1255,18 +1437,27 @@ function AssetFormModal({mode, asset, assets, onClose, onSave}) {
           <div className="form-row">{fld('Asset Number','num')}{fld('Description','desc')}</div>
           <div className="form-row">
             <div className="form-group">
-              <label>Plant</label>
-              <select value={isOther?'__other__':f.plant} onChange={e=>{
-                if(e.target.value==='__other__') setF({...f,plant:''});
-                else setF({...f,plant:e.target.value});
+              <label>Asset Category</label>
+              <select value={showNew?'__new__':f.plant} onChange={e=>{
+                if(e.target.value==='__new__'){setShowNew(true);}
+                else{setShowNew(false);setF({...f,plant:e.target.value});}
               }}>
-                <option value="">— Select Plant —</option>
-                {PLANTS.map(p=><option key={p}>{p}</option>)}
-                <option value="__other__">Other...</option>
+                <option value="">— Select Category —</option>
+                {allPlants.map(p=><option key={p} value={p}>{p.toUpperCase()}</option>)}
+                <option value="__new__">New...</option>
               </select>
             </div>
-            {isOther&&<div className="form-group"><label>Plant Name</label><input value={otherPlant} onChange={e=>setOtherPlant(e.target.value)} placeholder="Enter plant name"/></div>}
-            {!isOther&&fld('Equipment Code','code')}
+            {showNew
+              ? <div className="form-group">
+                  <label>New Category Name</label>
+                  <div style={{display:'flex',gap:8}}>
+                    <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Category name" onKeyDown={e=>e.key==='Enter'&&saveNewPlant()} style={{flex:1}}/>
+                    <button className="btn btn-success btn-sm" onClick={saveNewPlant}>Save</button>
+                    <button className="btn btn-ghost btn-sm" onClick={()=>{setShowNew(false);setNewName('');}}>✕</button>
+                  </div>
+                </div>
+              : fld('Equipment Code','code')
+            }
           </div>
           <div className="form-row">{fld('Model / Make','model')}{fld('Capacity','cap')}</div>
           <div className="form-row">{fld('Register Number','reg')}{fld('Engine Number','eng')}</div>
@@ -1293,7 +1484,7 @@ function AssetFormModal({mode, asset, assets, onClose, onSave}) {
 function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave}) {
   const today = new Date().toISOString().split('T')[0];
   const [f, setF] = useState(jo ? {...jo} : {
-    date:today, requester:'', dept:'', assetNum:preAsset||'', assetDesc:'', location:'',
+    date:today, requester:'', dept:'', assetNum:preAsset||'', assetDesc:'', assetCategory:'', location:'',
     eqcode:'', problem:'', priority:'High', repairType:'Planned',
     recvName:'', section:'', target:'', approved:'Priyantha Athapaththu',
     tech1:'', tech1h:'', tech2:'', tech2h:'', parts:[{desc:'',qty:'',unit:'',srp:''}],
@@ -1302,8 +1493,8 @@ function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave}) {
 
   function populateAsset(num) {
     const a = assets.find(x=>x.num===num);
-    if (a) setF(prev=>({...prev,assetNum:num,assetDesc:a.desc,location:a.loc||a.plant,eqcode:a.code||''}));
-    else setF(prev=>({...prev,assetNum:num}));
+    if (a) setF(prev=>({...prev,assetNum:num,assetDesc:a.desc,assetCategory:(a.plant||'').toUpperCase(),location:a.loc||a.plant,eqcode:a.code||''}));
+    else setF(prev=>({...prev,assetNum:num,assetCategory:''}));
   }
 
   function setParts(idx, key, val) {
@@ -1366,7 +1557,7 @@ function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave}) {
               </div>
               {fld('Asset Description','assetDesc',{readonly:true})}
             </div>
-            <div className="form-row">{fld('Plant / Location','location',{readonly:true})}{fld('Equipment Code','eqcode',{readonly:true})}</div>
+            <div className="form-row">{fld('Asset Category','assetCategory',{readonly:true})}{fld('Location','location',{readonly:true})}{fld('Equipment Code','eqcode',{readonly:true})}</div>
           </div>
 
           <div className="jc-section">
