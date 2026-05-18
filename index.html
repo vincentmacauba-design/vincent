@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>CMMS — Villa Group Engineering Solutions</title>
+<title>CMMS — VHPL TIC Engineering Solutions</title>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -166,7 +166,7 @@ body,#root{background:var(--navy);color:var(--white);font-family:var(--fb);font-
 .app{background:var(--navy);min-height:100vh;background-image:radial-gradient(ellipse at 20% 20%,rgba(26,86,219,.12) 0%,transparent 60%),radial-gradient(ellipse at 80% 80%,rgba(245,158,11,.06) 0%,transparent 60%);}
 .topbar{background:var(--navy2);border-bottom:2px solid var(--accent);padding:0 28px;height:58px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 24px rgba(0,0,0,.5);}
 .logo{display:flex;align-items:center;gap:12px;}
-.logo-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--accent),var(--blue));border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:700;font-size:16px;color:var(--navy);}
+.logo-icon{width:42px;height:36px;background:linear-gradient(135deg,var(--accent),var(--blue));border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:700;font-size:13px;color:var(--navy);letter-spacing:.5px;}
 .logo-text{font-family:var(--fh);font-size:20px;font-weight:700;letter-spacing:1.5px;}
 .logo-sub{font-size:10px;color:var(--accent);font-family:var(--fm);letter-spacing:2px;}
 .topbar-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
@@ -277,7 +277,7 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
 .login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--navy);background-image:radial-gradient(ellipse at 20% 20%,rgba(26,86,219,.15) 0%,transparent 60%),radial-gradient(ellipse at 80% 80%,rgba(245,158,11,.08) 0%,transparent 60%);}
 .login-card{background:rgba(15,32,68,0.93);border:1px solid rgba(245,158,11,.22);border-radius:12px;padding:44px 48px;width:440px;max-width:96vw;backdrop-filter:blur(16px);box-shadow:0 24px 80px rgba(0,0,0,.65);}
 .login-logo-wrap{text-align:center;margin-bottom:28px;}
-.login-logo-icon{width:56px;height:56px;background:linear-gradient(135deg,var(--accent),var(--blue));border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:700;font-size:24px;color:var(--navy);margin-bottom:12px;}
+.login-logo-icon{width:72px;height:56px;background:linear-gradient(135deg,var(--accent),var(--blue));border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:700;font-size:20px;color:var(--navy);margin-bottom:12px;letter-spacing:1px;}
 .login-title{font-family:var(--fh);font-size:22px;font-weight:700;letter-spacing:1.5px;}
 .login-sub{font-size:10px;color:var(--accent);font-family:var(--fm);letter-spacing:2px;margin-top:3px;}
 .login-divider{border:none;border-top:1px solid var(--border);margin:22px 0;}
@@ -498,9 +498,9 @@ function App() {
         {/* TOPBAR */}
         <div className="topbar">
           <div className="logo">
-            <div className="logo-icon">VG</div>
+            <div className="logo-icon">CMM</div>
             <div>
-              <div className="logo-text">VILLA GROUP</div>
+              <div className="logo-text">VHPL TIC</div>
               <div className="logo-sub">CMMS — ENGINEERING SOLUTIONS DEPT</div>
             </div>
           </div>
@@ -508,13 +508,6 @@ function App() {
             <div className={`sync-badge ${syncCls}`}>{syncLabel}</div>
             <div className="badge">{clock}</div>
             <div className="badge">MALE', MALDIVES</div>
-            <div className="user-badge">
-              <div className="user-avatar">{currentUser.fullName.charAt(0).toUpperCase()}</div>
-              <div>
-                <div className="user-name">{currentUser.fullName}</div>
-                <div className="user-role-sm">{currentUser.role.toUpperCase()}</div>
-              </div>
-            </div>
             <button className="btn-logout" onClick={handleLogout}>⏻ Logout</button>
           </div>
         </div>
@@ -607,8 +600,8 @@ function LoginPage({onLogin}) {
     <div className="login-page">
       <div className="login-card">
         <div className="login-logo-wrap">
-          <div className="login-logo-icon">VG</div>
-          <div className="login-title">VILLA GROUP</div>
+          <div className="login-logo-icon">CMM</div>
+          <div className="login-title">VHPL TIC</div>
           <div className="login-sub">CMMS — ENGINEERING SOLUTIONS DEPT</div>
         </div>
         <hr className="login-divider"/>
@@ -641,7 +634,7 @@ function LoginPage({onLogin}) {
         </form>
         <div className="login-footer">
           COMPUTERIZED MAINTENANCE MANAGEMENT SYSTEM<br/>
-          © VILLA GROUP · MALE', MALDIVES
+          © VHPL TIC · MALE', MALDIVES
         </div>
       </div>
     </div>
@@ -657,7 +650,7 @@ function DashboardPage({assets, jobOrders, setPage, setJoModal}) {
     <div>
       <div className="page-header">
         <div className="page-title">SYSTEM <span>DASHBOARD</span></div>
-        <div className="page-sub">COMPUTERIZED MAINTENANCE MANAGEMENT SYSTEM // VILLA GROUP ESD</div>
+        <div className="page-sub">COMPUTERIZED MAINTENANCE MANAGEMENT SYSTEM // VHPL TIC ESD</div>
       </div>
       <div className="stats-row">
         <div className="stat-card sc-blue"><div className="stat-num">{assets.length}</div><div className="stat-label">Total Assets</div></div>
