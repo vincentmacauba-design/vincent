@@ -7,6 +7,7 @@
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 </head>
 <body>
 <div id="root"></div>
@@ -822,6 +823,43 @@ function LoginPage({onLogin}) {
 }
 
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
+function AssetDoughnutChart({assets}) {
+  const canvasRef = useRef(null);
+  const chartRef  = useRef(null);
+  const palette = ['#f59e0b','#1a56db','#10b981','#f97316','#8b5cf6','#06b6d4','#eab308','#ef4444','#14b8a6','#6366f1','#ec4899','#84cc16'];
+  useEffect(()=>{
+    if (!canvasRef.current || typeof Chart==='undefined') return;
+    const cats   = [...new Set(assets.map(a=>a.plant).filter(Boolean))].sort();
+    const counts = cats.map(c=>assets.filter(a=>a.plant===c).length);
+    if (chartRef.current) chartRef.current.destroy();
+    chartRef.current = new Chart(canvasRef.current,{
+      type:'doughnut',
+      data:{
+        labels: cats.map(c=>c.length>22?c.slice(0,22)+'…':c),
+        datasets:[{data:counts,backgroundColor:cats.map((_,i)=>palette[i%palette.length]),borderColor:'#0f2044',borderWidth:2}]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{
+          legend:{position:'right',labels:{color:'#e2e8f0',font:{size:11},padding:10,boxWidth:12}},
+          tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${ctx.parsed} (${assets.length?Math.round(ctx.parsed/assets.length*100):0}%)`}}
+        },
+        cutout:'66%'
+      }
+    });
+    return ()=>{ if(chartRef.current){chartRef.current.destroy();chartRef.current=null;} };
+  },[assets]);
+  return (
+    <div className="panel" style={{marginTop:20}}>
+      <div className="panel-head">
+        <div className="panel-title">Asset Distribution by Category</div>
+        <div style={{fontSize:11,fontFamily:'var(--fm)',color:'var(--gray)'}}>Total: {assets.length} assets</div>
+      </div>
+      <div className="panel-body"><div style={{height:260,position:'relative'}}><canvas ref={canvasRef}/></div></div>
+    </div>
+  );
+}
+
 function DashboardPage({assets, jobOrders, setPage, setJoModal}) {
   const allCats = [...new Set(assets.map(a=>a.plant).filter(Boolean))].sort();
   const catStats = allCats.map(cat => {
@@ -834,7 +872,7 @@ function DashboardPage({assets, jobOrders, setPage, setJoModal}) {
       openJOs:     jobOrders.filter(j=>{ const a=assets.find(x=>x.num===j.assetNum); return a&&a.plant===cat&&j.status!=='CLOSED'; }).length,
     };
   });
-  const recent = [...jobOrders].reverse().slice(0,5);
+  const recent = [...jobOrders].reverse();
   return (
     <div>
       <div className="page-header">
@@ -848,46 +886,57 @@ function DashboardPage({assets, jobOrders, setPage, setJoModal}) {
         <div className="stat-card sc-orange"><div className="stat-num">{assets.filter(a=>a.status==='UNDER MAINTENANCE').length}</div><div className="stat-label">Under Maintenance</div></div>
         <div className="stat-card sc-yellow"><div className="stat-num">{jobOrders.filter(j=>j.status!=='CLOSED').length}</div><div className="stat-label">Open Job Orders</div></div>
       </div>
-      <div className="panel" style={{marginBottom:20}}>
-        <div className="panel-head">
-          <div className="panel-title">Recent Job Orders</div>
-          <button className="btn btn-accent btn-sm" onClick={()=>setPage('joborders')}>View All</button>
+
+      {/* Side-by-side: Recent JOs | Assets by Category */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20,marginBottom:0,alignItems:'stretch'}}>
+        <div className="panel" style={{display:'flex',flexDirection:'column'}}>
+          <div className="panel-head">
+            <div className="panel-title">Recent Job Orders</div>
+            <button className="btn btn-accent btn-sm" onClick={()=>setPage('joborders')}>View All</button>
+          </div>
+          <div className="panel-body" style={{overflowY:'auto',flex:1,maxHeight:360}}>
+            {recent.length ? recent.map(jo=>(
+              <div key={jo.jobNo} className="jo-item">
+                <div>
+                  <div className="jo-num">{jo.jobNo}</div>
+                  <div className="jo-desc">{(jo.problem||'').substring(0,55)||jo.assetDesc||'—'}</div>
+                  <div className="jo-meta">{jo.assetNum} · {jo.date}</div>
+                </div>
+                <span className={`sb-base ${joStatusCls(jo.status)}`}>{jo.status}</span>
+              </div>
+            )) : <div className="empty-state"><div>📋</div><div>No job orders yet</div></div>}
+          </div>
         </div>
-        <div className="panel-body">
-          {recent.length ? recent.map(jo=>(
-            <div key={jo.jobNo} className="jo-item">
-              <div><div className="jo-num">{jo.jobNo}</div><div className="jo-desc">{(jo.problem||'').substring(0,65)||jo.assetDesc||'—'}</div><div className="jo-meta">{jo.assetNum} · {jo.date}</div></div>
-              <span className={`sb-base ${joStatusCls(jo.status)}`}>{jo.status}</span>
-            </div>
-          )) : <div className="empty-state"><div>📋</div><div>No job orders yet</div></div>}
+
+        <div className="panel" style={{display:'flex',flexDirection:'column'}}>
+          <div className="panel-head"><div className="panel-title">Assets by Category</div></div>
+          <div className="tbl-wrap" style={{overflowY:'auto',flex:1,maxHeight:360}}>
+            <table>
+              <thead><tr>
+                <th>Category</th>
+                <th style={{textAlign:'center',color:'var(--green)'}}>Oper.</th>
+                <th style={{textAlign:'center',color:'var(--red)'}}>Break.</th>
+                <th style={{textAlign:'center',color:'var(--orange)'}}>Maint.</th>
+                <th style={{textAlign:'center',color:'var(--yellow)'}}>Open JOs</th>
+              </tr></thead>
+              <tbody>
+                {catStats.map(s=>(
+                  <tr key={s.cat}>
+                    <td style={{fontFamily:'var(--fh)',fontWeight:600,fontSize:12}}>{s.cat.toUpperCase()}</td>
+                    <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:15,fontWeight:700,color:'var(--green)'}}>{s.operational}</td>
+                    <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:15,fontWeight:700,color:s.breakdown>0?'var(--red)':'var(--gray)'}}>{s.breakdown}</td>
+                    <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:15,fontWeight:700,color:s.maintenance>0?'var(--orange)':'var(--gray)'}}>{s.maintenance}</td>
+                    <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:15,fontWeight:700,color:s.openJOs>0?'var(--yellow)':'var(--gray)'}}>{s.openJOs}</td>
+                  </tr>
+                ))}
+                {catStats.length===0&&<tr><td colSpan={5} style={{textAlign:'center',color:'var(--gray)',padding:20}}>No assets</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
-      <div className="panel">
-        <div className="panel-head"><div className="panel-title">Assets by Category</div></div>
-        <div className="tbl-wrap">
-          <table>
-            <thead><tr>
-              <th>Asset Category</th>
-              <th style={{textAlign:'center',color:'var(--green)'}}>Operational</th>
-              <th style={{textAlign:'center',color:'var(--red)'}}>Breakdown</th>
-              <th style={{textAlign:'center',color:'var(--orange)'}}>Under Maint.</th>
-              <th style={{textAlign:'center',color:'var(--yellow)'}}>Open Job Orders</th>
-            </tr></thead>
-            <tbody>
-              {catStats.map(s=>(
-                <tr key={s.cat}>
-                  <td style={{fontFamily:'var(--fh)',fontWeight:600,fontSize:13}}>{s.cat.toUpperCase()}</td>
-                  <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:16,fontWeight:700,color:'var(--green)'}}>{s.operational}</td>
-                  <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:16,fontWeight:700,color:s.breakdown>0?'var(--red)':'var(--gray)'}}>{s.breakdown}</td>
-                  <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:16,fontWeight:700,color:s.maintenance>0?'var(--orange)':'var(--gray)'}}>{s.maintenance}</td>
-                  <td style={{textAlign:'center',fontFamily:'var(--fh)',fontSize:16,fontWeight:700,color:s.openJOs>0?'var(--yellow)':'var(--gray)'}}>{s.openJOs}</td>
-                </tr>
-              ))}
-              {catStats.length===0&&<tr><td colSpan={5} style={{textAlign:'center',color:'var(--gray)',padding:20}}>No assets recorded</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
+
+      <AssetDoughnutChart assets={assets}/>
     </div>
   );
 }
@@ -991,81 +1040,43 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
   const [q, setQ] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [activeTab, setActiveTab] = useState('OPEN');
+  const [confirmModal, setConfirmModal] = useState(null); // {jo, nextStatus}
   const importRef = useRef(null);
-
-  function advanceStatus(jo) {
-    if (jo.status==='OPEN') {
-      if (window.confirm(`Move ${jo.jobNo} to IN PROGRESS?\n\nConfirm to proceed.`))
-        onStatusChange(jo.jobNo,'IN PROGRESS');
-    } else if (jo.status==='IN PROGRESS') {
-      if (window.confirm(`Mark ${jo.jobNo} as CLOSED / COMPLETED?\n\nOnce closed it cannot be reopened or edited.`))
-        onStatusChange(jo.jobNo,'CLOSED');
-    }
-  }
 
   const filtered = jobOrders.filter(j=>{
     const hay=[j.jobNo,j.assetNum,j.assetDesc,j.dept,j.problem].join(' ').toLowerCase();
     return (!q||hay.includes(q.toLowerCase()))&&(!dateFrom||j.date>=dateFrom)&&(!dateTo||j.date<=dateTo);
   }).reverse();
 
-  const openJOs = filtered.filter(j=>j.status==='OPEN');
-  const inProgJOs = filtered.filter(j=>j.status==='IN PROGRESS');
-  const closedJOs = filtered.filter(j=>j.status==='CLOSED');
+  const counts = {
+    OPEN: jobOrders.filter(j=>j.status==='OPEN').length,
+    'IN PROGRESS': jobOrders.filter(j=>j.status==='IN PROGRESS').length,
+    CLOSED: jobOrders.filter(j=>j.status==='CLOSED').length,
+  };
+  const tabJOs = filtered.filter(j=>j.status===activeTab);
+  const isClosed = activeTab==='CLOSED';
 
-  const THead = ()=>(
-    <thead><tr>
-      <th>Job No.</th><th>Date</th><th>Asset</th><th>Asset Category</th><th>Problem</th>
-      <th>Priority</th><th>Status</th><th>Actions</th>
-    </tr></thead>
-  );
+  const TABS = [
+    {id:'OPEN',      label:'Open',        color:'var(--yellow)'},
+    {id:'IN PROGRESS',label:'In Progress', color:'#60a5fa'},
+    {id:'CLOSED',    label:'Closed',       color:'var(--green)'},
+  ];
 
-  const JORows = ({jobs, canEdit=true}) => jobs.length===0
-    ? <tr><td colSpan={8}><div className="empty-state" style={{padding:24}}>No records</div></td></tr>
-    : jobs.map(jo=>(
-      <tr key={jo.jobNo}>
-        <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)'}}>{jo.jobNo}</td>
-        <td style={{fontSize:12}}>{jo.date}</td>
-        <td><strong>{jo.assetNum}</strong><div style={{fontSize:11,color:'var(--gray)'}}>{jo.assetDesc||''}</div></td>
-        <td style={{fontSize:11,color:'var(--gray)'}}>{(jo.assetCategory||jo.plant||'').toUpperCase()||'—'}</td>
-        <td style={{fontSize:12,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{jo.problem||'—'}</td>
-        <td><span className={jo.priority==='High'?'prio-high':'prio-low'}>{jo.priority}</span></td>
-        <td>
-          {jo.status==='CLOSED'
-            ? <span className="sb-base jcl">CLOSED ✓</span>
-            : <button className={`sb-base ${joStatusCls(jo.status)}`} style={{cursor:'pointer',border:'none',background:'inherit'}}
-                title={jo.status==='OPEN'?'Click to move to In Progress':'Click to mark as Closed'}
-                onClick={()=>advanceStatus(jo)}>
-                {jo.status} ›
-              </button>
-          }
-        </td>
-        <td>
-          <div style={{display:'flex',gap:4}}>
-            <button className="btn btn-ghost btn-sm btn-icon" title="View" onClick={()=>setJoViewModal(jo)}>👁</button>
-            {canEdit&&<button className="btn btn-warning btn-sm btn-icon" title="Edit" onClick={()=>setJoModal({mode:'edit',jo})}>✏</button>}
-            <button className="btn btn-primary btn-sm btn-icon" title="Download PDF" onClick={()=>printJOPDF(jo)}>↓</button>
-            {canEdit&&<button className="btn btn-danger btn-sm btn-icon" title="Delete" onClick={()=>{ if(window.confirm(`Delete ${jo.jobNo}? This cannot be undone.`)) onDeleteJO(jo.jobNo); }}>🗑</button>}
-          </div>
-        </td>
-      </tr>
-    ));
+  function requestAdvance(jo) {
+    if (jo.status==='OPEN')        setConfirmModal({jo, nextStatus:'IN PROGRESS'});
+    else if (jo.status==='IN PROGRESS') setConfirmModal({jo, nextStatus:'CLOSED'});
+  }
 
-  const Section = ({title, count, color, jobs, canEdit=true}) => (
-    <div className="panel" style={{marginBottom:16}}>
-      <div className="panel-head">
-        <div className="panel-title" style={{color}}>
-          {title}
-          <span style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--gray)',fontWeight:400,marginLeft:10}}>({count})</span>
-        </div>
-      </div>
-      <div className="tbl-wrap">
-        <table><THead/><tbody><JORows jobs={jobs} canEdit={canEdit}/></tbody></table>
-      </div>
-    </div>
-  );
+  function doAdvance() {
+    if (!confirmModal) return;
+    onStatusChange(confirmModal.jo.jobNo, confirmModal.nextStatus);
+    setConfirmModal(null);
+  }
 
   return (
     <div>
+      {/* Header */}
       <div className="page-header" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
         <div>
           <div className="page-title">JOB <span>ORDERS</span></div>
@@ -1085,16 +1096,111 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
         </div>
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:16,marginBottom:24}}>
-        <div className="stat-card sc-blue"><div className="stat-num">{jobOrders.length}</div><div className="stat-label">Total</div></div>
-        <div className="stat-card sc-yellow"><div className="stat-num">{jobOrders.filter(j=>j.status==='OPEN').length}</div><div className="stat-label">Open</div></div>
-        <div className="stat-card sc-orange"><div className="stat-num">{jobOrders.filter(j=>j.status==='IN PROGRESS').length}</div><div className="stat-label">In Progress</div></div>
-        <div className="stat-card sc-green"><div className="stat-num">{jobOrders.filter(j=>j.status==='CLOSED').length}</div><div className="stat-label">Closed</div></div>
+      {/* Compact stat row */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+        {[['Total',jobOrders.length,'var(--blue)','sc-blue'],['Open',counts['OPEN'],'var(--yellow)','sc-yellow'],['In Progress',counts['IN PROGRESS'],'#60a5fa','sc-orange'],['Closed',counts['CLOSED'],'var(--green)','sc-green']].map(([lbl,num,c,cls])=>(
+          <div key={lbl} className={`stat-card ${cls}`} style={{padding:'10px 16px'}}>
+            <div style={{fontFamily:'var(--fh)',fontSize:26,fontWeight:700,color:c,lineHeight:1}}>{num}</div>
+            <div style={{fontSize:10,color:'var(--gray)',fontFamily:'var(--fm)',letterSpacing:1,marginTop:4,textTransform:'uppercase'}}>{lbl}</div>
+          </div>
+        ))}
       </div>
 
-      <Section title="OPEN" count={openJOs.length} color="var(--yellow)" jobs={openJOs}/>
-      <Section title="IN PROGRESS" count={inProgJOs.length} color="#60a5fa" jobs={inProgJOs}/>
-      <Section title="CLOSED" count={closedJOs.length} color="var(--green)" jobs={closedJOs} canEdit={false}/>
+      {/* Tab bar */}
+      <div style={{display:'flex',borderBottom:'2px solid var(--border)',marginBottom:0}}>
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{
+            padding:'10px 22px', background: activeTab===t.id?'rgba(255,255,255,.06)':'transparent',
+            border:'none', borderBottom: activeTab===t.id?`2px solid ${t.color}`:'2px solid transparent',
+            color: activeTab===t.id?t.color:'var(--gray)', cursor:'pointer',
+            fontFamily:'var(--fh)', fontSize:14, fontWeight:600, letterSpacing:.5, marginBottom:-2,
+            display:'flex', alignItems:'center', gap:8, transition:'all .15s',
+          }}>
+            {t.label}
+            <span style={{fontFamily:'var(--fm)',fontSize:11,background:'rgba(255,255,255,.08)',padding:'1px 8px',borderRadius:10,color:activeTab===t.id?t.color:'var(--gray)'}}>{counts[t.id]}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Table */}
+      <div className="panel" style={{borderTopLeftRadius:0,borderTopRightRadius:0,borderTop:'none'}}>
+        <div className="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Job No.</th><th>Date</th><th>Asset</th><th>Asset Category</th><th>Problem</th>
+              <th>Priority</th><th>Status</th><th>Actions</th>
+            </tr></thead>
+            <tbody>
+              {tabJOs.length===0 && <tr><td colSpan={8}><div className="empty-state" style={{padding:32}}>No {activeTab.toLowerCase()} job orders</div></td></tr>}
+              {tabJOs.map(jo=>(
+                <tr key={jo.jobNo}>
+                  <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)'}}>{jo.jobNo}</td>
+                  <td style={{fontSize:12}}>{jo.date}</td>
+                  <td><strong>{jo.assetNum}</strong><div style={{fontSize:11,color:'var(--gray)'}}>{jo.assetDesc||''}</div></td>
+                  <td style={{fontSize:11,color:'var(--gray)'}}>{(jo.assetCategory||jo.plant||'').toUpperCase()||'—'}</td>
+                  <td style={{fontSize:12,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{jo.problem||'—'}</td>
+                  <td><span className={jo.priority==='High'?'prio-high':'prio-low'}>{jo.priority}</span></td>
+                  <td>
+                    {isClosed
+                      ? <span className="sb-base jcl">CLOSED ✓</span>
+                      : <button className={`sb-base ${joStatusCls(jo.status)}`}
+                          style={{cursor:'pointer',border:'none',background:'inherit'}}
+                          title={jo.status==='OPEN'?'Move to In Progress':'Mark as Closed'}
+                          onClick={()=>requestAdvance(jo)}>
+                          {jo.status} ›
+                        </button>
+                    }
+                  </td>
+                  <td>
+                    <div style={{display:'flex',gap:4}}>
+                      <button className="btn btn-ghost btn-sm btn-icon" title="View" onClick={()=>setJoViewModal(jo)}>👁</button>
+                      {!isClosed&&<button className="btn btn-warning btn-sm btn-icon" title="Edit" onClick={()=>setJoModal({mode:'edit',jo})}>✏</button>}
+                      <button className="btn btn-primary btn-sm btn-icon" title="Download PDF" onClick={()=>printJOPDF(jo)}>↓</button>
+                      {!isClosed&&<button className="btn btn-danger btn-sm btn-icon" title="Delete" onClick={()=>{ if(window.confirm(`Delete ${jo.jobNo}? This cannot be undone.`)) onDeleteJO(jo.jobNo); }}>🗑</button>}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Status confirmation modal */}
+      {confirmModal && (
+        <div className="modal-overlay" onClick={()=>setConfirmModal(null)}>
+          <div className="modal" style={{width:440}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-head">
+              <div className="modal-title">Confirm Status Change</div>
+              <button className="modal-close" onClick={()=>setConfirmModal(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div style={{marginBottom:16}}>
+                <div style={{fontSize:13,marginBottom:8}}>
+                  Move <span style={{fontFamily:'var(--fm)',color:'var(--accent)'}}>{confirmModal.jo.jobNo}</span> from{' '}
+                  <span className={`sb-base ${joStatusCls(confirmModal.jo.status)}`}>{confirmModal.jo.status}</span>
+                  {' '}to{' '}
+                  <span className={`sb-base ${joStatusCls(confirmModal.nextStatus)}`}>{confirmModal.nextStatus}</span>?
+                </div>
+                {confirmModal.nextStatus==='CLOSED'&&(
+                  <div style={{background:'rgba(245,158,11,.1)',border:'1px solid rgba(245,158,11,.3)',borderRadius:6,padding:'8px 12px',fontSize:12,color:'var(--accent)',fontFamily:'var(--fm)'}}>
+                    ⚠ Once closed, this job order cannot be reopened or edited.
+                  </div>
+                )}
+              </div>
+              <div style={{fontSize:12,color:'var(--gray)',marginBottom:20}}>
+                Asset: <strong style={{color:'var(--white)'}}>{confirmModal.jo.assetNum} — {confirmModal.jo.assetDesc||'—'}</strong>
+              </div>
+              <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
+                <button className="btn btn-ghost" onClick={()=>setConfirmModal(null)}>Cancel</button>
+                <button className={`btn ${confirmModal.nextStatus==='CLOSED'?'btn-success':'btn-primary'}`} onClick={doAdvance}>
+                  {confirmModal.nextStatus==='CLOSED'?'✓ Close Job Order':'→ Move to In Progress'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
