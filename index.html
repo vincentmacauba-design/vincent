@@ -129,9 +129,15 @@ const CUSTOM_PLANTS_KEY = 'cmms_vg_plants';
 
 // ─── DEFAULT USERS ──────────────────────────────────────────────────────────
 const DEFAULT_USERS = [
-  {id:1,username:'admin',password:'admin123',fullName:'Vincent',role:'Admin',email:'vincent@villagroup.mv',active:true},
-  {id:2,username:'mufti',password:'mufti123',fullName:'Mufti',role:'Assistant Engineer',email:'mufti@villagroup.mv',active:true},
+  {id:1,username:'admin',password:'admin123',fullName:'Vincent Flores Macauba',role:'Admin',email:'vincent.flores@vhpl.mv',active:true},
+  {id:2,username:'mufti',password:'mufti123',fullName:'Mokimullah Mufti',role:'Assistant Engineer',email:'mokimullah.mufti@vhpl.mv',active:true},
+  {id:3,username:'priyantha',password:'priyantha123',fullName:'Priyantha Athapaththu',role:'Senior Engineer',email:'priyantha.athapaththu@vhpl.mv',active:true},
 ];
+const DESIGNATIONS = {
+  'Admin':'Technical Operations Supervisor',
+  'Senior Engineer':'Senior Manager, Engineering & Maintenance',
+};
+function sortByAssetNum(arr){return [...arr].sort((a,b)=>(parseInt(a.num)||0)-(parseInt(b.num)||0));}
 
 // ─── STATUS HELPERS ─────────────────────────────────────────────────────────
 function statusCls(s) {
@@ -376,8 +382,8 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
 .user-avatar{width:26px;height:26px;background:linear-gradient(135deg,var(--blue),var(--accent));border-radius:5px;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:700;font-size:12px;color:var(--navy);flex-shrink:0;}
 .user-name{font-family:var(--fm);font-size:11px;color:var(--white);white-space:nowrap;}
 .user-role-sm{font-family:var(--fm);font-size:9px;color:var(--gray);letter-spacing:1px;}
-.btn-logout{padding:5px 12px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--red);font-family:var(--fh);font-size:13px;font-weight:600;border-radius:5px;cursor:pointer;transition:all .15s;white-space:nowrap;}
-.btn-logout:hover{background:rgba(239,68,68,.22);}
+.btn-logout{padding:4px 12px;background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--gray);font-family:var(--fh);font-size:12px;font-weight:600;border-radius:5px;cursor:pointer;transition:all .2s;white-space:nowrap;display:flex;align-items:center;gap:5px;}
+.btn-logout:hover{background:rgba(239,68,68,.12);color:var(--red);border-color:rgba(239,68,68,.3);}
 /* ── Settings Page */
 .settings-tabs{display:flex;gap:2px;margin-bottom:20px;border-bottom:1px solid var(--border);}
 .settings-tab{padding:10px 22px;font-family:var(--fh);font-size:14px;font-weight:600;letter-spacing:.5px;color:var(--gray);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s;}
@@ -386,6 +392,7 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
 .user-role-badge{display:inline-block;padding:2px 9px;border-radius:3px;font-family:var(--fm);font-size:10px;font-weight:600;letter-spacing:1px;}
 .role-admin{background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.3);}
 .role-engineer{background:rgba(26,86,219,.15);color:#60a5fa;border:1px solid rgba(26,86,219,.3);}
+.role-senior{background:rgba(139,92,246,.15);color:#a78bfa;border:1px solid rgba(139,92,246,.3);}
 .role-operator{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3);}
 .profile-card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:28px;display:flex;gap:24px;align-items:center;margin-bottom:20px;backdrop-filter:blur(6px);}
 .profile-avatar{width:72px;height:72px;background:linear-gradient(135deg,var(--blue),var(--accent));border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:700;font-size:30px;color:var(--navy);flex-shrink:0;}
@@ -394,7 +401,7 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
 .sidebar-footer{margin-top:auto;padding:14px 18px 18px;border-top:1px solid var(--border);background:rgba(0,0,0,.12);}
 .sidebar-avatar{width:34px;height:34px;background:linear-gradient(135deg,var(--blue),var(--accent));border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:700;font-size:15px;color:var(--navy);flex-shrink:0;}
 .sidebar-user-name{font-family:var(--fh);font-size:14px;font-weight:700;color:var(--white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.sidebar-user-role{font-family:var(--fm);font-size:9px;color:var(--gray);letter-spacing:1.5px;margin-top:3px;text-transform:uppercase;}
+.sidebar-user-role{font-family:var(--fm);font-size:8px;color:var(--gray);letter-spacing:0;margin-top:2px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 /* ── Report Cards */
 .report-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
 .report-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:32px 28px;backdrop-filter:blur(6px);display:flex;flex-direction:column;gap:14px;transition:border-color .15s;}
@@ -460,6 +467,14 @@ function printJOPDF(jo) {
         <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;text-align:right">SRP</th>
       </tr></thead><tbody>${partsRows}</tbody></table>
     </div>
+    ${jo.closedBy?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:12px 14px;margin-top:10px">
+      <div style="font-size:9px;color:#059669;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px">APPROVAL</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        <div><div style="font-size:9px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">Approved By</div><div style="font-size:11px;font-weight:700">${jo.closedBy}</div></div>
+        <div><div style="font-size:9px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">Designation</div><div style="font-size:11px;font-weight:600">${jo.closerDesignation||'—'}</div></div>
+        <div><div style="font-size:9px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">Approved Date</div><div style="font-size:11px;font-weight:600">${jo.closedDate||'—'}</div></div>
+      </div>
+    </div>`:''}
   `);
 }
 
@@ -702,6 +717,29 @@ function App() {
     });
     addToast(`${jobNo} deleted.`);
   }
+  function approveJO(jobNo, approval) {
+    setJobOrders(prev => {
+      const next = prev.map(j => j.jobNo===jobNo ? {...j, status:'CLOSED', closedBy:approval.closedBy, closerDesignation:approval.closerDesignation, closedDate:approval.closedDate} : j);
+      persist(assets, next, joCounter);
+      return next;
+    });
+    addToast(`${jobNo} approved and closed.`);
+  }
+  function revertJO(jobNo) {
+    setJobOrders(prev => {
+      const next = prev.map(j => j.jobNo===jobNo ? {...j, status:'IN PROGRESS', closedBy:'', closerDesignation:'', closedDate:''} : j);
+      persist(assets, next, joCounter);
+      return next;
+    });
+    addToast(`${jobNo} reverted to IN PROGRESS.`);
+  }
+  function resetData() {
+    setAssets([]);
+    setJobOrders([]);
+    setJoCounter(1000);
+    try { localStorage.setItem(STORE_KEY, JSON.stringify({assets:[], jobOrders:[], joCounter:1000})); } catch(e) {}
+    addToast('All data has been reset to factory defaults.');
+  }
 
   // ── Custom Plants
   const [customPlants, setCustomPlants] = useState(() => {
@@ -751,7 +789,7 @@ function App() {
       setAssets(prev => {
         const existing = new Set(prev.map(a=>a.num));
         const toAdd = newAssets.filter(a=>!existing.has(a.num));
-        const next = [...prev, ...toAdd];
+        const next = sortByAssetNum([...prev, ...toAdd]);
         persist(next, jobOrders, joCounter);
         addToast(`Imported ${toAdd.length} assets (${newAssets.length-toAdd.length} skipped).`);
         return next;
@@ -810,10 +848,8 @@ function App() {
             <NavItem active={page==='joborders'} onClick={()=>setPage('joborders')} icon="📋" label="Job Orders"/>
             <div className="nav-section">Reports</div>
             <NavItem active={page==='reports'} onClick={()=>setPage('reports')} icon="📊" label="Reports"/>
-            {currentUser.role==='Admin'&&<>
-              <div className="nav-section">System</div>
-              <NavItem active={page==='settings'} onClick={()=>setPage('settings')} icon="👥" label="Settings"/>
-            </>}
+            <div className="nav-section">System</div>
+            <NavItem active={page==='settings'} onClick={()=>setPage('settings')} icon="👥" label="Settings"/>
             <div className="sidebar-footer">
               <div style={{display:'flex',alignItems:'center',gap:10}}>
                 <div className="sidebar-avatar">{currentUser.fullName.charAt(0).toUpperCase()}</div>
@@ -827,10 +863,10 @@ function App() {
 
           <div className="main">
             {page==='dashboard' && <DashboardPage assets={assets} jobOrders={jobOrders} setPage={setPage} setJoModal={setJoModal} customPlants={customPlants}/>}
-            {page==='assets'    && <AssetsPage assets={assets} setAssetModal={setAssetModal} setJoModal={setJoModal} onStatusChange={updateAssetStatus} onDeleteAsset={deleteAsset} customPlants={customPlants} onExportCSV={()=>exportAssetsCSV(assets)} onImportCSV={importAssetsFromCSV}/>}
-            {page==='joborders' && <JobOrdersPage assets={assets} jobOrders={jobOrders} setJoModal={setJoModal} setJoViewModal={setJoViewModal} onStatusChange={updateJOStatus} onDeleteJO={deleteJO} onExportCSV={()=>exportJobOrdersCSV(jobOrders)} onImportCSV={importJOsFromCSV}/>}
+            {page==='assets'    && <AssetsPage assets={assets} setAssetModal={setAssetModal} setJoModal={setJoModal} onStatusChange={updateAssetStatus} onDeleteAsset={deleteAsset} customPlants={customPlants} onExportCSV={()=>exportAssetsCSV(assets)} onImportCSV={importAssetsFromCSV} currentUser={currentUser}/>}
+            {page==='joborders' && <JobOrdersPage assets={assets} jobOrders={jobOrders} setJoModal={setJoModal} setJoViewModal={setJoViewModal} onStatusChange={updateJOStatus} onDeleteJO={deleteJO} onExportCSV={()=>exportJobOrdersCSV(jobOrders)} onImportCSV={importJOsFromCSV} onApproveJO={approveJO} onRevertJO={revertJO} currentUser={currentUser}/>}
             {page==='reports'   && <ReportsPage assets={assets} jobOrders={jobOrders}/>}
-            {page==='settings'  && <SettingsPage users={users} currentUser={currentUser} onSaveUser={saveUser} onDeleteUser={deleteUser}/>}
+            {page==='settings'  && <SettingsPage users={users} currentUser={currentUser} onSaveUser={saveUser} onDeleteUser={deleteUser} onResetData={resetData}/>}
           </div>
         </div>
 
@@ -1126,7 +1162,7 @@ function DashboardPage({assets, jobOrders, setPage, setJoModal, customPlants=[]}
 }
 
 // ─── ASSETS PAGE ─────────────────────────────────────────────────────────────
-function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDeleteAsset, customPlants=[], onExportCSV, onImportCSV}) {
+function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDeleteAsset, customPlants=[], onExportCSV, onImportCSV, currentUser={}}) {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [status, setStatus] = useState('');
@@ -1138,8 +1174,10 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
     const hay = [a.num,a.plant,a.desc,a.code,a.model,a.loc,a.serial].join(' ').toLowerCase();
     return (!q||hay.includes(q.toLowerCase())) && (!cat||a.plant.toUpperCase()===cat) && (!status||(a.status||'').toUpperCase()===status);
   });
-  const total = Math.ceil(filtered.length/PER_PAGE);
-  const slice = filtered.slice((pg-1)*PER_PAGE, pg*PER_PAGE);
+  const sorted = sortByAssetNum(filtered);
+  const total = Math.ceil(sorted.length/PER_PAGE);
+  const slice = sorted.slice((pg-1)*PER_PAGE, pg*PER_PAGE);
+  const canEdit = currentUser.role !== 'Senior Engineer';
 
   return (
     <div>
@@ -1158,13 +1196,13 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
             <option value="">All Status</option>
             {['OPERATIONAL','BREAKDOWN','UNDER MAINTENANCE','NEW','INACTIVE','IDLE'].map(s=><option key={s}>{s}</option>)}
           </select>
-          <button className="btn btn-accent" onClick={()=>setAssetModal({mode:'add'})}>＋ Add Asset</button>
+          {canEdit&&<button className="btn btn-accent" onClick={()=>setAssetModal({mode:'add'})}>＋ Add Asset</button>}
           <button className="btn btn-csv btn-sm" title="Export CSV" onClick={onExportCSV}>↓ Export</button>
-          <label className="btn btn-csv btn-sm" style={{cursor:'pointer'}} title="Import CSV">
+          {canEdit&&<label className="btn btn-csv btn-sm" style={{cursor:'pointer'}} title="Import CSV">
             ↑ Import
             <input type="file" accept=".csv" style={{display:'none'}} ref={importRef} onChange={e=>{if(e.target.files[0]){onImportCSV(e.target.files[0]);e.target.value='';}}}/>
-          </label>
-          <button className="btn btn-csv btn-sm" title="Download CSV Template" onClick={downloadAssetTemplate}>⬇ Template</button>
+          </label>}
+          {canEdit&&<button className="btn btn-csv btn-sm" title="Download CSV Template" onClick={downloadAssetTemplate}>⬇ Template</button>}
         </div>
       </div>
       <div className="panel">
@@ -1196,9 +1234,9 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
                   <td>
                     <div style={{display:'flex',gap:4,flexWrap:'nowrap'}}>
                       <button className="btn btn-ghost btn-sm btn-icon" title="View Asset" onClick={()=>setAssetModal({mode:'view',asset:a})}>👁</button>
-                      <button className="btn btn-warning btn-sm btn-icon" title="Edit Asset" onClick={()=>setAssetModal({mode:'edit',asset:a})}>✏</button>
-                      <button className="btn btn-primary btn-sm btn-icon" title="Raise Job Order" onClick={()=>setJoModal({mode:'add',preAsset:a.num})}>＋</button>
-                      <button className="btn btn-danger btn-sm btn-icon" title="Delete Asset" onClick={()=>{ if(window.confirm(`Delete asset ${a.num} — ${a.desc}?\n\nThis cannot be undone.`)) onDeleteAsset(a.num); }}>🗑</button>
+                      {canEdit&&<button className="btn btn-warning btn-sm btn-icon" title="Edit Asset" onClick={()=>setAssetModal({mode:'edit',asset:a})}>✏</button>}
+                      {canEdit&&<button className="btn btn-primary btn-sm btn-icon" title="Raise Job Order" onClick={()=>setJoModal({mode:'add',preAsset:a.num})}>＋</button>}
+                      {canEdit&&<button className="btn btn-danger btn-sm btn-icon" title="Delete Asset" onClick={()=>{ if(window.confirm(`Delete asset ${a.num} — ${a.desc}?\n\nThis cannot be undone.`)) onDeleteAsset(a.num); }}>🗑</button>}
                     </div>
                   </td>
                 </tr>
@@ -1207,7 +1245,7 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
           </table>
         </div>
         <div style={{padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',borderTop:'1px solid var(--border)'}}>
-          <div className="page-info-txt">Showing {filtered.length===0?0:Math.min((pg-1)*PER_PAGE+1,filtered.length)}–{Math.min(pg*PER_PAGE,filtered.length)} of {filtered.length} assets</div>
+          <div className="page-info-txt">Showing {sorted.length===0?0:Math.min((pg-1)*PER_PAGE+1,sorted.length)}–{Math.min(pg*PER_PAGE,sorted.length)} of {sorted.length} assets</div>
           <div className="pagination">
             {pg>1&&<button className="page-btn" onClick={()=>setPg(pg-1)}>‹</button>}
             {Array.from({length:total},(_,i)=>i+1).filter(i=>i===1||i===total||(i>=pg-1&&i<=pg+1)).map((i,idx,arr)=>[
@@ -1223,13 +1261,20 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
 }
 
 // ─── JOB ORDERS PAGE ─────────────────────────────────────────────────────────
-function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusChange, onDeleteJO, onExportCSV, onImportCSV}) {
+function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusChange, onDeleteJO, onExportCSV, onImportCSV, onApproveJO, onRevertJO, currentUser={}}) {
   const [q, setQ] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [activeTab, setActiveTab] = useState('OPEN');
   const [confirmModal, setConfirmModal] = useState(null);
+  const [approvalDate, setApprovalDate] = useState(new Date().toISOString().split('T')[0]);
   const importRef = useRef(null);
+
+  const canAdvanceOpen = currentUser.role==='Admin' || currentUser.role==='Assistant Engineer';
+  const canClose       = currentUser.role==='Admin' || currentUser.role==='Senior Engineer';
+  const canRevert      = currentUser.role==='Admin';
+  const canEditJO      = currentUser.role !== 'Senior Engineer';
+  const canRaiseJO     = currentUser.role !== 'Senior Engineer';
 
   // Smart search: auto-switch to the tab that has matches
   useEffect(()=>{
@@ -1264,12 +1309,25 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
   ];
 
   function requestAdvance(jo) {
-    if (jo.status==='OPEN') setConfirmModal({jo,nextStatus:'IN PROGRESS'});
-    else if (jo.status==='IN PROGRESS') setConfirmModal({jo,nextStatus:'CLOSED'});
+    if (jo.status==='OPEN' && canAdvanceOpen) {
+      setConfirmModal({jo, nextStatus:'IN PROGRESS'});
+    } else if (jo.status==='IN PROGRESS' && canClose) {
+      setApprovalDate(new Date().toISOString().split('T')[0]);
+      setConfirmModal({jo, nextStatus:'CLOSED'});
+    }
   }
   function doAdvance() {
     if (!confirmModal) return;
-    onStatusChange(confirmModal.jo.jobNo,confirmModal.nextStatus);
+    onStatusChange(confirmModal.jo.jobNo, confirmModal.nextStatus);
+    setConfirmModal(null);
+  }
+  function doApprove() {
+    if (!approvalDate) { alert('Please select the approved date.'); return; }
+    onApproveJO(confirmModal.jo.jobNo, {
+      closedBy: currentUser.fullName,
+      closerDesignation: DESIGNATIONS[currentUser.role] || currentUser.role,
+      closedDate: approvalDate,
+    });
     setConfirmModal(null);
   }
 
@@ -1282,7 +1340,7 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
           <div className="page-sub">MAINTENANCE JOB CARD REQUEST LOG</div>
         </div>
         <div className="controls">
-          <button className="btn btn-accent" onClick={()=>setJoModal({mode:'add'})}>＋ Raise Job Order</button>
+          {canRaiseJO&&<button className="btn btn-accent" onClick={()=>setJoModal({mode:'add'})}>＋ Raise Job Order</button>}
           <button className="btn btn-csv btn-sm" onClick={onExportCSV}>↓ Export</button>
           <label className="btn btn-csv btn-sm" style={{cursor:'pointer'}}>↑ Import
             <input type="file" accept=".csv" style={{display:'none'}} ref={importRef} onChange={e=>{if(e.target.files[0]){onImportCSV(e.target.files[0]);e.target.value='';}}}/>
@@ -1348,11 +1406,16 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
           <table>
             <thead><tr>
               <th>Job No.</th><th>Date</th><th>Asset</th><th>Asset Category</th><th>Problem</th>
-              <th>Priority</th><th>Status</th><th>Actions</th>
+              <th>Priority</th><th>Status</th>
+              {isClosed&&<><th>Approved By</th><th>Approved Date</th></>}
+              <th>Actions</th>
             </tr></thead>
             <tbody>
-              {tabJOs.length===0&&<tr><td colSpan={8}><div className="empty-state" style={{padding:48}}>No {activeTab.toLowerCase()} job orders{q?' matching search':''}</div></td></tr>}
-              {tabJOs.map(jo=>(
+              {tabJOs.length===0&&<tr><td colSpan={isClosed?10:8}><div className="empty-state" style={{padding:48}}>No {activeTab.toLowerCase()} job orders{q?' matching search':''}</div></td></tr>}
+              {tabJOs.map(jo=>{
+                const joIsClosed = jo.status==='CLOSED';
+                const canAdvThis = jo.status==='OPEN'?canAdvanceOpen:canClose;
+                return (
                 <tr key={jo.jobNo}>
                   <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)'}}>{jo.jobNo}</td>
                   <td style={{fontSize:12}}>{jo.date}</td>
@@ -1361,61 +1424,100 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
                   <td style={{fontSize:12,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{jo.problem||'—'}</td>
                   <td><span className={jo.priority==='High'?'prio-high':'prio-low'}>{jo.priority}</span></td>
                   <td>
-                    {isClosed
+                    {joIsClosed
                       ? <span className="sb-base jcl">CLOSED ✓</span>
-                      : <button className={`sb-base ${joStatusCls(jo.status)}`}
-                          style={{cursor:'pointer',border:'none',background:'inherit'}}
-                          title={jo.status==='OPEN'?'Move to In Progress':'Mark as Closed'}
-                          onClick={()=>requestAdvance(jo)}>
-                          {jo.status} ›
-                        </button>
+                      : canAdvThis
+                        ? <button className={`sb-base ${joStatusCls(jo.status)}`}
+                            style={{cursor:'pointer',border:'none',background:'inherit'}}
+                            title={jo.status==='OPEN'?'Move to In Progress':'Approve & Close'}
+                            onClick={()=>requestAdvance(jo)}>{jo.status} ›</button>
+                        : <span className={`sb-base ${joStatusCls(jo.status)}`}>{jo.status}</span>
                     }
                   </td>
+                  {isClosed&&<>
+                    <td style={{fontSize:11}}>{jo.closedBy||'—'}</td>
+                    <td style={{fontFamily:'var(--fm)',fontSize:11}}>{jo.closedDate||'—'}</td>
+                  </>}
                   <td>
                     <div style={{display:'flex',gap:4,flexWrap:'nowrap'}}>
                       <button className="btn btn-ghost btn-sm btn-icon" title="View" onClick={()=>setJoViewModal(jo)}>👁</button>
-                      {!isClosed&&<button className="btn btn-warning btn-sm btn-icon" title="Edit" onClick={()=>setJoModal({mode:'edit',jo})}>✏</button>}
+                      {canEditJO&&!joIsClosed&&<button className="btn btn-warning btn-sm btn-icon" title="Edit" onClick={()=>setJoModal({mode:'edit',jo})}>✏</button>}
                       <button className="btn btn-primary btn-sm btn-icon" title="Download PDF" onClick={()=>printJOPDF(jo)}>↓</button>
-                      {!isClosed&&<button className="btn btn-danger btn-sm btn-icon" title="Delete" onClick={()=>{ if(window.confirm(`Delete ${jo.jobNo}? This cannot be undone.`)) onDeleteJO(jo.jobNo); }}>🗑</button>}
+                      {canEditJO&&!joIsClosed&&<button className="btn btn-danger btn-sm btn-icon" title="Delete" onClick={()=>{ if(window.confirm(`Delete ${jo.jobNo}? This cannot be undone.`)) onDeleteJO(jo.jobNo); }}>🗑</button>}
+                      {canRevert&&joIsClosed&&<button className="btn btn-warning btn-sm btn-icon" title="Revert to In Progress" onClick={()=>{ if(window.confirm(`Revert ${jo.jobNo} to IN PROGRESS?\nThis clears the approval record.`)) onRevertJO(jo.jobNo); }}>↺</button>}
                     </div>
                   </td>
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Confirm modal */}
-      {confirmModal&&(
+      {/* Simple confirm: OPEN → IN PROGRESS */}
+      {confirmModal&&confirmModal.nextStatus==='IN PROGRESS'&&(
         <div className="modal-overlay" onClick={()=>setConfirmModal(null)}>
-          <div className="modal" style={{width:440}} onClick={e=>e.stopPropagation()}>
+          <div className="modal" style={{width:420}} onClick={e=>e.stopPropagation()}>
             <div className="modal-head">
-              <div className="modal-title">Confirm Status Change</div>
+              <div className="modal-title">Move to In Progress?</div>
               <button className="modal-close" onClick={()=>setConfirmModal(null)}>×</button>
             </div>
             <div className="modal-body">
-              <div style={{marginBottom:16}}>
-                <div style={{fontSize:13,marginBottom:10}}>
-                  Move <span style={{fontFamily:'var(--fm)',color:'var(--accent)'}}>{confirmModal.jo.jobNo}</span> from{' '}
-                  <span className={`sb-base ${joStatusCls(confirmModal.jo.status)}`}>{confirmModal.jo.status}</span>
-                  {' → '}
-                  <span className={`sb-base ${joStatusCls(confirmModal.nextStatus)}`}>{confirmModal.nextStatus}</span>
-                </div>
-                {confirmModal.nextStatus==='CLOSED'&&(
-                  <div style={{background:'rgba(245,158,11,.1)',border:'1px solid rgba(245,158,11,.3)',borderRadius:6,padding:'8px 12px',fontSize:12,color:'var(--accent)',fontFamily:'var(--fm)'}}>
-                    ⚠ Once closed, this job order cannot be reopened or edited.
-                  </div>
-                )}
+              <div style={{fontSize:13,marginBottom:12}}>
+                Move <span style={{fontFamily:'var(--fm)',color:'var(--accent)'}}>{confirmModal.jo.jobNo}</span>{' '}
+                from <span className="sb-base jop">OPEN</span> → <span className="sb-base jip">IN PROGRESS</span>?
               </div>
               <div style={{fontSize:12,color:'var(--gray)',marginBottom:20}}>
                 Asset: <strong style={{color:'var(--white)'}}>{confirmModal.jo.assetNum} — {confirmModal.jo.assetDesc||'—'}</strong>
               </div>
               <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
                 <button className="btn btn-ghost" onClick={()=>setConfirmModal(null)}>Cancel</button>
-                <button className={`btn ${confirmModal.nextStatus==='CLOSED'?'btn-success':'btn-primary'}`} onClick={doAdvance}>
-                  {confirmModal.nextStatus==='CLOSED'?'✓ Close Job Order':'→ Move to In Progress'}
-                </button>
+                <button className="btn btn-primary" onClick={doAdvance}>→ Move to In Progress</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Approval confirm: IN PROGRESS → CLOSED */}
+      {confirmModal&&confirmModal.nextStatus==='CLOSED'&&(
+        <div className="modal-overlay" onClick={()=>setConfirmModal(null)}>
+          <div className="modal" style={{width:480}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-head">
+              <div className="modal-title">Approve & Close Job Order</div>
+              <button className="modal-close" onClick={()=>setConfirmModal(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div style={{fontSize:13,marginBottom:4}}>
+                Closing <span style={{fontFamily:'var(--fm)',color:'var(--accent)'}}>{confirmModal.jo.jobNo}</span>{' '}
+                <span className="sb-base jip">IN PROGRESS</span> → <span className="sb-base jcl">CLOSED</span>
+              </div>
+              <div style={{fontSize:12,color:'var(--gray)',marginBottom:16}}>
+                Asset: <strong style={{color:'var(--white)'}}>{confirmModal.jo.assetNum} — {confirmModal.jo.assetDesc||'—'}</strong>
+              </div>
+              <div className="jc-section" style={{marginBottom:14}}>
+                <div className="jc-section-title">Approval Details</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                  <div className="form-group">
+                    <label>Approved By</label>
+                    <input readOnly value={currentUser.fullName} style={{background:'rgba(255,255,255,.03)'}}/>
+                  </div>
+                  <div className="form-group">
+                    <label>Designation</label>
+                    <input readOnly value={DESIGNATIONS[currentUser.role]||currentUser.role} style={{background:'rgba(255,255,255,.03)'}}/>
+                  </div>
+                  <div className="form-group">
+                    <label>Approved Date *</label>
+                    <input type="date" value={approvalDate} onChange={e=>setApprovalDate(e.target.value)}/>
+                  </div>
+                </div>
+              </div>
+              <div style={{background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.25)',borderRadius:6,padding:'8px 12px',fontSize:11,color:'var(--accent)',fontFamily:'var(--fm)',marginBottom:16}}>
+                ⚠ Once closed, only Admin can revert this job order.
+              </div>
+              <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
+                <button className="btn btn-ghost" onClick={()=>setConfirmModal(null)}>Cancel</button>
+                <button className="btn btn-success" onClick={doApprove}>✓ Approve & Close</button>
               </div>
             </div>
           </div>
@@ -1553,13 +1655,14 @@ function ReportsPage({assets, jobOrders}) {
 }
 
 // ─── SETTINGS PAGE ────────────────────────────────────────────────────────────
-function SettingsPage({users, currentUser, onSaveUser, onDeleteUser}) {
-  const [tab, setTab] = useState('users');
+function SettingsPage({users, currentUser, onSaveUser, onDeleteUser, onResetData}) {
+  const isAdmin = currentUser.role==='Admin';
+  const [tab, setTab] = useState(isAdmin?'users':'profile');
   const [userModal, setUserModal] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   function roleBadge(role) {
-    const cls = role==='Admin'?'role-admin':'role-engineer';
+    const cls = role==='Admin'?'role-admin':role==='Senior Engineer'?'role-senior':'role-engineer';
     return <span className={`user-role-badge ${cls}`}>{role.toUpperCase()}</span>;
   }
 
@@ -1571,8 +1674,9 @@ function SettingsPage({users, currentUser, onSaveUser, onDeleteUser}) {
       </div>
 
       <div className="settings-tabs">
-        <div className={`settings-tab${tab==='users'?' active':''}`} onClick={()=>setTab('users')}>Users</div>
+        {isAdmin&&<div className={`settings-tab${tab==='users'?' active':''}`} onClick={()=>setTab('users')}>Users</div>}
         <div className={`settings-tab${tab==='profile'?' active':''}`} onClick={()=>setTab('profile')}>My Profile</div>
+        {isAdmin&&<div className={`settings-tab${tab==='reset'?' active':''}`} onClick={()=>setTab('reset')} style={{color:tab==='reset'?'var(--red)':''}}>Reset Data</div>}
       </div>
 
       {tab==='users' && (
@@ -1645,6 +1749,30 @@ function SettingsPage({users, currentUser, onSaveUser, onDeleteUser}) {
               <div style={{marginTop:20}}>
                 <button className="btn btn-warning" onClick={()=>setUserModal({mode:'edit',user:currentUser})}>✏ Edit My Profile</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab==='reset'&&isAdmin&&(
+        <div>
+          <div className="panel" style={{borderTop:'2px solid var(--red)'}}>
+            <div className="panel-head">
+              <div className="panel-title" style={{color:'var(--red)'}}>⚠ Reset Application Data</div>
+            </div>
+            <div className="panel-body">
+              <p style={{fontSize:13,color:'var(--gray)',marginBottom:16,lineHeight:1.7}}>
+                This will permanently delete <strong style={{color:'var(--white)'}}>all assets and job orders</strong> from the system, resetting it to a blank state.<br/>
+                User accounts are <strong style={{color:'var(--white)'}}>not affected</strong>. This action is designed for use before connecting a backend database.
+              </p>
+              <div style={{background:'rgba(239,68,68,.08)',border:'1px solid rgba(239,68,68,.25)',borderRadius:6,padding:'10px 14px',marginBottom:20,fontSize:12,fontFamily:'var(--fm)',color:'var(--red)'}}>
+                ⚠ THIS CANNOT BE UNDONE. All asset and maintenance data will be permanently removed.
+              </div>
+              <button className="btn btn-danger" onClick={()=>{
+                if(window.confirm('Are you absolutely sure?\n\nThis will delete ALL assets and ALL job orders.\nThis action cannot be undone.')) {
+                  if(window.confirm('Final confirmation: Delete all data and reset to zero?')) onResetData();
+                }
+              }}>🗑 Reset All Data to Factory Defaults</button>
             </div>
           </div>
         </div>
@@ -2104,6 +2232,16 @@ function JOViewModal({jo, onClose, onEdit}) {
               </tbody>
             </table>
           </div>
+          {jo.closedBy&&(
+            <div className="jc-section">
+              <div className="jc-section-title">Approval</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,fontSize:13}}>
+                <div className="detail-item"><label>Approved By</label><div className="val">{jo.closedBy}</div></div>
+                <div className="detail-item"><label>Designation</label><div className="val" style={{fontSize:12}}>{jo.closerDesignation||'—'}</div></div>
+                <div className="detail-item"><label>Approved Date</label><div className="val">{jo.closedDate||'—'}</div></div>
+              </div>
+            </div>
+          )}
           <div style={{marginTop:16,display:'flex',gap:10,justifyContent:'flex-end',flexWrap:'wrap'}}>
             <button className="btn btn-primary" onClick={()=>printJOPDF(jo)}>↓ Download PDF</button>
             <button className="btn btn-warning" onClick={()=>onEdit(jo)}>✏ Edit</button>
@@ -2163,6 +2301,7 @@ function UserFormModal({mode, user, onClose, onSave}) {
               <select value={f.role||'Operator'} onChange={e=>setF({...f,role:e.target.value})}>
                 <option>Admin</option>
                 <option>Assistant Engineer</option>
+                <option>Senior Engineer</option>
               </select>
             </div>
             <div className="form-group">
