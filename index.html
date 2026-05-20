@@ -122,6 +122,64 @@ const BASE_ASSETS = [
 ];
 
 const STORE_KEY = 'cmms_vg_state';
+const EMPLOYEES_KEY = 'cmms_vg_employees';
+const BASE_EMPLOYEES = [
+  {empId:'56251',name:'SOBITHA AJITH PRIYANTHA ATHAPATHTHU HEWAWASAM LIYANAGE',designation:'SENIOR MANAGER, ENGINEERING AND MAINTENANCE',section:'ENGINEERING ADMINISTRATION',nationality:'SRI LANKAN',siteStatus:'ON LEAVE',leaveType:'AL',leaveStart:'2026-05-14',leaveEnd:'2026-06-11',exitDate:''},
+  {empId:'3047',name:'MOHAMED JAMEEL',designation:'CHIEF ENGINEER',section:'ENGINEERING ADMINISTRATION',nationality:'MALDIVIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'31606',name:'AHMED MOHAMED',designation:'DEPUTY CHIEF ENGINEER',section:'ENGINEERING ADMINISTRATION',nationality:'MALDIVIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'55050',name:'VINCENT FLORES MACAUBA',designation:'TECHNICAL OPERATIONS SUPERVISOR',section:'ENGINEERING ADMINISTRATION',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'55049',name:'MICHAEL MACION ANGELO',designation:'INDUSTRIAL ELECTRICIAN',section:'ENGINEERING ADMINISTRATION',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'57146',name:'IMMYHAMI MUDIYANSELAGE SHASHIKA RATNAYAKE',designation:'ELECTRICAL ENGINEER',section:'ENGINEERING ADMINISTRATION',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'57361',name:'RAM JASINTHAN GUNASEELAN',designation:'PROCESS SAFETY ENGINEER',section:'ENGINEERING ADMINISTRATION',nationality:'MALAYSIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'57736',name:'AHMED RASHEED',designation:'MARINE ENGINEER',section:'ENGINEERING ADMINISTRATION',nationality:'MALDIVIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'58129',name:'MOKIMULLAH MUFTI',designation:'ASSISTANT ENGINEER',section:'ENGINEERING ADMINISTRATION',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'56454',name:'JOHNASSES FARAON AMUL',designation:'INSTRUMENTATION AND CONTROL TECHNICIAN',section:'ENGINEERING ADMINISTRATION',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'55428',name:'ARNEL SARABIA CARAMPATAN',designation:'LIGHT AND HEAVY EQUIPMENT MECHANIC',section:'MECHANICAL',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'50736',name:'MOHAMED MUNIR MOHAMED BURHANUDEEN',designation:'MECHANICAL OPERATIONS SUPERVISOR',section:'MECHANICAL',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'44384',name:'ROBEL CHANDRA MAZOMDAR',designation:'SENIOR MECHANIC',section:'MECHANICAL',nationality:'BANGLADESHI',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'53156',name:'RAVINDRAN RAMAN',designation:'MECHANIC',section:'MECHANICAL',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'55281',name:'JOEL CALMA SANTOS',designation:'LIGHT AND HEAVY EQUIPMENT MECHANIC',section:'MECHANICAL',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'54927',name:'MANOJ LAKSHITHA PRIYANKARA MUDANNEHELAGE',designation:'WELDER',section:'MECHANICAL',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'58648',name:'ANEESH BINOY',designation:'MECHANICAL SUPPORT CREW',section:'MECHANICAL',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'58693',name:'MAHESH RANGA BOTHEJU WELATHANTHIRIGE',designation:'MECHANIC',section:'MECHANICAL',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:'2026-05-26'},
+  {empId:'58735',name:'LAKINDU RANDULA DIAS KODITHUWAKKU KEKIRIWARAGODAGE',designation:'MECHANIC',section:'MECHANICAL',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'57586',name:'NAGOOR MEERAN MOHAMED KANI',designation:'6G WELDER',section:'MECHANICAL',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'57622',name:'SACHIDA NAND SINGH',designation:'6G WELDER',section:'MECHANICAL',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'58000',name:'JOEL BUGARIN ADERES',designation:'6G WELDER',section:'MECHANICAL',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:'2026-06-26'},
+  {empId:'59217',name:'RAJKUMAR GUPTA',designation:'TINKER',section:'MECHANICAL',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'34469',name:'IBRAHIM ABDUL RAHEEM',designation:'ELECTRICAL OPERATIONS SUPERVISOR',section:'ELECTRICAL',nationality:'MALDIVIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'55034',name:'KARUPPAIYA VEERAMURUGAN',designation:'ASSISTANT ELECTRICIAN',section:'ELECTRICAL',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:'2026-05-20'},
+  {empId:'57229',name:'DASUN THARAKA SANDARUWAN KONARA MUDIYANSELAGE',designation:'AUTO ELECTRICIAN',section:'ELECTRICAL',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'59531',name:'CHAMIDU PRABASHANA KARUNARATHNA MAHAWATHTHAGE',designation:'REFRIGERATION AND AIR CONDITIONING TECHNICIAN',section:'ELECTRICAL',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'40579',name:'MOOSA ADAM',designation:'MANAGER, MAINTENANCE',section:'MAINTENANCE',nationality:'MALDIVIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'46785',name:'LALU MIAH',designation:'CONSTRUCTION CARPENTER',section:'MAINTENANCE',nationality:'BANGLADESHI',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'49454',name:'MOHAMMAD MAMUN MIAH',designation:'MAINTENANCE ASSISTANT',section:'MAINTENANCE',nationality:'BANGLADESHI',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'50489',name:'MOHAMMAD ASAD MIAH',designation:'MAINTENANCE OPERATIONS SUPERVISOR',section:'MAINTENANCE',nationality:'BANGLADESHI',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'52807',name:'MD SHAKIL AHMED',designation:'SENIOR MASON',section:'MAINTENANCE',nationality:'BANGLADESHI',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'49026',name:'SHOKUMER',designation:'CONSTRUCTION CARPENTER',section:'MAINTENANCE',nationality:'BANGLADESHI',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'36862',name:'ABDULLA NAAIF',designation:'POWER SYSTEMS SUPERVISOR',section:'POWER HOUSE',nationality:'MALDIVIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'50410',name:'MOJIBUR RAHMAN',designation:'TECHNICAL OPERATOR - POWER SYSTEMS',section:'POWER HOUSE',nationality:'BANGLADESHI',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'52684',name:'KARANRAJ GANESAN',designation:'DUTY DRIVER',section:'POWER HOUSE',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'58502',name:'SANI PRODHAN',designation:'DUTY DRIVER',section:'POWER HOUSE',nationality:'BANGLADESHI',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'59158',name:'ELIOUS',designation:'DUTY DRIVER',section:'POWER HOUSE',nationality:'BANGLADESHI',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'52527',name:'JAYASURYA SEKAR',designation:'BLASTING & PAINTING SUPERVISOR',section:'PAINTING PROJECT',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'57785',name:'THILAKASIRI MATARAMBA KORALAG',designation:'SITE MANAGER, BLASTING & PAINTING',section:'PAINTING PROJECT',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'57788',name:'JOHN NOMER REY GARCIA',designation:'SCAFFOLDER',section:'PAINTING PROJECT',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'57790',name:'RYAN ALVAREZ PATYAG',designation:'SCAFFOLDER',section:'PAINTING PROJECT',nationality:'FILIPINO',siteStatus:'ON LEAVE',leaveType:'AL',leaveStart:'2026-05-15',leaveEnd:'2026-06-21',exitDate:''},
+  {empId:'57786',name:'ADRIAN SALUDO ANTENOR',designation:'SCAFFOLDER',section:'PAINTING PROJECT',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'58786',name:'NOEL LUANGCO',designation:'SCAFFOLDER',section:'PAINTING PROJECT',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'59192',name:'SANNY MORENO ALCERA',designation:'SCAFFOLDER',section:'PAINTING PROJECT',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'57945',name:'SUSANTHA SENEVIRATHNA',designation:'GRIT BLASTER',section:'PAINTING PROJECT',nationality:'SRI LANKAN',siteStatus:'ON LEAVE',leaveType:'AL',leaveStart:'2026-05-15',leaveEnd:'2026-06-21',exitDate:''},
+  {empId:'58122',name:'NILANKA PRASANNA PERERA JAYAKODY ARACHCHIGE',designation:'GRIT BLASTER',section:'PAINTING PROJECT',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'58151',name:'SURESH JAYARATHNA MUTHUNAYAKA PEDIGE',designation:'GRIT BLASTER',section:'PAINTING PROJECT',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'58519',name:'PRABAKARAN ANBAZHAGAN',designation:'MAINTENANCE SUPPORT - PAINTING',section:'PAINTING PROJECT',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'58520',name:'ABDUR RAHEEM PERIYASAMY',designation:'MAINTENANCE SUPPORT - PAINTING',section:'PAINTING PROJECT',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'58523',name:'GOPINATH SELVARAJ',designation:'MAINTENANCE SUPPORT - PAINTING',section:'PAINTING PROJECT',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'58541',name:'MOAJIAM MIAH',designation:'MAINTENANCE SUPPORT - PAINTING',section:'PAINTING PROJECT',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'59410',name:'JANAKA KUMARA AHANGAMA VITHANAGE',designation:'GRIT BLASTER',section:'PAINTING PROJECT',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'59411',name:'NIMAL KARUNATHILAKA KIRUNGA NEKETHTHALAGE GEDARA',designation:'GRIT BLASTER',section:'PAINTING PROJECT',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+  {empId:'59610',name:'RASHI PRABHATH SUSANTHA PEDURU ARACHCHIGE',designation:'QA/QC SUPERVISOR',section:'PAINTING PROJECT',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
+];
 const USERS_KEY = 'cmms_vg_users';
 const PER_PAGE = 20;
 const PLANTS = ['01 FUEL FARM','02 CEMENT PLANT','03 LPG PLANT','04 POWER HOUSE','05 ROOFING PLANT','06 OXYGEN PLANT','07 MOBILE MACHINERY','08 VEHICLES','09 FIRE PUMP SYSTEM','10 BATCHING PLANT'];
@@ -154,6 +212,7 @@ function statusCls(s) {
 function joStatusCls(s) {
   if (s==='OPEN') return 'jop';
   if (s==='IN PROGRESS') return 'jip';
+  if (s==='COMPLETED') return 'jcp';
   if (s==='CLOSED') return 'jcl';
   return '';
 }
@@ -238,6 +297,7 @@ tr:last-child td{border-bottom:none;}tr:hover td{background:rgba(255,255,255,.02
 .jop{background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.3);}
 .jcl{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3);}
 .jip{background:rgba(26,86,219,.15);color:#60a5fa;border:1px solid rgba(26,86,219,.3);}
+.jcp{background:rgba(139,92,246,.15);color:#a78bfa;border:1px solid rgba(139,92,246,.3);}
 .prio-high{color:var(--red);font-weight:600;font-family:var(--fm);font-size:11px;}
 .prio-low{color:var(--green);font-family:var(--fm);font-size:11px;}
 .modal-overlay{display:flex;position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(3px);z-index:200;align-items:center;justify-content:center;}
@@ -727,11 +787,41 @@ function App() {
   }
   function revertJO(jobNo) {
     setJobOrders(prev => {
-      const next = prev.map(j => j.jobNo===jobNo ? {...j, status:'IN PROGRESS', closedBy:'', closerDesignation:'', closedDate:''} : j);
+      const next = prev.map(j => j.jobNo===jobNo ? {...j, status:'COMPLETED', closedBy:'', closerDesignation:'', closedDate:''} : j);
       persist(assets, next, joCounter);
       return next;
     });
-    addToast(`${jobNo} reverted to IN PROGRESS.`);
+    addToast(`${jobNo} reverted to COMPLETED.`);
+  }
+
+  // ── Employees
+  const [employees, setEmployees] = useState(() => {
+    try { const r = localStorage.getItem(EMPLOYEES_KEY); if (r) return JSON.parse(r); } catch(e) {}
+    return BASE_EMPLOYEES;
+  });
+  function persistEmployees(next) {
+    try { localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(next)); } catch(e) {}
+  }
+  function saveEmployee(emp, editId) {
+    setEmployees(prev => {
+      let next;
+      if (editId) {
+        next = prev.map(e => e.empId===editId ? {...emp, empId:editId} : e);
+      } else {
+        next = [...prev, emp];
+      }
+      persistEmployees(next);
+      return next;
+    });
+    addToast(editId ? 'Employee updated.' : 'Employee added.');
+  }
+  function updateEmployeeStatus(empId, updates) {
+    setEmployees(prev => {
+      const next = prev.map(e => e.empId===empId ? {...e, ...updates} : e);
+      persistEmployees(next);
+      return next;
+    });
+    addToast('Employee record updated.');
   }
   function resetData() {
     setAssets([]);
@@ -853,6 +943,8 @@ function App() {
             <NavItem active={page==='assets'} onClick={()=>setPage('assets')} icon="⚙" label="Asset Registry"/>
             <div className="nav-section">Maintenance</div>
             <NavItem active={page==='joborders'} onClick={()=>setPage('joborders')} icon="📋" label="Job Orders"/>
+            <div className="nav-section">Manpower</div>
+            <NavItem active={page==='employees'} onClick={()=>setPage('employees')} icon="👷" label="Employees"/>
             <div className="nav-section">Reports</div>
             <NavItem active={page==='reports'} onClick={()=>setPage('reports')} icon="📊" label="Reports"/>
             <div className="nav-section">System</div>
@@ -861,7 +953,7 @@ function App() {
               <div style={{display:'flex',alignItems:'center',gap:10}}>
                 <div className="sidebar-avatar">{currentUser.fullName.charAt(0).toUpperCase()}</div>
                 <div style={{minWidth:0}}>
-                  <div className="sidebar-user-name">{currentUser.fullName}</div>
+                  <div className="sidebar-user-name">{currentUser.fullName.split(' ')[0]}</div>
                   <div className="sidebar-user-role">{currentUser.role}</div>
                 </div>
               </div>
@@ -872,6 +964,7 @@ function App() {
             {page==='dashboard' && <DashboardPage assets={assets} jobOrders={jobOrders} setPage={setPage} setJoModal={setJoModal} customPlants={customPlants}/>}
             {page==='assets'    && <AssetsPage assets={assets} setAssetModal={setAssetModal} setJoModal={setJoModal} onStatusChange={updateAssetStatus} onDeleteAsset={deleteAsset} customPlants={customPlants} onExportCSV={()=>exportAssetsCSV(assets)} onImportCSV={importAssetsFromCSV} currentUser={currentUser}/>}
             {page==='joborders' && <JobOrdersPage assets={assets} jobOrders={jobOrders} setJoModal={setJoModal} setJoViewModal={setJoViewModal} onStatusChange={updateJOStatus} onDeleteJO={deleteJO} onExportCSV={()=>exportJobOrdersCSV(jobOrders)} onImportCSV={importJOsFromCSV} onApproveJO={approveJO} onRevertJO={revertJO} currentUser={currentUser}/>}
+            {page==='employees' && <EmployeesPage employees={employees} onSaveEmployee={saveEmployee} onUpdateStatus={updateEmployeeStatus} currentUser={currentUser}/>}
             {page==='reports'   && <ReportsPage assets={assets} jobOrders={jobOrders}/>}
             {page==='settings'  && <SettingsPage users={users} currentUser={currentUser} onSaveUser={saveUser} onDeleteUser={deleteUser} onResetData={resetData}/>}
           </div>
@@ -891,7 +984,7 @@ function App() {
         )}
         {joModal && (
           <JOFormModal mode={joModal.mode} jo={joModal.jo} preAsset={joModal.preAsset}
-            assets={assets} joCounter={joCounter}
+            assets={assets} joCounter={joCounter} employees={employees}
             onClose={()=>setJoModal(null)} onSave={saveJO}/>
         )}
         {joViewModal && (
@@ -1221,7 +1314,7 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
               <th>Asset No.</th><th>Asset Category</th><th>Description</th>
               <th className="col-hide-md">Eq. Code</th>
               <th className="col-hide-md">Model/Make</th>
-              <th className="col-hide-md">Capacity</th>
+              <th className="col-hide-md">Serial No.</th>
               <th>Location</th><th>Status</th><th>Actions</th>
             </tr></thead>
             <tbody>
@@ -1233,7 +1326,7 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
                   <td><strong>{a.desc}</strong></td>
                   <td className="col-hide-md" style={{fontFamily:'var(--fm)',fontSize:11}}>{a.code||'—'}</td>
                   <td className="col-hide-md" style={{fontSize:12}}>{a.model||'—'}</td>
-                  <td className="col-hide-md" style={{fontSize:12}}>{a.cap||'—'}</td>
+                  <td className="col-hide-md" style={{fontFamily:'var(--fm)',fontSize:11}}>{a.serial||'—'}</td>
                   <td style={{fontSize:12}}>{a.loc||'—'}</td>
                   <td>
                     <select className={`sb-base ${statusCls(a.status)}`} value={a.status||''} onChange={e=>onStatusChange(a.num,e.target.value)}>
@@ -1280,6 +1373,7 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
   const importRef = useRef(null);
 
   const canAdvanceOpen = currentUser.role==='Admin' || currentUser.role==='Assistant Engineer';
+  const canComplete    = currentUser.role==='Admin' || currentUser.role==='Assistant Engineer';
   const canClose       = currentUser.role==='Admin' || currentUser.role==='Senior Engineer';
   const canRevert      = currentUser.role==='Admin';
   const canEditJO      = currentUser.role !== 'Senior Engineer';
@@ -1306,6 +1400,7 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
   const counts = {
     OPEN: jobOrders.filter(j=>j.status==='OPEN').length,
     'IN PROGRESS': jobOrders.filter(j=>j.status==='IN PROGRESS').length,
+    COMPLETED: jobOrders.filter(j=>j.status==='COMPLETED').length,
     CLOSED: jobOrders.filter(j=>j.status==='CLOSED').length,
   };
   const tabJOs = filtered.filter(j=>j.status===activeTab);
@@ -1314,13 +1409,16 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
   const TABS = [
     {id:'OPEN',        label:'Open',        color:'#f59e0b', bg:'rgba(245,158,11,.14)'},
     {id:'IN PROGRESS', label:'In Progress', color:'#60a5fa', bg:'rgba(96,165,250,.14)'},
+    {id:'COMPLETED',   label:'Completed',   color:'#a78bfa', bg:'rgba(139,92,246,.14)'},
     {id:'CLOSED',      label:'Closed',      color:'#10b981', bg:'rgba(16,185,129,.14)'},
   ];
 
   function requestAdvance(jo) {
     if (jo.status==='OPEN' && canAdvanceOpen) {
       setConfirmModal({jo, nextStatus:'IN PROGRESS'});
-    } else if (jo.status==='IN PROGRESS' && canClose) {
+    } else if (jo.status==='IN PROGRESS' && canComplete) {
+      setConfirmModal({jo, nextStatus:'COMPLETED'});
+    } else if (jo.status==='COMPLETED' && canClose) {
       setApprovalDate(new Date().toISOString().split('T')[0]);
       setConfirmModal({jo, nextStatus:'CLOSED'});
     }
@@ -1359,8 +1457,8 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
       </div>
 
       {/* Compact stat row */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:16,flexShrink:0}}>
-        {[['Total',jobOrders.length,'#1a56db','sc-blue'],['Open',counts['OPEN'],'#f59e0b','sc-yellow'],['In Progress',counts['IN PROGRESS'],'#60a5fa','sc-orange'],['Closed',counts['CLOSED'],'#10b981','sc-green']].map(([lbl,num,c,cls])=>(
+      <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10,marginBottom:16,flexShrink:0}}>
+        {[['Total',jobOrders.length,'#1a56db','sc-blue'],['Open',counts['OPEN'],'#f59e0b','sc-yellow'],['In Progress',counts['IN PROGRESS'],'#60a5fa','sc-orange'],['Completed',counts['COMPLETED'],'#a78bfa',''],['Closed',counts['CLOSED'],'#10b981','sc-green']].map(([lbl,num,c,cls])=>(
           <div key={lbl} className={`stat-card ${cls}`} style={{padding:'8px 14px'}}>
             <div style={{fontFamily:'var(--fh)',fontSize:24,fontWeight:700,color:c,lineHeight:1}}>{num}</div>
             <div style={{fontSize:10,color:'var(--gray)',fontFamily:'var(--fm)',letterSpacing:1,marginTop:3,textTransform:'uppercase'}}>{lbl}</div>
@@ -1423,7 +1521,7 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
               {tabJOs.length===0&&<tr><td colSpan={isClosed?10:8}><div className="empty-state" style={{padding:48}}>No {activeTab.toLowerCase()} job orders{q?' matching search':''}</div></td></tr>}
               {tabJOs.map(jo=>{
                 const joIsClosed = jo.status==='CLOSED';
-                const canAdvThis = jo.status==='OPEN'?canAdvanceOpen:canClose;
+                const canAdvThis = jo.status==='OPEN'?canAdvanceOpen:jo.status==='IN PROGRESS'?canComplete:jo.status==='COMPLETED'?canClose:false;
                 return (
                 <tr key={jo.jobNo}>
                   <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)'}}>{jo.jobNo}</td>
@@ -1488,7 +1586,32 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
         </div>
       )}
 
-      {/* Approval confirm: IN PROGRESS → CLOSED */}
+      {/* Simple confirm: IN PROGRESS → COMPLETED */}
+      {confirmModal&&confirmModal.nextStatus==='COMPLETED'&&(
+        <div className="modal-overlay" onClick={()=>setConfirmModal(null)}>
+          <div className="modal" style={{width:420}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-head">
+              <div className="modal-title">Mark as Completed?</div>
+              <button className="modal-close" onClick={()=>setConfirmModal(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div style={{fontSize:13,marginBottom:12}}>
+                Move <span style={{fontFamily:'var(--fm)',color:'var(--accent)'}}>{confirmModal.jo.jobNo}</span>{' '}
+                from <span className="sb-base jip">IN PROGRESS</span> → <span className="sb-base jcp">COMPLETED</span>?
+              </div>
+              <div style={{fontSize:12,color:'var(--gray)',marginBottom:20}}>
+                Asset: <strong style={{color:'var(--white)'}}>{confirmModal.jo.assetNum} — {confirmModal.jo.assetDesc||'—'}</strong>
+              </div>
+              <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
+                <button className="btn btn-ghost" onClick={()=>setConfirmModal(null)}>Cancel</button>
+                <button className="btn btn-primary" onClick={doAdvance} style={{background:'rgba(139,92,246,.9)'}}>✓ Mark Completed</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Approval confirm: COMPLETED → CLOSED */}
       {confirmModal&&confirmModal.nextStatus==='CLOSED'&&(
         <div className="modal-overlay" onClick={()=>setConfirmModal(null)}>
           <div className="modal" style={{width:480}} onClick={e=>e.stopPropagation()}>
@@ -2001,15 +2124,21 @@ function AssetFormModal({mode, asset, assets, onClose, onSave, customPlants=[], 
 }
 
 // ─── JO FORM MODAL ────────────────────────────────────────────────────────────
-function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave}) {
+function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave, employees=[]}) {
   const today = new Date().toISOString().split('T')[0];
-  const [f, setF] = useState(jo ? {...jo} : {
+  const [f, setF] = useState(jo ? {
+    ...jo,
+    manpower: jo.manpower || [{empId:'',name:'',designation:'',hours:''}]
+  } : {
     date:today, requester:'', dept:'', assetNum:preAsset||'', assetDesc:'', assetCategory:'', location:'',
     eqcode:'', problem:'', priority:'High', repairType:'Planned',
-    recvName:'', section:'', target:'', approved:'Priyantha Athapaththu',
-    tech1:'', tech1h:'', tech2:'', tech2h:'', parts:[{desc:'',qty:'',unit:'',srp:''}],
+    recvName:'', section:'', target:'',
+    manpower:[{empId:'',name:'',designation:'',hours:''}],
+    parts:[{desc:'',qty:'',unit:'',srp:''}],
     workDone:'', workStatus:'', eval:'', downtime:'', accept:'Accepted', status:'OPEN', completionDate:'',
   });
+  const [assetSearch, setAssetSearch] = useState('');
+  const filteredAssets = assets.filter(a => !assetSearch || (`${a.num} ${a.desc}`).toLowerCase().includes(assetSearch.toLowerCase()));
 
   function populateAsset(num) {
     const a = assets.find(x=>x.num===num);
@@ -2070,9 +2199,10 @@ function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave}) {
             <div className="form-row">
               <div className="form-group">
                 <label>Asset Number</label>
-                <select value={f.assetNum||''} onChange={e=>populateAsset(e.target.value)}>
+                <input value={assetSearch} onChange={e=>setAssetSearch(e.target.value)} placeholder="🔍 Search by number or description..." style={{marginBottom:6}}/>
+                <select value={f.assetNum||''} onChange={e=>{populateAsset(e.target.value);setAssetSearch('');}}>
                   <option value="">— Select Asset —</option>
-                  {assets.map(a=><option key={a.num} value={a.num}>{a.num} — {a.desc}</option>)}
+                  {filteredAssets.map(a=><option key={a.num} value={a.num}>{a.num} — {a.desc}</option>)}
                 </select>
               </div>
               {fld('Asset Description','assetDesc',{readonly:true})}
@@ -2104,14 +2234,41 @@ function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave}) {
             <div className="form-row">{fld('Received By','recvName')}{fld('Section Assigned','section')}</div>
             <div className="form-row">
               <div className="form-group"><label>Target Completion</label><input type="date" value={f.target||''} onChange={e=>setF({...f,target:e.target.value})}/></div>
-              {fld('Approved By','approved',{readonly:true})}
             </div>
           </div>
 
           <div className="jc-section">
             <div className="jc-section-title">Manpower Utilisation</div>
-            <div className="form-row">{fld('Technician 1','tech1')}{fld('Hours Attended','tech1h',{type:'number'})}</div>
-            <div className="form-row">{fld('Technician 2','tech2')}{fld('Hours Attended','tech2h',{type:'number'})}</div>
+            <table className="parts-table">
+              <thead><tr>
+                <th style={{width:'14%'}}>Emp ID</th>
+                <th style={{width:'30%'}}>Name</th>
+                <th style={{width:'30%'}}>Designation</th>
+                <th style={{width:'14%'}}>Hrs Attended</th>
+                <th style={{width:'8%'}}></th>
+              </tr></thead>
+              <tbody>
+                {(f.manpower||[]).map((m,i)=>(
+                  <tr key={i}>
+                    <td><input value={m.empId||''} onChange={e=>{
+                      const emp = employees.find(x=>x.empId===e.target.value);
+                      setF(prev=>{
+                        const mp=[...(prev.manpower||[])];
+                        mp[i]={...mp[i],empId:e.target.value,name:emp?emp.name:'',designation:emp?emp.designation:''};
+                        return {...prev,manpower:mp};
+                      });
+                    }} placeholder="Emp ID"/></td>
+                    <td><input value={m.name||''} readOnly placeholder="Auto-filled"/></td>
+                    <td><input value={m.designation||''} readOnly placeholder="Auto-filled"/></td>
+                    <td><input type="number" value={m.hours||''} onChange={e=>{
+                      setF(prev=>{const mp=[...(prev.manpower||[])];mp[i]={...mp[i],hours:e.target.value};return{...prev,manpower:mp};});
+                    }} placeholder="0"/></td>
+                    <td><button className="btn btn-danger btn-sm" onClick={()=>setF(prev=>({...prev,manpower:(prev.manpower||[]).filter((_,x)=>x!==i)}))}>✕</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button className="btn btn-ghost btn-sm" style={{marginTop:8}} onClick={()=>setF(prev=>({...prev,manpower:[...(prev.manpower||[]),{empId:'',name:'',designation:'',hours:''}]}))}>＋ Add Row</button>
           </div>
 
           <div className="jc-section">
@@ -2161,12 +2318,7 @@ function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave}) {
               </div>
             </div>
             <div className="form-row">
-              <div className="form-group">
-                <label>Job Order Status</label>
-                <select value={f.status||'OPEN'} onChange={e=>setF({...f,status:e.target.value})}>
-                  <option>OPEN</option><option>IN PROGRESS</option><option>CLOSED</option>
-                </select>
-              </div>
+              <div>
               <div className="form-group"><label>✅ Completion Date</label><input type="date" value={f.completionDate||''} onChange={e=>setF({...f,completionDate:e.target.value})}/></div>
             </div>
           </div>
@@ -2327,6 +2479,237 @@ function UserFormModal({mode, user, onClose, onSave}) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── EMPLOYEES PAGE ───────────────────────────────────────────────────────────
+function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={}}) {
+  const today = new Date().toISOString().split('T')[0];
+  const [tab, setTab] = useState('active');
+  const [q, setQ] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
+  const [editEmp, setEditEmp] = useState(null);
+  const [updateModal, setUpdateModal] = useState(null); // emp to update
+  const [updateType, setUpdateType] = useState('leave'); // leave or resign
+  const [leaveType, setLeaveType] = useState('AL');
+  const [leaveStart, setLeaveStart] = useState('');
+  const [leaveEnd, setLeaveEnd] = useState('');
+  const [exitDate, setExitDate] = useState('');
+  const importRef = useRef(null);
+
+  const isActive = emp => !emp.exitDate || emp.exitDate > today;
+
+  const filtered = employees.filter(e => isActive(e)===( tab==='active'))
+    .filter(e => !q || [e.empId,e.name,e.designation,e.section,e.nationality].join(' ').toLowerCase().includes(q.toLowerCase()))
+    .sort((a,b)=>parseInt(a.empId)-parseInt(b.empId));
+
+  const total   = employees.filter(isActive).length;
+  const onDuty  = employees.filter(e=>isActive(e)&&e.siteStatus==='ON DUTY').length;
+  const onLeave = employees.filter(e=>isActive(e)&&e.siteStatus==='ON LEAVE').length;
+
+  function exportEmpsCSV() {
+    const hdr='Emp ID,Name,Designation,Section,Nationality,Site Status,Leave Type,Leave Start,Leave End,Exit Date';
+    const rows=employees.map(e=>[e.empId,e.name,e.designation,e.section,e.nationality,e.siteStatus,e.leaveType,e.leaveStart,e.leaveEnd,e.exitDate].map(csvCell).join(','));
+    dlCSV([hdr,...rows].join('\n'),'employees_export.csv');
+  }
+  function downloadEmpTemplate() {
+    dlCSV('Emp ID,Name,Designation,Section,Nationality,Site Status,Leave Type,Leave Start,Leave End,Exit Date\n"55050","JOHN DOE","ENGINEER","ENGINEERING ADMINISTRATION","FILIPINO","ON DUTY","","","",""','employees_template.csv');
+  }
+
+  const canEdit = currentUser.role==='Admin';
+
+  const EmpForm = ({emp, onDone}) => {
+    const [f, setFf] = useState(emp || {empId:'',name:'',designation:'',section:'',nationality:'',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''});
+    return (
+      <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onDone(null)}>
+        <div className="modal" style={{width:560}} onClick={e=>e.stopPropagation()}>
+          <div className="modal-head">
+            <div className="modal-title">{emp?'Edit Employee':'Add Employee'}</div>
+            <button className="modal-close" onClick={()=>onDone(null)}>×</button>
+          </div>
+          <div className="modal-body">
+            <div className="form-row">
+              <div className="form-group"><label>Emp ID</label><input value={f.empId} onChange={e=>setFf({...f,empId:e.target.value})} readOnly={!!emp}/></div>
+              <div className="form-group"><label>Full Name</label><input value={f.name} onChange={e=>setFf({...f,name:e.target.value})}/></div>
+            </div>
+            <div className="form-row">
+              <div className="form-group"><label>Designation</label><input value={f.designation} onChange={e=>setFf({...f,designation:e.target.value})}/></div>
+              <div className="form-group"><label>Section</label><input value={f.section} onChange={e=>setFf({...f,section:e.target.value})}/></div>
+            </div>
+            <div className="form-row">
+              <div className="form-group"><label>Nationality</label><input value={f.nationality} onChange={e=>setFf({...f,nationality:e.target.value})}/></div>
+              <div className="form-group"><label>Site Status</label>
+                <select value={f.siteStatus} onChange={e=>setFf({...f,siteStatus:e.target.value})}>
+                  <option>ON DUTY</option><option>ON LEAVE</option>
+                </select>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:12,justifyContent:'flex-end',marginTop:8}}>
+              <button className="btn btn-ghost" onClick={()=>onDone(null)}>Cancel</button>
+              <button className="btn btn-success" onClick={()=>{if(!f.empId||!f.name){alert('Emp ID and Name required');return;}onDone(f);}}>💾 Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  function doUpdate() {
+    if (!updateModal) return;
+    let updates = {};
+    if (updateType==='resign') {
+      if (!exitDate) { alert('Exit date required'); return; }
+      updates = {exitDate, siteStatus: exitDate<=today?'RESIGNED':'ON DUTY'};
+    } else {
+      if (!leaveStart||!leaveEnd) { alert('Leave dates required'); return; }
+      const onL = leaveStart<=today && leaveEnd>=today;
+      updates = {leaveType, leaveStart, leaveEnd, siteStatus: onL?'ON LEAVE':'ON DUTY'};
+    }
+    onUpdateStatus(updateModal.empId, updates);
+    setUpdateModal(null);
+  }
+
+  const exitingSoon = employees.filter(e => isActive(e) && e.exitDate && e.exitDate > today).sort((a,b)=>a.exitDate.localeCompare(b.exitDate));
+
+  return (
+    <div>
+      <div className="page-header" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
+        <div>
+          <div className="page-title">EMPLOYEE <span>REGISTRY</span></div>
+          <div className="page-sub">MANPOWER MANAGEMENT — SITE STATUS & LEAVE TRACKING</div>
+        </div>
+        <div className="controls">
+          <input className="search-box" value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search employees..."/>
+          {canEdit&&<button className="btn btn-accent" onClick={()=>setShowAdd(true)}>＋ Add Employee</button>}
+          <button className="btn btn-csv btn-sm" onClick={exportEmpsCSV}>↓ Export</button>
+          <button className="btn btn-csv btn-sm" onClick={downloadEmpTemplate}>⬇ Template</button>
+        </div>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,marginBottom:22}}>
+        {[['Total Active',total,'var(--blue)','sc-blue'],['On Duty',onDuty,'var(--green)','sc-green'],['On Leave',onLeave,'var(--yellow)','sc-yellow']].map(([l,n,c,cls])=>(
+          <div key={l} className={`stat-card ${cls}`} style={{padding:'10px 14px'}}>
+            <div style={{fontFamily:'var(--fh)',fontSize:26,fontWeight:700,color:c,lineHeight:1}}>{n}</div>
+            <div style={{fontSize:10,color:'var(--gray)',fontFamily:'var(--fm)',letterSpacing:1,marginTop:3,textTransform:'uppercase'}}>{l}</div>
+          </div>
+        ))}
+      </div>
+
+      {exitingSoon.length>0&&(
+        <div style={{background:'rgba(239,68,68,.08)',border:'1px solid rgba(239,68,68,.25)',borderRadius:6,padding:'8px 14px',marginBottom:16,fontSize:12,fontFamily:'var(--fm)',color:'var(--red)'}}>
+          ⚠ Exiting Soon: {exitingSoon.map(e=>`${e.name} (${e.exitDate})`).join(' · ')}
+        </div>
+      )}
+
+      <div className="settings-tabs" style={{marginBottom:0}}>
+        <div className={`settings-tab${tab==='active'?' active':''}`} onClick={()=>setTab('active')}>
+          Active <span style={{fontFamily:'var(--fm)',fontSize:11,opacity:.7,marginLeft:4}}>({employees.filter(isActive).length})</span>
+        </div>
+        <div className={`settings-tab${tab==='inactive'?' active':''}`} onClick={()=>setTab('inactive')} style={{color:tab==='inactive'?'var(--red)':''}}>
+          Inactive / Resigned <span style={{fontFamily:'var(--fm)',fontSize:11,opacity:.7,marginLeft:4}}>({employees.filter(e=>!isActive(e)).length})</span>
+        </div>
+      </div>
+
+      <div className="panel" style={{borderTopLeftRadius:0,borderTopRightRadius:0,borderTop:'none'}}>
+        <div className="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Emp ID</th><th>Name</th><th>Designation</th><th>Section</th>
+              <th>Nationality</th><th>Site Status</th><th>Leave Start</th><th>Leave End</th><th>Exit Date</th>
+              {canEdit&&<th>Actions</th>}
+            </tr></thead>
+            <tbody>
+              {filtered.length===0&&<tr><td colSpan={canEdit?10:9}><div className="empty-state" style={{padding:32}}>No employees found</div></td></tr>}
+              {filtered.map(e=>{
+                const exiting = e.exitDate && e.exitDate>today;
+                const rowStyle = exiting?{background:'rgba(239,68,68,.05)'}:{};
+                return (
+                <tr key={e.empId} style={rowStyle}>
+                  <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)'}}>{e.empId}</td>
+                  <td style={{fontWeight:600,fontSize:12,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}
+                    title={e.name}>{e.name}</td>
+                  <td style={{fontSize:11,maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={e.designation}>{e.designation}</td>
+                  <td style={{fontSize:11}}>{e.section}</td>
+                  <td style={{fontSize:11}}>{e.nationality}</td>
+                  <td>
+                    <span className={`sb-base ${e.siteStatus==='ON DUTY'?'so':'sl'}`}>
+                      {e.siteStatus}{e.leaveType?` (${e.leaveType})`:''}
+                    </span>
+                  </td>
+                  <td style={{fontFamily:'var(--fm)',fontSize:11,color:e.leaveStart?'var(--yellow)':'var(--gray)'}}>{e.leaveStart||'—'}</td>
+                  <td style={{fontFamily:'var(--fm)',fontSize:11,color:e.leaveEnd?'var(--yellow)':'var(--gray)'}}>{e.leaveEnd||'—'}</td>
+                  <td style={{fontFamily:'var(--fm)',fontSize:11,color:e.exitDate?'var(--red)':'var(--gray)',fontWeight:e.exitDate?700:400}}>{e.exitDate||'—'}</td>
+                  {canEdit&&<td>
+                    <div style={{display:'flex',gap:4,flexWrap:'nowrap'}}>
+                      <button className="btn btn-warning btn-sm btn-icon" title="Edit" onClick={()=>setEditEmp(e)}>✏</button>
+                      <button className="btn btn-primary btn-sm" style={{fontSize:10,padding:'3px 7px'}} title="Update Leave/Exit" onClick={()=>{setUpdateModal(e);setUpdateType('leave');setLeaveType(e.leaveType||'AL');setLeaveStart(e.leaveStart||'');setLeaveEnd(e.leaveEnd||'');setExitDate(e.exitDate||'');}}>📋 Update</button>
+                    </div>
+                  </td>}
+                </tr>
+              );})}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Add/Edit Employee Modal */}
+      {(showAdd||editEmp)&&(
+        <EmpForm emp={editEmp} onDone={f=>{
+          if(f){onSaveEmployee(f, editEmp?editEmp.empId:null);}
+          setShowAdd(false);setEditEmp(null);
+        }}/>
+      )}
+
+      {/* Leave / Resignation Update Modal */}
+      {updateModal&&(
+        <div className="modal-overlay" onClick={()=>setUpdateModal(null)}>
+          <div className="modal" style={{width:480}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-head">
+              <div className="modal-title">Update — {updateModal.name.split(' ')[0]}</div>
+              <button className="modal-close" onClick={()=>setUpdateModal(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div style={{display:'flex',gap:12,marginBottom:20}}>
+                <button className={`btn ${updateType==='leave'?'btn-primary':'btn-ghost'}`} onClick={()=>setUpdateType('leave')}>Leave Update</button>
+                <button className={`btn ${updateType==='resign'?'btn-danger':'btn-ghost'}`} onClick={()=>setUpdateType('resign')}>Resignation</button>
+              </div>
+              {updateType==='leave'&&(
+                <div>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Leave Type</label>
+                      <select value={leaveType} onChange={e=>setLeaveType(e.target.value)}>
+                        <option value="AL">AL — Annual Leave</option>
+                        <option value="FRL">FRL — Family Responsibility Leave</option>
+                        <option value="SL">SL — Sick Leave</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group"><label>Leave Start</label><input type="date" value={leaveStart} onChange={e=>setLeaveStart(e.target.value)}/></div>
+                    <div className="form-group"><label>Leave End</label><input type="date" value={leaveEnd} onChange={e=>setLeaveEnd(e.target.value)}/></div>
+                  </div>
+                </div>
+              )}
+              {updateType==='resign'&&(
+                <div>
+                  <div style={{background:'rgba(239,68,68,.08)',border:'1px solid rgba(239,68,68,.25)',borderRadius:6,padding:'8px 12px',fontSize:11,color:'var(--red)',fontFamily:'var(--fm)',marginBottom:14}}>
+                    ⚠ On the exit date, this employee will automatically move to Inactive.
+                  </div>
+                  <div className="form-group"><label>Exit / Resignation Date</label><input type="date" value={exitDate} onChange={e=>setExitDate(e.target.value)}/></div>
+                </div>
+              )}
+              <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:16}}>
+                <button className="btn btn-ghost" onClick={()=>setUpdateModal(null)}>Cancel</button>
+                <button className={`btn ${updateType==='resign'?'btn-danger':'btn-success'}`} onClick={doUpdate}>
+                  {updateType==='resign'?'Save Resignation':'Save Leave'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
