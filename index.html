@@ -2317,9 +2317,8 @@ function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave, em
                 </select>
               </div>
             </div>
-            <div className="form-row">
-              <div>
-              <div className="form-group"><label>✅ Completion Date</label><input type="date" value={f.completionDate||''} onChange={e=>setF({...f,completionDate:e.target.value})}/></div>
+            <div className="form-row single">
+              <div className="form-group"><label>Completion Date</label><input type="date" value={f.completionDate||''} onChange={e=>setF({...f,completionDate:e.target.value})}/></div>
             </div>
           </div>
 
