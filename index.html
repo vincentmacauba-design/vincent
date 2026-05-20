@@ -2273,51 +2273,72 @@ function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave, em
 
           <div className="jc-section">
             <div className="jc-section-title">Equipment Details</div>
-            <div className="form-row">
-              <div className="form-group" style={{position:'relative'}}>
-                <label>Asset Number</label>
-                <div style={{position:'relative'}}>
-                  <input
-                    value={assetOpen ? assetSearch : (f.assetNum||'')}
-                    onChange={e=>{setAssetSearch(e.target.value);setAssetOpen(true);}}
-                    onFocus={()=>{setAssetSearch('');setAssetOpen(true);}}
-                    placeholder="🔍 Type asset number or description to search..."
-                    autoComplete="off"
-                    style={{paddingRight:f.assetNum&&!assetOpen?28:undefined}}
-                  />
-                  {f.assetNum&&!assetOpen&&(
-                    <button type="button" onClick={()=>{setF({...f,assetNum:'',assetDesc:'',assetCategory:'',location:'',eqcode:''});}}
-                      style={{position:'absolute',right:6,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:'var(--gray)',cursor:'pointer',fontSize:16,lineHeight:1,padding:'0 2px'}}
-                      title="Clear selection">×</button>
-                  )}
-                </div>
+
+            {/* Search + Asset Number row */}
+            <div style={{display:'flex',gap:14,marginBottom:14}}>
+              <div className="form-group" style={{flex:3,position:'relative',marginBottom:0}}>
+                <label>Search</label>
+                <input
+                  value={assetSearch}
+                  onChange={e=>{setAssetSearch(e.target.value);setAssetOpen(true);}}
+                  onFocus={()=>setAssetOpen(true)}
+                  placeholder="Search by asset number or description..."
+                  autoComplete="off"
+                />
                 {assetOpen&&(
                   <>
-                    <div style={{position:'fixed',inset:0,zIndex:299}} onClick={()=>setAssetOpen(false)}/>
-                    <div style={{position:'absolute',top:'calc(100% + 2px)',left:0,right:0,background:'var(--navy2)',border:'1px solid var(--border)',borderRadius:'0 0 6px 6px',zIndex:300,maxHeight:240,overflowY:'auto',boxShadow:'0 12px 40px rgba(0,0,0,.7)'}}>
+                    <div style={{position:'fixed',inset:0,zIndex:299}} onClick={()=>{setAssetOpen(false);}}/>
+                    <div style={{position:'absolute',top:'calc(100% + 3px)',left:0,right:0,background:'var(--navy2)',border:'1px solid var(--border)',borderTop:'2px solid var(--accent)',borderRadius:'0 0 6px 6px',zIndex:300,maxHeight:220,overflowY:'auto',boxShadow:'0 16px 48px rgba(0,0,0,.75)'}}>
                       {filteredAssets.length===0
-                        ? <div style={{padding:'12px 14px',color:'var(--gray)',fontSize:12}}>No assets match "{assetSearch}"</div>
-                        : filteredAssets.slice(0,30).map(a=>(
-                            <div key={a.num}
-                              onMouseDown={e=>e.preventDefault()}
-                              onClick={()=>{populateAsset(a.num);setAssetOpen(false);setAssetSearch('');}}
-                              style={{padding:'8px 12px',cursor:'pointer',display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid var(--border)',transition:'background .1s'}}
-                              onMouseEnter={e=>e.currentTarget.style.background='rgba(26,86,219,.18)'}
-                              onMouseLeave={e=>e.currentTarget.style.background='transparent'}
-                            >
-                              <span style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)',width:46,flexShrink:0,fontWeight:700}}>{a.num}</span>
-                              <span style={{fontSize:12,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.desc}</span>
-                              <span style={{fontSize:10,color:'var(--gray)',flexShrink:0,maxWidth:110,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{(a.plant||'').replace(/^\d+\s/,'')}</span>
+                        ? <div style={{padding:'14px 16px',color:'var(--gray)',fontSize:12,fontFamily:'var(--fm)'}}>No assets match "{assetSearch}"</div>
+                        : <>
+                            <div style={{padding:'6px 12px 4px',fontSize:10,fontFamily:'var(--fm)',color:'var(--gray)',letterSpacing:1,textTransform:'uppercase',borderBottom:'1px solid var(--border)',display:'flex',gap:10}}>
+                              <span style={{width:52,flexShrink:0}}>No.</span><span style={{flex:1}}>Description</span><span style={{width:100,textAlign:'right'}}>Category</span>
                             </div>
-                          ))
+                            {filteredAssets.slice(0,35).map(a=>(
+                              <div key={a.num}
+                                onMouseDown={e=>e.preventDefault()}
+                                onClick={()=>{populateAsset(a.num);setAssetOpen(false);setAssetSearch('');}}
+                                style={{padding:'9px 12px',cursor:'pointer',display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid var(--border)'}}
+                                onMouseEnter={e=>e.currentTarget.style.background='rgba(26,86,219,.18)'}
+                                onMouseLeave={e=>e.currentTarget.style.background='transparent'}
+                              >
+                                <span style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)',width:52,flexShrink:0,fontWeight:700}}>{a.num}</span>
+                                <span style={{fontSize:13,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.desc}</span>
+                                <span style={{fontSize:10,color:'var(--gray)',flexShrink:0,width:100,textAlign:'right',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{(a.plant||'').replace(/^\d+\s*/,'')}</span>
+                              </div>
+                            ))}
+                          </>
                       }
                     </div>
                   </>
                 )}
               </div>
-              {fld('Asset Description','assetDesc',{readonly:true})}
+              <div className="form-group" style={{flex:1,marginBottom:0}}>
+                <label>Asset Number</label>
+                <input
+                  value={f.assetNum||''}
+                  readOnly
+                  placeholder="Auto-filled"
+                  style={{
+                    background:'rgba(255,255,255,.03)',
+                    color: f.assetNum ? 'var(--accent)' : 'var(--gray)',
+                    fontFamily:'var(--fm)', fontWeight:f.assetNum?700:400, fontSize:13,
+                    cursor:'default',
+                  }}
+                />
+              </div>
             </div>
-            <div className="form-row">{fld('Asset Category','assetCategory',{readonly:true})}{fld('Location','location',{readonly:true})}{fld('Equipment Code','eqcode',{readonly:true})}</div>
+
+            {/* Auto-filled fields */}
+            <div className="form-row">
+              {fld('Asset Description','assetDesc',{readonly:true})}
+              {fld('Asset Category','assetCategory',{readonly:true})}
+            </div>
+            <div className="form-row">
+              {fld('Location','location',{readonly:true})}
+              {fld('Equipment Code','eqcode',{readonly:true})}
+            </div>
           </div>
 
           <div className="jc-section">
