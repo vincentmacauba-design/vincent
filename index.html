@@ -2205,16 +2205,22 @@ function AssetFormModal({mode, asset, assets, onClose, onSave, customPlants=[], 
 // ─── JO FORM MODAL ────────────────────────────────────────────────────────────
 function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave, employees=[]}) {
   const today = new Date().toISOString().split('T')[0];
-  const [f, setF] = useState(jo ? {
-    ...jo,
-    manpower: jo.manpower || [{empId:'',name:'',designation:'',hours:''}]
-  } : {
-    date:today, requester:'', dept:'', assetNum:preAsset||'', assetDesc:'', assetCategory:'', location:'',
-    eqcode:'', problem:'', priority:'High', repairType:'Planned',
-    recvName:'', section:'', target:'',
-    manpower:[{empId:'',name:'',designation:'',hours:''}],
-    parts:[{desc:'',qty:'',unit:'',srp:''}],
-    workDone:'', workStatus:'', eval:'', downtime:'', accept:'Accepted', status:'OPEN', completionDate:'',
+  const [f, setF] = useState(() => {
+    if (jo) return {...jo, manpower: jo.manpower || [{empId:'',name:'',designation:'',hours:''}]};
+    const base = {
+      date:today, requester:'', dept:'', assetNum:'', assetDesc:'', assetCategory:'', location:'',
+      eqcode:'', problem:'', priority:'High', repairType:'Planned',
+      recvName:'', section:'', target:'',
+      manpower:[{empId:'',name:'',designation:'',hours:''}],
+      parts:[{desc:'',qty:'',unit:'',srp:''}],
+      workDone:'', workStatus:'', eval:'', downtime:'', accept:'Accepted', status:'OPEN', completionDate:'',
+    };
+    if (preAsset) {
+      const a = assets.find(x=>x.num===preAsset);
+      if (a) return {...base, assetNum:a.num, assetDesc:a.desc, assetCategory:(a.plant||'').toUpperCase(), location:a.loc||a.plant||'', eqcode:a.code||''};
+      return {...base, assetNum:preAsset};
+    }
+    return base;
   });
   const [assetSearch, setAssetSearch] = useState('');
   const [assetOpen, setAssetOpen] = useState(false);
