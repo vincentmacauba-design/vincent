@@ -122,6 +122,38 @@ const BASE_ASSETS = [
 ];
 
 const STORE_KEY = 'cmms_vg_state';
+const PM_KEY = 'cmms_vg_pm';
+const FREQ_STYLE = {
+  'Weekly':     {color:'#10b981',bg:'rgba(16,185,129,.15)',bd:'rgba(16,185,129,.3)'},
+  'Monthly':    {color:'#60a5fa',bg:'rgba(96,165,250,.15)',bd:'rgba(96,165,250,.3)'},
+  'Quarterly':  {color:'#f97316',bg:'rgba(249,115,22,.15)',bd:'rgba(249,115,22,.3)'},
+  'Half-Yearly':{color:'#a78bfa',bg:'rgba(139,92,246,.15)',bd:'rgba(139,92,246,.3)'},
+  'Yearly':     {color:'#f59e0b',bg:'rgba(245,158,11,.15)',bd:'rgba(245,158,11,.3)'},
+};
+function computeNextService(dateStr,freq){
+  if(!dateStr)return '';
+  const d=new Date(dateStr+'T00:00:00');
+  if(freq==='Weekly')d.setDate(d.getDate()+7);
+  else if(freq==='Monthly')d.setMonth(d.getMonth()+1);
+  else if(freq==='Quarterly')d.setMonth(d.getMonth()+3);
+  else if(freq==='Half-Yearly')d.setMonth(d.getMonth()+6);
+  else if(freq==='Yearly')d.setFullYear(d.getFullYear()+1);
+  return d.toISOString().split('T')[0];
+}
+const BASE_PM = [
+  {id:'pm-001',assetNum:'1001',assetDesc:'FUEL TANKS',category:'01 FUEL FARM',location:'FUEL FARM',frequency:'Monthly',lastService:'2026-03-15',nextService:'2026-04-15',notes:'Check fuel level, inspect for leaks, test alarms',serviceHistory:[{date:'2026-03-15',jobNo:null,notes:'Monthly check - all normal'},{date:'2026-02-15',jobNo:null,notes:'No issues found'},{date:'2026-01-15',jobNo:null,notes:'Monthly check completed'}]},
+  {id:'pm-002',assetNum:'4001',assetDesc:'GENERATOR SET-1',category:'04 POWER HOUSE',location:'POWERHOUSE',frequency:'Weekly',lastService:'2026-05-09',nextService:'2026-05-16',notes:'Check oil, coolant, belts, battery, run load test',serviceHistory:[{date:'2026-05-09',jobNo:null,notes:'Weekly check OK'},{date:'2026-05-02',jobNo:null,notes:'Oil level topped up'},{date:'2026-04-25',jobNo:null,notes:'Weekly check done'}]},
+  {id:'pm-003',assetNum:'4004',assetDesc:'SEA WATER DESALATION UNIT',category:'04 POWER HOUSE',location:'POWERHOUSE',frequency:'Half-Yearly',lastService:'2025-11-20',nextService:'2026-05-20',notes:'Full inspection, membrane check, chemical dosing review',serviceHistory:[{date:'2025-11-20',jobNo:null,notes:'6-monthly service - all systems OK'},{date:'2025-05-20',jobNo:null,notes:'6-monthly service completed'}]},
+  {id:'pm-004',assetNum:'4002',assetDesc:'GENERATOR SET-2',category:'04 POWER HOUSE',location:'POWERHOUSE',frequency:'Monthly',lastService:'2026-04-22',nextService:'2026-05-22',notes:'Check oil, coolant, air filter replacement',serviceHistory:[{date:'2026-04-22',jobNo:null,notes:'Monthly service - filter replaced'},{date:'2026-03-22',jobNo:null,notes:'Monthly service'}]},
+  {id:'pm-005',assetNum:'7001',assetDesc:'MOBILE CRANE-80T',category:'07 MOBILE MACHINERY',location:'Q-MARINE',frequency:'Monthly',lastService:'2026-05-05',nextService:'2026-06-05',notes:'Lubricate all pivot points, check wire rope, test load limiters',serviceHistory:[{date:'2026-05-05',jobNo:null,notes:'Monthly inspection passed'},{date:'2026-04-05',jobNo:null,notes:'Wire rope checked - within limits'}]},
+  {id:'pm-006',assetNum:'9001',assetDesc:'Fire Pump-1',category:'09 FIRE PUMP SYSTEM',location:'Wtr Pump Room',frequency:'Monthly',lastService:'2026-05-01',nextService:'2026-06-01',notes:'Test run 30 min, check pressure gauges, inspect connections',serviceHistory:[{date:'2026-05-01',jobNo:null,notes:'Monthly test - pressure 8.2 bar, all OK'},{date:'2026-04-01',jobNo:null,notes:'Monthly test passed'}]},
+  {id:'pm-007',assetNum:'4005',assetDesc:'AIR COMPRESSOR-1',category:'04 POWER HOUSE',location:'POWERHOUSE',frequency:'Quarterly',lastService:'2026-04-01',nextService:'2026-07-01',notes:'Check belt tension, oil change, drain moisture traps',serviceHistory:[{date:'2026-04-01',jobNo:null,notes:'Quarterly service - belt adjusted, oil changed'},{date:'2026-01-01',jobNo:null,notes:'Quarterly service completed'}]},
+  {id:'pm-008',assetNum:'6001',assetDesc:'PUMP BOOSTER',category:'06 OXYGEN PLANT',location:'OXYGEN PLANT',frequency:'Quarterly',lastService:'2026-05-01',nextService:'2026-08-01',notes:'Inspect pump seals, check bearings, measure pressure differential',serviceHistory:[{date:'2026-05-01',jobNo:null,notes:'Quarterly check - seals in good condition'},{date:'2026-02-01',jobNo:null,notes:'Quarterly check'}]},
+  {id:'pm-009',assetNum:'3001',assetDesc:'LPG SPHERE TANKS',category:'03 LPG PLANT',location:'LPG TANK AREA',frequency:'Yearly',lastService:'2025-12-01',nextService:'2026-12-01',notes:'Annual inspection, NDT testing, safety valve calibration',serviceHistory:[{date:'2025-12-01',jobNo:null,notes:'Annual inspection - no defects found'},{date:'2024-12-01',jobNo:null,notes:'Annual inspection passed'}]},
+  {id:'pm-010',assetNum:'7006',assetDesc:'FORKLIFT-5T',category:'07 MOBILE MACHINERY',location:'GENERAL STORE',frequency:'Monthly',lastService:'2026-05-10',nextService:'2026-06-10',notes:'Check tyres, hydraulics, engine oil, mast chains',serviceHistory:[{date:'2026-05-10',jobNo:null,notes:'Monthly service - tyre pressure adjusted'},{date:'2026-04-10',jobNo:null,notes:'Monthly service done'}]},
+  {id:'pm-011',assetNum:'5009',assetDesc:'AIR COMPRESSOR (ROOFING)',category:'05 ROOFING PLANT',location:'ROOFING PLANT',frequency:'Monthly',lastService:'2026-04-15',nextService:'2026-05-15',notes:'Oil level check, drain moisture, inspect safety valve',serviceHistory:[{date:'2026-04-15',jobNo:null,notes:'Monthly check - oil level OK'},{date:'2026-03-15',jobNo:null,notes:'Monthly check done'}]},
+  {id:'pm-012',assetNum:'4003',assetDesc:'GENERATOR SET-3',category:'04 POWER HOUSE',location:'POWERHOUSE',frequency:'Weekly',lastService:'2026-05-16',nextService:'2026-05-23',notes:'Check oil, coolant, belts, battery, run load test',serviceHistory:[{date:'2026-05-16',jobNo:null,notes:'Weekly check - minor coolant top up'},{date:'2026-05-09',jobNo:null,notes:'Weekly check OK'}]},
+];
 const EMPLOYEES_KEY = 'cmms_vg_employees';
 const BASE_EMPLOYEES = [
   {empId:'56251',name:'SOBITHA AJITH PRIYANTHA ATHAPATHTHU HEWAWASAM LIYANAGE',designation:'SENIOR MANAGER, ENGINEERING AND MAINTENANCE',section:'ENGINEERING ADMINISTRATION',nationality:'SRI LANKAN',siteStatus:'ON LEAVE',leaveType:'AL',leaveStart:'2026-05-14',leaveEnd:'2026-06-11',exitDate:''},
@@ -816,6 +848,38 @@ function App() {
     });
     addToast(editId ? 'Employee updated.' : 'Employee added.');
   }
+  // ── PM Schedule
+  const [pm, setPM] = useState(() => {
+    try { const r = localStorage.getItem(PM_KEY); if (r) return JSON.parse(r); } catch(e) {}
+    return BASE_PM;
+  });
+  function savePMItem(item, editId) {
+    setPM(prev => {
+      let next;
+      if (editId) {
+        next = prev.map(p => p.id===editId ? {...item,id:editId,serviceHistory:p.serviceHistory||[]} : p);
+      } else {
+        const maxN = Math.max(0,...prev.map(p=>parseInt(p.id.split('-')[1])||0));
+        const newId = 'pm-'+String(maxN+1).padStart(3,'0');
+        next = [...prev, {...item, id:newId, serviceHistory:[]}];
+      }
+      try { localStorage.setItem(PM_KEY, JSON.stringify(next)); } catch(e) {}
+      return next;
+    });
+  }
+  function recordPMService(pmId, record) {
+    setPM(prev => {
+      const next = prev.map(p => {
+        if (p.id!==pmId) return p;
+        const history = [{...record}, ...(p.serviceHistory||[])];
+        const next_ = computeNextService(record.date, p.frequency);
+        return {...p, lastService:record.date, nextService:next_, serviceHistory:history};
+      });
+      try { localStorage.setItem(PM_KEY, JSON.stringify(next)); } catch(e) {}
+      return next;
+    });
+  }
+
   function updateEmployeeStatus(empId, updates) {
     setEmployees(prev => {
       const next = prev.map(e => e.empId===empId ? {...e, ...updates} : e);
@@ -944,6 +1008,7 @@ function App() {
             <NavItem active={page==='assets'} onClick={()=>setPage('assets')} icon="⚙" label="Asset Registry"/>
             <div className="nav-section">Maintenance</div>
             <NavItem active={page==='joborders'} onClick={()=>setPage('joborders')} icon="📋" label="Job Orders"/>
+            <NavItem active={page==='pmschedule'} onClick={()=>setPage('pmschedule')} icon="🔩" label="PM Schedule"/>
             <div className="nav-section">Manpower</div>
             <NavItem active={page==='employees'} onClick={()=>setPage('employees')} icon="👷" label="Employees"/>
             <div className="nav-section">Reports</div>
@@ -965,6 +1030,7 @@ function App() {
             {page==='dashboard' && <DashboardPage assets={assets} jobOrders={jobOrders} setPage={setPage} setJoModal={setJoModal} customPlants={customPlants} employees={employees}/>}
             {page==='assets'    && <AssetsPage assets={assets} setAssetModal={setAssetModal} setJoModal={setJoModal} onStatusChange={updateAssetStatus} onDeleteAsset={deleteAsset} customPlants={customPlants} onExportCSV={()=>exportAssetsCSV(assets)} onImportCSV={importAssetsFromCSV} currentUser={currentUser}/>}
             {page==='joborders' && <JobOrdersPage assets={assets} jobOrders={jobOrders} setJoModal={setJoModal} setJoViewModal={setJoViewModal} onStatusChange={updateJOStatus} onDeleteJO={deleteJO} onExportCSV={()=>exportJobOrdersCSV(jobOrders)} onImportCSV={importJOsFromCSV} onApproveJO={approveJO} onRevertJO={revertJO} currentUser={currentUser}/>}
+            {page==='pmschedule' && <PMSchedulePage pm={pm} assets={assets} setJoModal={setJoModal} onSavePM={savePMItem} onRecordService={recordPMService} currentUser={currentUser}/>}
             {page==='employees' && <EmployeesPage employees={employees} onSaveEmployee={saveEmployee} onUpdateStatus={updateEmployeeStatus} currentUser={currentUser}/>}
             {page==='reports'   && <ReportsPage assets={assets} jobOrders={jobOrders}/>}
             {page==='settings'  && <SettingsPage users={users} currentUser={currentUser} onSaveUser={saveUser} onDeleteUser={deleteUser} onResetData={resetData}/>}
@@ -2483,6 +2549,285 @@ function UserFormModal({mode, user, onClose, onSave}) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── PM SCHEDULE PAGE ─────────────────────────────────────────────────────────
+function PMSchedulePage({pm, assets, setJoModal, onSavePM, onRecordService, currentUser={}}) {
+  const today = new Date().toISOString().split('T')[0];
+  const [q, setQ] = useState('');
+  const [filterFreq, setFilterFreq] = useState('');
+  const [filterCat, setFilterCat] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [historyModal, setHistoryModal] = useState(null);
+  const [recordModal, setRecordModal] = useState(null);
+  const [recordDate, setRecordDate] = useState(today);
+  const [recordNotes, setRecordNotes] = useState('');
+  const [recordJobNo, setRecordJobNo] = useState('');
+  const [pmForm, setPmForm] = useState(null);     // null=closed | {mode,item}
+  const [pmF, setPmF] = useState({});             // form fields
+
+  const canEdit = currentUser.role !== 'Senior Engineer';
+
+  function daysUntil(ns) {
+    if (!ns) return null;
+    return Math.ceil((new Date(ns+'T00:00:00') - new Date(today+'T00:00:00')) / 86400000);
+  }
+  function statusInfo(days) {
+    if (days===null) return {text:'Not set',color:'var(--gray)'};
+    if (days<0)  return {text:`${Math.abs(days)}d overdue`,color:'var(--red)'};
+    if (days===0) return {text:'Due Today',color:'var(--orange)'};
+    if (days<=7) return {text:`${days}d`,color:'var(--yellow)'};
+    return {text:`${days}d`,color:'var(--green)'};
+  }
+
+  const allCats = [...new Set(pm.map(p=>p.category).filter(Boolean))].sort();
+  const filtered = pm.filter(p => {
+    const days = daysUntil(p.nextService);
+    const sOk = !filterStatus ||
+      (filterStatus==='overdue'   && days!==null && days<0) ||
+      (filterStatus==='due-soon'  && days!==null && days>=0 && days<=7) ||
+      (filterStatus==='ok'        && days!==null && days>7);
+    const hay = [p.assetNum,p.assetDesc,p.category,p.location].join(' ').toLowerCase();
+    return (!q||hay.includes(q.toLowerCase())) && (!filterFreq||p.frequency===filterFreq) && (!filterCat||p.category===filterCat) && sOk;
+  });
+
+  const overdueN  = pm.filter(p=>{const d=daysUntil(p.nextService);return d!==null&&d<0;}).length;
+  const dueSoonN  = pm.filter(p=>{const d=daysUntil(p.nextService);return d!==null&&d>=0&&d<=7;}).length;
+  const upToDateN = pm.filter(p=>{const d=daysUntil(p.nextService);return d!==null&&d>7;}).length;
+
+  function openAdd() {
+    setPmF({assetNum:'',assetDesc:'',category:'',location:'',frequency:'Monthly',nextService:'',notes:''});
+    setPmForm({mode:'add'});
+  }
+  function openEdit(item) {
+    setPmF({...item});
+    setPmForm({mode:'edit',id:item.id});
+  }
+  function populatePMAsset(num) {
+    const a = assets.find(x=>x.num===num);
+    if (a) setPmF(prev=>({...prev,assetNum:num,assetDesc:a.desc,category:a.plant,location:a.loc||a.plant}));
+    else setPmF(prev=>({...prev,assetNum:num}));
+  }
+  function savePM() {
+    if (!pmF.assetDesc||!pmF.frequency) { alert('Asset and frequency required'); return; }
+    onSavePM(pmF, pmForm.mode==='edit'?pmForm.id:null);
+    setPmForm(null);
+  }
+  function doRecord() {
+    if (!recordDate) { alert('Service date required'); return; }
+    onRecordService(recordModal.id, {date:recordDate, notes:recordNotes, jobNo:recordJobNo||null});
+    setRecordModal(null); setRecordNotes(''); setRecordJobNo('');
+  }
+
+  const FreqBadge = ({freq}) => {
+    const s = FREQ_STYLE[freq]||{color:'var(--gray)',bg:'rgba(148,163,184,.1)',bd:'rgba(148,163,184,.2)'};
+    return <span style={{display:'inline-block',padding:'2px 9px',borderRadius:3,fontSize:10,fontFamily:'var(--fm)',fontWeight:700,letterSpacing:.5,background:s.bg,color:s.color,border:`1px solid ${s.bd}`}}>{freq}</span>;
+  };
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="page-header" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
+        <div>
+          <div className="page-title">PM <span>SCHEDULE</span></div>
+          <div className="page-sub">PREVENTIVE MAINTENANCE SCHEDULE — MACHINERY & EQUIPMENT</div>
+        </div>
+        <div className="controls">
+          <input className="search-box" value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search assets..."/>
+          <select value={filterFreq} onChange={e=>setFilterFreq(e.target.value)}>
+            <option value="">All Frequencies</option>
+            {['Weekly','Monthly','Quarterly','Half-Yearly','Yearly'].map(f=><option key={f}>{f}</option>)}
+          </select>
+          <select value={filterCat} onChange={e=>setFilterCat(e.target.value)}>
+            <option value="">All Categories</option>
+            {allCats.map(c=><option key={c}>{c}</option>)}
+          </select>
+          <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}>
+            <option value="">All Status</option>
+            <option value="overdue">Overdue</option>
+            <option value="due-soon">Due Soon (≤7d)</option>
+            <option value="ok">Up to Date</option>
+          </select>
+          {canEdit&&<button className="btn btn-accent" onClick={openAdd}>＋ Add PM Schedule</button>}
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+        {[['Total',pm.length,'var(--blue)','sc-blue'],['Overdue',overdueN,'var(--red)','sc-red'],['Due Soon',dueSoonN,'var(--yellow)','sc-yellow'],['Up to Date',upToDateN,'var(--green)','sc-green']].map(([l,n,c,cls])=>(
+          <div key={l} className={`stat-card ${cls}`} style={{padding:'10px 14px'}}>
+            <div style={{fontFamily:'var(--fh)',fontSize:24,fontWeight:700,color:c,lineHeight:1}}>{n}</div>
+            <div style={{fontSize:10,color:'var(--gray)',fontFamily:'var(--fm)',letterSpacing:1,marginTop:3,textTransform:'uppercase'}}>{l}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Table */}
+      <div className="panel">
+        <div className="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Asset</th><th>Category</th><th>Location</th><th>Frequency</th>
+              <th>Last Service</th><th>Next Service</th><th>Days Until</th><th>Actions</th>
+            </tr></thead>
+            <tbody>
+              {filtered.length===0&&<tr><td colSpan={8}><div className="empty-state" style={{padding:40}}>No PM schedules found</div></td></tr>}
+              {filtered.map(item=>{
+                const days = daysUntil(item.nextService);
+                const st = statusInfo(days);
+                const isOverdue = days!==null && days<0;
+                const rowStyle = isOverdue ? {borderLeft:'3px solid var(--red)'} : days===0 ? {borderLeft:'3px solid var(--orange)'} : {};
+                return (
+                  <tr key={item.id} style={rowStyle}>
+                    <td>
+                      <strong style={{fontSize:13}}>{item.assetDesc}</strong>
+                      <div style={{fontSize:11,color:'var(--accent)',fontFamily:'var(--fm)',marginTop:2}}>{item.assetNum}</div>
+                      {item.notes&&<div style={{fontSize:10,color:'var(--gray)',marginTop:2,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={item.notes}>{item.notes}</div>}
+                    </td>
+                    <td style={{fontSize:11}}>{item.category}</td>
+                    <td style={{fontSize:12}}>{item.location}</td>
+                    <td><FreqBadge freq={item.frequency}/></td>
+                    <td style={{fontFamily:'var(--fm)',fontSize:12,color:item.lastService?'var(--white)':'var(--gray)'}}>{item.lastService||'—'}</td>
+                    <td style={{fontFamily:'var(--fm)',fontSize:12,color:item.nextService?'var(--white)':'var(--gray)'}}>{item.nextService||'—'}</td>
+                    <td>
+                      <span style={{fontFamily:'var(--fm)',fontSize:12,fontWeight:isOverdue?700:500,color:st.color}}>
+                        {st.text}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{display:'flex',gap:4,flexWrap:'nowrap'}}>
+                        <button className="btn btn-ghost btn-sm btn-icon" title="Service History" onClick={()=>setHistoryModal(item)}>📋</button>
+                        {canEdit&&<button className="btn btn-success btn-sm btn-icon" title="Record Service" onClick={()=>{setRecordModal(item);setRecordDate(today);setRecordNotes('');setRecordJobNo('');}}>✓</button>}
+                        <button className="btn btn-primary btn-sm" title="Raise Job Order" style={{fontSize:11,padding:'4px 8px'}} onClick={()=>setJoModal({mode:'add',preAsset:item.assetNum})}>+ JO</button>
+                        {canEdit&&<button className="btn btn-warning btn-sm btn-icon" title="Edit" onClick={()=>openEdit(item)}>✏</button>}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Service History Modal */}
+      {historyModal&&(
+        <div className="modal-overlay" onClick={()=>setHistoryModal(null)}>
+          <div className="modal" style={{width:640}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <div className="modal-title">{historyModal.assetDesc} — Service History</div>
+                <div style={{fontSize:11,color:'var(--gray)',fontFamily:'var(--fm)',marginTop:2}}>{historyModal.assetNum} · <FreqBadge freq={historyModal.frequency}/></div>
+              </div>
+              <button className="modal-close" onClick={()=>setHistoryModal(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div style={{display:'flex',gap:20,marginBottom:16,fontSize:12,flexWrap:'wrap'}}>
+                <span>Last Service: <strong style={{color:'var(--green)'}}>{historyModal.lastService||'—'}</strong></span>
+                <span>Next Service: <strong style={{color:daysUntil(historyModal.nextService)<0?'var(--red)':'var(--accent)'}}>{historyModal.nextService||'—'}</strong></span>
+                <span>Status: <strong style={{color:statusInfo(daysUntil(historyModal.nextService)).color}}>{statusInfo(daysUntil(historyModal.nextService)).text}</strong></span>
+              </div>
+              {(historyModal.serviceHistory||[]).length===0
+                ? <div className="empty-state" style={{padding:24}}>No service history recorded yet</div>
+                : <div className="tbl-wrap">
+                    <table>
+                      <thead><tr><th>Service Date</th><th>Notes</th><th>Job No.</th></tr></thead>
+                      <tbody>
+                        {[...(historyModal.serviceHistory||[])].map((h,i)=>(
+                          <tr key={i}>
+                            <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)',width:120}}>{h.date}</td>
+                            <td style={{fontSize:12}}>{h.notes||'—'}</td>
+                            <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--gray)'}}>{h.jobNo||'—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+              }
+              <div style={{marginTop:16,display:'flex',justifyContent:'flex-end'}}>
+                <button className="btn btn-ghost" onClick={()=>setHistoryModal(null)}>Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Record Service Modal */}
+      {recordModal&&(
+        <div className="modal-overlay" onClick={()=>setRecordModal(null)}>
+          <div className="modal" style={{width:460}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-head">
+              <div className="modal-title">Record Service — {recordModal.assetDesc}</div>
+              <button className="modal-close" onClick={()=>setRecordModal(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div style={{fontSize:12,color:'var(--gray)',marginBottom:14}}>
+                Frequency: <FreqBadge freq={recordModal.frequency}/>{' '}
+                Next service will be auto-computed as <strong style={{color:'var(--accent)'}}>{computeNextService(recordDate,recordModal.frequency)||'—'}</strong>
+              </div>
+              <div className="form-row">
+                <div className="form-group"><label>Service Date *</label><input type="date" value={recordDate} onChange={e=>setRecordDate(e.target.value)}/></div>
+                <div className="form-group"><label>Linked Job No. (optional)</label><input value={recordJobNo} onChange={e=>setRecordJobNo(e.target.value)} placeholder="JO-XXXX"/></div>
+              </div>
+              <div className="form-group">
+                <label>Service Notes</label>
+                <textarea value={recordNotes} onChange={e=>setRecordNotes(e.target.value)} placeholder="Describe work done, parts replaced, observations..."/>
+              </div>
+              <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}}>
+                <button className="btn btn-ghost" onClick={()=>setRecordModal(null)}>Cancel</button>
+                <button className="btn btn-success" onClick={doRecord}>✓ Save Service Record</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add / Edit PM Modal */}
+      {pmForm&&(
+        <div className="modal-overlay" onClick={()=>setPmForm(null)}>
+          <div className="modal" style={{width:600}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-head">
+              <div className="modal-title">{pmForm.mode==='add'?'Add PM Schedule':'Edit PM Schedule'}</div>
+              <button className="modal-close" onClick={()=>setPmForm(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Asset Number</label>
+                  <select value={pmF.assetNum||''} onChange={e=>populatePMAsset(e.target.value)}>
+                    <option value="">— Select Asset —</option>
+                    {assets.map(a=><option key={a.num} value={a.num}>{a.num} — {a.desc}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Frequency *</label>
+                  <select value={pmF.frequency||'Monthly'} onChange={e=>setPmF({...pmF,frequency:e.target.value})}>
+                    {['Weekly','Monthly','Quarterly','Half-Yearly','Yearly'].map(f=><option key={f}>{f}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group"><label>Asset Description</label><input value={pmF.assetDesc||''} onChange={e=>setPmF({...pmF,assetDesc:e.target.value})}/></div>
+                <div className="form-group"><label>Location</label><input value={pmF.location||''} onChange={e=>setPmF({...pmF,location:e.target.value})}/></div>
+              </div>
+              <div className="form-row">
+                <div className="form-group"><label>Category</label><input value={pmF.category||''} onChange={e=>setPmF({...pmF,category:e.target.value})}/></div>
+                <div className="form-group"><label>Next Service Date</label><input type="date" value={pmF.nextService||''} onChange={e=>setPmF({...pmF,nextService:e.target.value})}/></div>
+              </div>
+              <div className="form-group">
+                <label>PM Notes / Checklist</label>
+                <textarea value={pmF.notes||''} onChange={e=>setPmF({...pmF,notes:e.target.value})} placeholder="Describe what should be checked/done during this PM..."/>
+              </div>
+              <div style={{display:'flex',gap:12,justifyContent:'flex-end',marginTop:8}}>
+                <button className="btn btn-ghost" onClick={()=>setPmForm(null)}>Cancel</button>
+                <button className="btn btn-success" onClick={savePM}>💾 {pmForm.mode==='add'?'Add Schedule':'Update Schedule'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
