@@ -122,6 +122,7 @@ const BASE_ASSETS = [
 ];
 
 const STORE_KEY = 'cmms_vg_state';
+const SESSION_KEY = 'cmms_vg_session';
 const PM_KEY = 'cmms_vg_pm';
 const FREQ_STYLE = {
   'Weekly':     {color:'#10b981',bg:'rgba(16,185,129,.15)',bd:'rgba(16,185,129,.3)'},
@@ -632,7 +633,10 @@ function App() {
   const isLoaded = useRef(false);
 
   // auth & users
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    try { const r = localStorage.getItem(SESSION_KEY); if (r) return JSON.parse(r); } catch(e) {}
+    return null;
+  });
   const [users, setUsers] = useState(() => {
     try { const r = localStorage.getItem(USERS_KEY); if (r) return JSON.parse(r); } catch(e) {}
     return DEFAULT_USERS;
@@ -696,13 +700,14 @@ function App() {
 
   function handleLogin(username, password) {
     const u = users.find(u => u.username === username && u.password === password && u.active !== false);
-    if (u) { setCurrentUser(u); return true; }
+    if (u) { setCurrentUser(u); try{localStorage.setItem(SESSION_KEY,JSON.stringify(u));}catch(_){} return true; }
     return false;
   }
 
   function handleLogout() {
     setCurrentUser(null);
     setPage('dashboard');
+    try { localStorage.removeItem(SESSION_KEY); } catch(_) {}
   }
 
   function saveUser(user, editId) {
