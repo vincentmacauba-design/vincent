@@ -2994,16 +2994,6 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
           <div className="page-sub">MANPOWER MANAGEMENT — SITE STATUS & LEAVE TRACKING</div>
         </div>
         <div className="controls">
-          <input className="search-box" value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search..."/>
-          <select value={filterSection} onChange={e=>setFilterSection(e.target.value)} style={{minWidth:160}}>
-            <option value="">All Sections</option>
-            {allSections.map(s=><option key={s}>{s}</option>)}
-          </select>
-          {tab==='active'&&<select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}>
-            <option value="">All Status</option>
-            <option value="ON DUTY">On Duty</option>
-            <option value="ON LEAVE">On Leave</option>
-          </select>}
           {pendingResign.length>0&&(
             <button className="btn btn-warning btn-sm" onClick={()=>setShowResignModal(true)}>
               ⚠ Pending Resignations ({pendingResign.length})
@@ -3028,19 +3018,33 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
         ))}
       </div>
 
-      {/* Tabs */}
-      <div className="settings-tabs" style={{marginBottom:0}}>
-        <div className={`settings-tab${tab==='active'?' active':''}`}
-          style={{color:tab==='active'?'#10b981':''}}
-          onClick={()=>{setTab('active');setFilterStatus('');}}>
-          Active
-          <span style={{fontFamily:'var(--fm)',fontSize:11,marginLeft:5,opacity:.75}}>({employees.filter(isActive).length})</span>
+      {/* Tabs + inline filters */}
+      <div style={{display:'flex',alignItems:'stretch',borderBottom:'2px solid var(--border)',background:'var(--navy2)',borderRadius:'8px 8px 0 0',overflow:'hidden'}}>
+        <div style={{display:'flex'}}>
+          <div className={`settings-tab${tab==='active'?' active':''}`}
+            style={{color:tab==='active'?'#10b981':'',borderBottom:tab==='active'?'2px solid #10b981':'2px solid transparent',marginBottom:-2}}
+            onClick={()=>{setTab('active');setFilterStatus('');}}>
+            Active
+            <span style={{fontFamily:'var(--fm)',fontSize:11,marginLeft:5,opacity:.75}}>({employees.filter(isActive).length})</span>
+          </div>
+          <div className={`settings-tab${tab==='inactive'?' active':''}`}
+            style={{color:tab==='inactive'?'#ef4444':'',borderBottom:tab==='inactive'?'2px solid #ef4444':'2px solid transparent',marginBottom:-2}}
+            onClick={()=>{setTab('inactive');setFilterStatus('');}}>
+            Inactive
+            <span style={{fontFamily:'var(--fm)',fontSize:11,marginLeft:5,opacity:.75}}>({employees.filter(e=>!isActive(e)).length})</span>
+          </div>
         </div>
-        <div className={`settings-tab${tab==='inactive'?' active':''}`}
-          style={{color:tab==='inactive'?'#ef4444':''}}
-          onClick={()=>{setTab('inactive');setFilterStatus('');}}>
-          Inactive
-          <span style={{fontFamily:'var(--fm)',fontSize:11,marginLeft:5,opacity:.75}}>({employees.filter(e=>!isActive(e)).length})</span>
+        <div style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',marginLeft:'auto',borderLeft:'1px solid var(--border)'}}>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search..." style={{fontSize:12,padding:'5px 10px',minWidth:160,background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.12)',color:'var(--white)',borderRadius:5,outline:'none'}}/>
+          <select value={filterSection} onChange={e=>setFilterSection(e.target.value)} style={{fontSize:12,minWidth:140}}>
+            <option value="">All Sections</option>
+            {allSections.map(s=><option key={s}>{s}</option>)}
+          </select>
+          {tab==='active'&&<select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{fontSize:12}}>
+            <option value="">All Status</option>
+            <option value="ON DUTY">On Duty</option>
+            <option value="ON LEAVE">On Leave</option>
+          </select>}
         </div>
       </div>
 
