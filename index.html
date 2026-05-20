@@ -2968,7 +2968,8 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
     });
   }
 
-  const canEdit = currentUser.role==='Admin';
+  const canAdmin = currentUser.role==='Admin';
+  const canEdit  = currentUser.role !== 'Senior Engineer'; // can use actions (AE + Admin)
 
   function doUpdate() {
     if (!updateModal) return;
@@ -3005,7 +3006,7 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
               ⚠ Pending Resignations ({pendingResign.length})
             </button>
           )}
-          {canEdit&&<button className="btn btn-accent" onClick={()=>{setEmpForm({empId:'',name:'',designation:'',section:'',nationality:'',siteStatus:'ON DUTY'});setEmpFormIsEdit(false);}}>＋ Add Employee</button>}
+          {canAdmin&&<button className="btn btn-accent" onClick={()=>{setEmpForm({empId:'',name:'',designation:'',section:'',nationality:'',siteStatus:'ON DUTY'});setEmpFormIsEdit(false);}}>＋ Add Employee</button>}
           <button className="btn btn-csv btn-sm" onClick={exportEmpsCSV}>↓ Export</button>
           <label className="btn btn-csv btn-sm" style={{cursor:'pointer'}}>↑ Import
             <input type="file" accept=".csv" style={{display:'none'}} ref={importRef} onChange={e=>{if(e.target.files[0]){importEmpsFromFile(e.target.files[0]);e.target.value='';}}}/>
@@ -3071,6 +3072,7 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
             </tr></thead>
             <tbody>
               {displayList.length===0&&<tr><td colSpan={canEdit?10:9}><div className="empty-state" style={{padding:32}}>No employees found</div></td></tr>}
+
               {displayList.map(e=>{
                 const resigning = isActive(e) && e.exitDate;
                 const rowStyle  = resigning ? {background:'rgba(245,158,11,.09)'} : {};
@@ -3093,7 +3095,7 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
                   <td style={{fontFamily:'var(--fm)',fontSize:11,color:resigning?'var(--accent)':'var(--gray)',fontWeight:resigning?700:400}}>{e.exitDate||'—'}</td>
                   {canEdit&&<td>
                     <div style={{display:'flex',gap:4,flexWrap:'nowrap'}}>
-                      <button className="btn btn-warning btn-sm btn-icon" title="Edit" onClick={()=>{setEmpForm({...e});setEmpFormIsEdit(true);}}>✏</button>
+                      {canAdmin&&<button className="btn btn-warning btn-sm btn-icon" title="Edit Employee" onClick={()=>{setEmpForm({...e});setEmpFormIsEdit(true);}}>✏</button>}
                       <button className="btn btn-primary btn-sm" style={{fontSize:10,padding:'3px 7px'}} onClick={()=>{setUpdateModal(e);setUpdateType('leave');setLeaveType(e.leaveType||'AL');setLeaveStart(e.leaveStart||'');setLeaveEnd(e.leaveEnd||'');setExitDate(e.exitDate||'');}}>📋 Update</button>
                     </div>
                   </td>}
