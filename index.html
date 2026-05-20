@@ -254,7 +254,8 @@ body,#root{background:var(--navy);color:var(--white);font-family:var(--fb);font-
 .page-title span{color:var(--accent);}
 .page-sub{font-size:12px;color:var(--gray);font-family:var(--fm);letter-spacing:1px;margin-top:2px;}
 .page-header{margin-bottom:24px;}
-.stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:28px;}
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin-bottom:28px;}
+.sc-purple::before{background:#a78bfa;}.sc-purple .stat-num{color:#a78bfa;}
 .stat-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:18px 20px;backdrop-filter:blur(8px);position:relative;overflow:hidden;}
 .stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
 .sc-blue::before{background:var(--blue);}.sc-green::before{background:var(--green);}
@@ -961,7 +962,7 @@ function App() {
           </div>
 
           <div className="main">
-            {page==='dashboard' && <DashboardPage assets={assets} jobOrders={jobOrders} setPage={setPage} setJoModal={setJoModal} customPlants={customPlants}/>}
+            {page==='dashboard' && <DashboardPage assets={assets} jobOrders={jobOrders} setPage={setPage} setJoModal={setJoModal} customPlants={customPlants} employees={employees}/>}
             {page==='assets'    && <AssetsPage assets={assets} setAssetModal={setAssetModal} setJoModal={setJoModal} onStatusChange={updateAssetStatus} onDeleteAsset={deleteAsset} customPlants={customPlants} onExportCSV={()=>exportAssetsCSV(assets)} onImportCSV={importAssetsFromCSV} currentUser={currentUser}/>}
             {page==='joborders' && <JobOrdersPage assets={assets} jobOrders={jobOrders} setJoModal={setJoModal} setJoViewModal={setJoViewModal} onStatusChange={updateJOStatus} onDeleteJO={deleteJO} onExportCSV={()=>exportJobOrdersCSV(jobOrders)} onImportCSV={importJOsFromCSV} onApproveJO={approveJO} onRevertJO={revertJO} currentUser={currentUser}/>}
             {page==='employees' && <EmployeesPage employees={employees} onSaveEmployee={saveEmployee} onUpdateStatus={updateEmployeeStatus} currentUser={currentUser}/>}
@@ -1182,7 +1183,9 @@ function AssetDoughnutChart({assets}) {
   );
 }
 
-function DashboardPage({assets, jobOrders, setPage, setJoModal, customPlants=[]}) {
+function DashboardPage({assets, jobOrders, setPage, setJoModal, customPlants=[], employees=[]}) {
+  const today = new Date().toISOString().split('T')[0];
+  const resignCount = employees.filter(e => (!e.exitDate||e.exitDate>today) && e.exitDate).length;
   const allCats = [...new Set([...customPlants,...assets.map(a=>a.plant)].filter(Boolean))].sort();
   const catStats = allCats.map(cat => {
     const ca = assets.filter(a=>a.plant===cat);
@@ -1207,6 +1210,7 @@ function DashboardPage({assets, jobOrders, setPage, setJoModal, customPlants=[]}
         <div className="stat-card sc-red"><div className="stat-num">{assets.filter(a=>a.status==='BREAKDOWN').length}</div><div className="stat-label">Breakdown</div></div>
         <div className="stat-card sc-orange"><div className="stat-num">{assets.filter(a=>a.status==='UNDER MAINTENANCE').length}</div><div className="stat-label">Under Maintenance</div></div>
         <div className="stat-card sc-yellow"><div className="stat-num">{jobOrders.filter(j=>j.status!=='CLOSED').length}</div><div className="stat-label">Open Job Orders</div></div>
+        <div className="stat-card sc-red"><div className="stat-num">{resignCount}</div><div className="stat-label">Resignations</div></div>
       </div>
 
       {/* Side-by-side: Recent JOs | Assets by Category */}
@@ -1458,7 +1462,7 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
 
       {/* Compact stat row */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10,marginBottom:16,flexShrink:0}}>
-        {[['Total',jobOrders.length,'#1a56db','sc-blue'],['Open',counts['OPEN'],'#f59e0b','sc-yellow'],['In Progress',counts['IN PROGRESS'],'#60a5fa','sc-orange'],['Completed',counts['COMPLETED'],'#a78bfa',''],['Closed',counts['CLOSED'],'#10b981','sc-green']].map(([lbl,num,c,cls])=>(
+        {[['Total',jobOrders.length,'#1a56db','sc-blue'],['Open',counts['OPEN'],'#f59e0b','sc-yellow'],['In Progress',counts['IN PROGRESS'],'#60a5fa','sc-orange'],['Completed',counts['COMPLETED'],'#a78bfa','sc-purple'],['Closed',counts['CLOSED'],'#10b981','sc-green']].map(([lbl,num,c,cls])=>(
           <div key={lbl} className={`stat-card ${cls}`} style={{padding:'8px 14px'}}>
             <div style={{fontFamily:'var(--fh)',fontSize:24,fontWeight:700,color:c,lineHeight:1}}>{num}</div>
             <div style={{fontSize:10,color:'var(--gray)',fontFamily:'var(--fm)',letterSpacing:1,marginTop:3,textTransform:'uppercase'}}>{lbl}</div>
@@ -2251,7 +2255,8 @@ function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave, em
                 {(f.manpower||[]).map((m,i)=>(
                   <tr key={i}>
                     <td><input value={m.empId||''} onChange={e=>{
-                      const emp = employees.find(x=>x.empId===e.target.value);
+                      const _today = new Date().toISOString().split('T')[0];
+                      const emp = employees.find(x=>x.empId===e.target.value&&(!x.exitDate||x.exitDate>_today));
                       setF(prev=>{
                         const mp=[...(prev.manpower||[])];
                         mp[i]={...mp[i],empId:e.target.value,name:emp?emp.name:'',designation:emp?emp.designation:''};
@@ -2487,21 +2492,40 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
   const today = new Date().toISOString().split('T')[0];
   const [tab, setTab] = useState('active');
   const [q, setQ] = useState('');
-  const [showAdd, setShowAdd] = useState(false);
-  const [editEmp, setEditEmp] = useState(null);
-  const [updateModal, setUpdateModal] = useState(null); // emp to update
-  const [updateType, setUpdateType] = useState('leave'); // leave or resign
+  const [filterSection, setFilterSection] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [sortCol, setSortCol] = useState('empId');
+  const [empForm, setEmpForm] = useState(null); // null=closed, {empId,name,...}=open
+  const [empFormIsEdit, setEmpFormIsEdit] = useState(false);
+  const [updateModal, setUpdateModal] = useState(null);
+  const [updateType, setUpdateType] = useState('leave');
   const [leaveType, setLeaveType] = useState('AL');
   const [leaveStart, setLeaveStart] = useState('');
   const [leaveEnd, setLeaveEnd] = useState('');
   const [exitDate, setExitDate] = useState('');
+  const [showResignModal, setShowResignModal] = useState(false);
   const importRef = useRef(null);
 
-  const isActive = emp => !emp.exitDate || emp.exitDate > today;
+  const isActive   = emp => !emp.exitDate || emp.exitDate > today;
+  const getStatus  = emp => !isActive(emp) ? 'INACTIVE' : (emp.siteStatus||'ON DUTY');
 
-  const filtered = employees.filter(e => isActive(e)===( tab==='active'))
-    .filter(e => !q || [e.empId,e.name,e.designation,e.section,e.nationality].join(' ').toLowerCase().includes(q.toLowerCase()))
-    .sort((a,b)=>parseInt(a.empId)-parseInt(b.empId));
+  const allSections = [...new Set(employees.map(e=>e.section).filter(Boolean))].sort();
+  const pendingResign = employees.filter(e=>isActive(e)&&e.exitDate).sort((a,b)=>a.exitDate.localeCompare(b.exitDate));
+
+  const displayList = employees
+    .filter(e => {
+      const active = isActive(e);
+      if (tab==='active' && !active) return false;
+      if (tab==='inactive' && active) return false;
+      if (filterSection && e.section!==filterSection) return false;
+      if (filterStatus && getStatus(e)!==filterStatus) return false;
+      if (q && ![e.empId,e.name,e.designation,e.section,e.nationality].join(' ').toLowerCase().includes(q.toLowerCase())) return false;
+      return true;
+    })
+    .sort((a,b)=>{
+      if (sortCol==='empId') return (parseInt(a.empId)||0)-(parseInt(b.empId)||0);
+      return (a[sortCol]||'').localeCompare(b[sortCol]||'');
+    });
 
   const total   = employees.filter(isActive).length;
   const onDuty  = employees.filter(e=>isActive(e)&&e.siteStatus==='ON DUTY').length;
@@ -2515,51 +2539,22 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
   function downloadEmpTemplate() {
     dlCSV('Emp ID,Name,Designation,Section,Nationality,Site Status,Leave Type,Leave Start,Leave End,Exit Date\n"55050","JOHN DOE","ENGINEER","ENGINEERING ADMINISTRATION","FILIPINO","ON DUTY","","","",""','employees_template.csv');
   }
+  function importEmpsFromFile(file) {
+    importCSVFile(file, rows=>{
+      const newEmps=rows.map(r=>({empId:r[0]||'',name:r[1]||'',designation:r[2]||'',section:r[3]||'',nationality:r[4]||'',siteStatus:r[5]||'ON DUTY',leaveType:r[6]||'',leaveStart:r[7]||'',leaveEnd:r[8]||'',exitDate:r[9]||''})).filter(e=>e.empId&&e.name);
+      let added=0;
+      newEmps.forEach(e=>{if(!employees.find(x=>x.empId===e.empId)){onSaveEmployee(e,null);added++;}});
+    });
+  }
 
   const canEdit = currentUser.role==='Admin';
-
-  const EmpForm = ({emp, onDone}) => {
-    const [f, setFf] = useState(emp || {empId:'',name:'',designation:'',section:'',nationality:'',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''});
-    return (
-      <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onDone(null)}>
-        <div className="modal" style={{width:560}} onClick={e=>e.stopPropagation()}>
-          <div className="modal-head">
-            <div className="modal-title">{emp?'Edit Employee':'Add Employee'}</div>
-            <button className="modal-close" onClick={()=>onDone(null)}>×</button>
-          </div>
-          <div className="modal-body">
-            <div className="form-row">
-              <div className="form-group"><label>Emp ID</label><input value={f.empId} onChange={e=>setFf({...f,empId:e.target.value})} readOnly={!!emp}/></div>
-              <div className="form-group"><label>Full Name</label><input value={f.name} onChange={e=>setFf({...f,name:e.target.value})}/></div>
-            </div>
-            <div className="form-row">
-              <div className="form-group"><label>Designation</label><input value={f.designation} onChange={e=>setFf({...f,designation:e.target.value})}/></div>
-              <div className="form-group"><label>Section</label><input value={f.section} onChange={e=>setFf({...f,section:e.target.value})}/></div>
-            </div>
-            <div className="form-row">
-              <div className="form-group"><label>Nationality</label><input value={f.nationality} onChange={e=>setFf({...f,nationality:e.target.value})}/></div>
-              <div className="form-group"><label>Site Status</label>
-                <select value={f.siteStatus} onChange={e=>setFf({...f,siteStatus:e.target.value})}>
-                  <option>ON DUTY</option><option>ON LEAVE</option>
-                </select>
-              </div>
-            </div>
-            <div style={{display:'flex',gap:12,justifyContent:'flex-end',marginTop:8}}>
-              <button className="btn btn-ghost" onClick={()=>onDone(null)}>Cancel</button>
-              <button className="btn btn-success" onClick={()=>{if(!f.empId||!f.name){alert('Emp ID and Name required');return;}onDone(f);}}>💾 Save</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   function doUpdate() {
     if (!updateModal) return;
     let updates = {};
     if (updateType==='resign') {
       if (!exitDate) { alert('Exit date required'); return; }
-      updates = {exitDate, siteStatus: exitDate<=today?'RESIGNED':'ON DUTY'};
+      updates = {exitDate, siteStatus:'ON DUTY'};
     } else {
       if (!leaveStart||!leaveEnd) { alert('Leave dates required'); return; }
       const onL = leaveStart<=today && leaveEnd>=today;
@@ -2569,80 +2564,112 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
     setUpdateModal(null);
   }
 
-  const exitingSoon = employees.filter(e => isActive(e) && e.exitDate && e.exitDate > today).sort((a,b)=>a.exitDate.localeCompare(b.exitDate));
+  const SortTh = ({label,col}) => (
+    <th onClick={()=>setSortCol(col)} style={{cursor:'pointer',userSelect:'none',whiteSpace:'nowrap'}}>
+      {label}{sortCol===col?<span style={{marginLeft:4,color:'var(--accent)'}}>↑</span>:null}
+    </th>
+  );
 
   return (
     <div>
+      {/* Header */}
       <div className="page-header" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
         <div>
           <div className="page-title">EMPLOYEE <span>REGISTRY</span></div>
           <div className="page-sub">MANPOWER MANAGEMENT — SITE STATUS & LEAVE TRACKING</div>
         </div>
         <div className="controls">
-          <input className="search-box" value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search employees..."/>
-          {canEdit&&<button className="btn btn-accent" onClick={()=>setShowAdd(true)}>＋ Add Employee</button>}
+          <input className="search-box" value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search..."/>
+          <select value={filterSection} onChange={e=>setFilterSection(e.target.value)} style={{minWidth:160}}>
+            <option value="">All Sections</option>
+            {allSections.map(s=><option key={s}>{s}</option>)}
+          </select>
+          {tab==='active'&&<select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}>
+            <option value="">All Status</option>
+            <option value="ON DUTY">On Duty</option>
+            <option value="ON LEAVE">On Leave</option>
+          </select>}
+          {pendingResign.length>0&&(
+            <button className="btn btn-warning btn-sm" onClick={()=>setShowResignModal(true)}>
+              ⚠ Pending Resignations ({pendingResign.length})
+            </button>
+          )}
+          {canEdit&&<button className="btn btn-accent" onClick={()=>{setEmpForm({empId:'',name:'',designation:'',section:'',nationality:'',siteStatus:'ON DUTY'});setEmpFormIsEdit(false);}}>＋ Add Employee</button>}
           <button className="btn btn-csv btn-sm" onClick={exportEmpsCSV}>↓ Export</button>
+          <label className="btn btn-csv btn-sm" style={{cursor:'pointer'}}>↑ Import
+            <input type="file" accept=".csv" style={{display:'none'}} ref={importRef} onChange={e=>{if(e.target.files[0]){importEmpsFromFile(e.target.files[0]);e.target.value='';}}}/>
+          </label>
           <button className="btn btn-csv btn-sm" onClick={downloadEmpTemplate}>⬇ Template</button>
         </div>
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,marginBottom:22}}>
+      {/* Stats */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:18}}>
         {[['Total Active',total,'var(--blue)','sc-blue'],['On Duty',onDuty,'var(--green)','sc-green'],['On Leave',onLeave,'var(--yellow)','sc-yellow']].map(([l,n,c,cls])=>(
           <div key={l} className={`stat-card ${cls}`} style={{padding:'10px 14px'}}>
-            <div style={{fontFamily:'var(--fh)',fontSize:26,fontWeight:700,color:c,lineHeight:1}}>{n}</div>
+            <div style={{fontFamily:'var(--fh)',fontSize:24,fontWeight:700,color:c,lineHeight:1}}>{n}</div>
             <div style={{fontSize:10,color:'var(--gray)',fontFamily:'var(--fm)',letterSpacing:1,marginTop:3,textTransform:'uppercase'}}>{l}</div>
           </div>
         ))}
       </div>
 
-      {exitingSoon.length>0&&(
-        <div style={{background:'rgba(239,68,68,.08)',border:'1px solid rgba(239,68,68,.25)',borderRadius:6,padding:'8px 14px',marginBottom:16,fontSize:12,fontFamily:'var(--fm)',color:'var(--red)'}}>
-          ⚠ Exiting Soon: {exitingSoon.map(e=>`${e.name} (${e.exitDate})`).join(' · ')}
-        </div>
-      )}
-
+      {/* Tabs */}
       <div className="settings-tabs" style={{marginBottom:0}}>
-        <div className={`settings-tab${tab==='active'?' active':''}`} onClick={()=>setTab('active')}>
-          Active <span style={{fontFamily:'var(--fm)',fontSize:11,opacity:.7,marginLeft:4}}>({employees.filter(isActive).length})</span>
+        <div className={`settings-tab${tab==='active'?' active':''}`}
+          style={{color:tab==='active'?'#10b981':''}}
+          onClick={()=>{setTab('active');setFilterStatus('');}}>
+          Active
+          <span style={{fontFamily:'var(--fm)',fontSize:11,marginLeft:5,opacity:.75}}>({employees.filter(isActive).length})</span>
         </div>
-        <div className={`settings-tab${tab==='inactive'?' active':''}`} onClick={()=>setTab('inactive')} style={{color:tab==='inactive'?'var(--red)':''}}>
-          Inactive / Resigned <span style={{fontFamily:'var(--fm)',fontSize:11,opacity:.7,marginLeft:4}}>({employees.filter(e=>!isActive(e)).length})</span>
+        <div className={`settings-tab${tab==='inactive'?' active':''}`}
+          style={{color:tab==='inactive'?'#ef4444':''}}
+          onClick={()=>{setTab('inactive');setFilterStatus('');}}>
+          Inactive
+          <span style={{fontFamily:'var(--fm)',fontSize:11,marginLeft:5,opacity:.75}}>({employees.filter(e=>!isActive(e)).length})</span>
         </div>
       </div>
 
+      {/* Table */}
       <div className="panel" style={{borderTopLeftRadius:0,borderTopRightRadius:0,borderTop:'none'}}>
         <div className="tbl-wrap">
           <table>
             <thead><tr>
-              <th>Emp ID</th><th>Name</th><th>Designation</th><th>Section</th>
-              <th>Nationality</th><th>Site Status</th><th>Leave Start</th><th>Leave End</th><th>Exit Date</th>
+              <SortTh label="Emp ID"      col="empId"/>
+              <SortTh label="Name"        col="name"/>
+              <SortTh label="Designation" col="designation"/>
+              <SortTh label="Section"     col="section"/>
+              <SortTh label="Nationality" col="nationality"/>
+              <SortTh label="Site Status" col="siteStatus"/>
+              <th>Leave Start</th><th>Leave End</th>
+              <SortTh label="Exit Date"   col="exitDate"/>
               {canEdit&&<th>Actions</th>}
             </tr></thead>
             <tbody>
-              {filtered.length===0&&<tr><td colSpan={canEdit?10:9}><div className="empty-state" style={{padding:32}}>No employees found</div></td></tr>}
-              {filtered.map(e=>{
-                const exiting = e.exitDate && e.exitDate>today;
-                const rowStyle = exiting?{background:'rgba(239,68,68,.05)'}:{};
+              {displayList.length===0&&<tr><td colSpan={canEdit?10:9}><div className="empty-state" style={{padding:32}}>No employees found</div></td></tr>}
+              {displayList.map(e=>{
+                const resigning = isActive(e) && e.exitDate;
+                const rowStyle  = resigning ? {background:'rgba(245,158,11,.09)'} : {};
+                const dispStatus = getStatus(e);
+                const statusCls = dispStatus==='ON DUTY'?'so':dispStatus==='INACTIVE'?'sb':'sl';
                 return (
                 <tr key={e.empId} style={rowStyle}>
                   <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)'}}>{e.empId}</td>
-                  <td style={{fontWeight:600,fontSize:12,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}
-                    title={e.name}>{e.name}</td>
+                  <td style={{fontWeight:600,fontSize:12,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={e.name}>{e.name}</td>
                   <td style={{fontSize:11,maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={e.designation}>{e.designation}</td>
                   <td style={{fontSize:11}}>{e.section}</td>
                   <td style={{fontSize:11}}>{e.nationality}</td>
                   <td>
-                    <span className={`sb-base ${e.siteStatus==='ON DUTY'?'so':'sl'}`}>
-                      {e.siteStatus}{e.leaveType?` (${e.leaveType})`:''}
+                    <span className={`sb-base ${statusCls}`}>
+                      {dispStatus}{e.leaveType&&dispStatus==='ON LEAVE'?` (${e.leaveType})`:''}
                     </span>
                   </td>
                   <td style={{fontFamily:'var(--fm)',fontSize:11,color:e.leaveStart?'var(--yellow)':'var(--gray)'}}>{e.leaveStart||'—'}</td>
                   <td style={{fontFamily:'var(--fm)',fontSize:11,color:e.leaveEnd?'var(--yellow)':'var(--gray)'}}>{e.leaveEnd||'—'}</td>
-                  <td style={{fontFamily:'var(--fm)',fontSize:11,color:e.exitDate?'var(--red)':'var(--gray)',fontWeight:e.exitDate?700:400}}>{e.exitDate||'—'}</td>
+                  <td style={{fontFamily:'var(--fm)',fontSize:11,color:resigning?'var(--accent)':'var(--gray)',fontWeight:resigning?700:400}}>{e.exitDate||'—'}</td>
                   {canEdit&&<td>
                     <div style={{display:'flex',gap:4,flexWrap:'nowrap'}}>
-                      <button className="btn btn-warning btn-sm btn-icon" title="Edit" onClick={()=>setEditEmp(e)}>✏</button>
-                      <button className="btn btn-primary btn-sm" style={{fontSize:10,padding:'3px 7px'}} title="Update Leave/Exit" onClick={()=>{setUpdateModal(e);setUpdateType('leave');setLeaveType(e.leaveType||'AL');setLeaveStart(e.leaveStart||'');setLeaveEnd(e.leaveEnd||'');setExitDate(e.exitDate||'');}}>📋 Update</button>
+                      <button className="btn btn-warning btn-sm btn-icon" title="Edit" onClick={()=>{setEmpForm({...e});setEmpFormIsEdit(true);}}>✏</button>
+                      <button className="btn btn-primary btn-sm" style={{fontSize:10,padding:'3px 7px'}} onClick={()=>{setUpdateModal(e);setUpdateType('leave');setLeaveType(e.leaveType||'AL');setLeaveStart(e.leaveStart||'');setLeaveEnd(e.leaveEnd||'');setExitDate(e.exitDate||'');}}>📋 Update</button>
                     </div>
                   </td>}
                 </tr>
@@ -2652,15 +2679,54 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
         </div>
       </div>
 
-      {/* Add/Edit Employee Modal */}
-      {(showAdd||editEmp)&&(
-        <EmpForm emp={editEmp} onDone={f=>{
-          if(f){onSaveEmployee(f, editEmp?editEmp.empId:null);}
-          setShowAdd(false);setEditEmp(null);
-        }}/>
+      {/* Add / Edit Employee Modal (inline, no nested component) */}
+      {empForm&&(
+        <div className="modal-overlay" onClick={()=>setEmpForm(null)}>
+          <div className="modal" style={{width:560}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-head">
+              <div className="modal-title">{empFormIsEdit?`Edit — ${empForm.empId}`:'Add New Employee'}</div>
+              <button className="modal-close" onClick={()=>setEmpForm(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-row">
+                <div className="form-group"><label>Emp ID</label><input value={empForm.empId} onChange={e=>setEmpForm({...empForm,empId:e.target.value})} readOnly={empFormIsEdit}/></div>
+                <div className="form-group"><label>Full Name</label><input value={empForm.name||''} onChange={e=>setEmpForm({...empForm,name:e.target.value})}/></div>
+              </div>
+              <div className="form-row">
+                <div className="form-group"><label>Designation</label><input value={empForm.designation||''} onChange={e=>setEmpForm({...empForm,designation:e.target.value})}/></div>
+                <div className="form-group">
+                  <label>Section</label>
+                  <select value={empForm.section||''} onChange={e=>setEmpForm({...empForm,section:e.target.value})}>
+                    <option value="">— Select Section —</option>
+                    {allSections.map(s=><option key={s}>{s}</option>)}
+                    <option value="__other__">Other (type below)</option>
+                  </select>
+                  {empForm.section==='__other__'&&<input value='' placeholder="Type section name" onChange={e=>setEmpForm({...empForm,section:e.target.value})} style={{marginTop:6}}/>}
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group"><label>Nationality</label><input value={empForm.nationality||''} onChange={e=>setEmpForm({...empForm,nationality:e.target.value})}/></div>
+                <div className="form-group">
+                  <label>Site Status</label>
+                  <select value={empForm.siteStatus||'ON DUTY'} onChange={e=>setEmpForm({...empForm,siteStatus:e.target.value})}>
+                    <option>ON DUTY</option><option>ON LEAVE</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{display:'flex',gap:12,justifyContent:'flex-end',marginTop:8}}>
+                <button className="btn btn-ghost" onClick={()=>setEmpForm(null)}>Cancel</button>
+                <button className="btn btn-success" onClick={()=>{
+                  if(!empForm.empId||!empForm.name){alert('Emp ID and Name required');return;}
+                  onSaveEmployee(empForm, empFormIsEdit?empForm.empId:null);
+                  setEmpForm(null);
+                }}>💾 Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
-      {/* Leave / Resignation Update Modal */}
+      {/* Leave / Resignation Modal */}
       {updateModal&&(
         <div className="modal-overlay" onClick={()=>setUpdateModal(null)}>
           <div className="modal" style={{width:480}} onClick={e=>e.stopPropagation()}>
@@ -2673,38 +2739,68 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
                 <button className={`btn ${updateType==='leave'?'btn-primary':'btn-ghost'}`} onClick={()=>setUpdateType('leave')}>Leave Update</button>
                 <button className={`btn ${updateType==='resign'?'btn-danger':'btn-ghost'}`} onClick={()=>setUpdateType('resign')}>Resignation</button>
               </div>
-              {updateType==='leave'&&(
-                <div>
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label>Leave Type</label>
-                      <select value={leaveType} onChange={e=>setLeaveType(e.target.value)}>
-                        <option value="AL">AL — Annual Leave</option>
-                        <option value="FRL">FRL — Family Responsibility Leave</option>
-                        <option value="SL">SL — Sick Leave</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div className="form-row">
-                    <div className="form-group"><label>Leave Start</label><input type="date" value={leaveStart} onChange={e=>setLeaveStart(e.target.value)}/></div>
-                    <div className="form-group"><label>Leave End</label><input type="date" value={leaveEnd} onChange={e=>setLeaveEnd(e.target.value)}/></div>
+              {updateType==='leave'&&<div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Leave Type</label>
+                    <select value={leaveType} onChange={e=>setLeaveType(e.target.value)}>
+                      <option value="AL">AL — Annual Leave</option>
+                      <option value="FRL">FRL — Family Responsibility Leave</option>
+                      <option value="SL">SL — Sick Leave</option>
+                    </select>
                   </div>
                 </div>
-              )}
-              {updateType==='resign'&&(
-                <div>
-                  <div style={{background:'rgba(239,68,68,.08)',border:'1px solid rgba(239,68,68,.25)',borderRadius:6,padding:'8px 12px',fontSize:11,color:'var(--red)',fontFamily:'var(--fm)',marginBottom:14}}>
-                    ⚠ On the exit date, this employee will automatically move to Inactive.
-                  </div>
-                  <div className="form-group"><label>Exit / Resignation Date</label><input type="date" value={exitDate} onChange={e=>setExitDate(e.target.value)}/></div>
+                <div className="form-row">
+                  <div className="form-group"><label>Leave Start</label><input type="date" value={leaveStart} onChange={e=>setLeaveStart(e.target.value)}/></div>
+                  <div className="form-group"><label>Leave End</label><input type="date" value={leaveEnd} onChange={e=>setLeaveEnd(e.target.value)}/></div>
                 </div>
-              )}
+              </div>}
+              {updateType==='resign'&&<div>
+                <div style={{background:'rgba(245,158,11,.1)',border:'1px solid rgba(245,158,11,.3)',borderRadius:6,padding:'8px 12px',fontSize:11,color:'var(--accent)',fontFamily:'var(--fm)',marginBottom:14}}>
+                  ⚠ On the exit date the employee will automatically become Inactive.
+                </div>
+                <div className="form-group"><label>Exit / Resignation Date</label><input type="date" value={exitDate} onChange={e=>setExitDate(e.target.value)}/></div>
+              </div>}
               <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:16}}>
                 <button className="btn btn-ghost" onClick={()=>setUpdateModal(null)}>Cancel</button>
                 <button className={`btn ${updateType==='resign'?'btn-danger':'btn-success'}`} onClick={doUpdate}>
                   {updateType==='resign'?'Save Resignation':'Save Leave'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pending Resignations Modal */}
+      {showResignModal&&(
+        <div className="modal-overlay" onClick={()=>setShowResignModal(false)}>
+          <div className="modal" style={{width:620}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-head">
+              <div className="modal-title">Pending Resignations ({pendingResign.length})</div>
+              <button className="modal-close" onClick={()=>setShowResignModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                <thead><tr>
+                  <th style={{padding:'7px 10px',background:'rgba(245,158,11,.08)',color:'var(--accent)',fontSize:10,letterSpacing:1,textAlign:'left'}}>Emp ID</th>
+                  <th style={{padding:'7px 10px',background:'rgba(245,158,11,.08)',color:'var(--accent)',fontSize:10,letterSpacing:1,textAlign:'left'}}>Name</th>
+                  <th style={{padding:'7px 10px',background:'rgba(245,158,11,.08)',color:'var(--accent)',fontSize:10,letterSpacing:1,textAlign:'left'}}>Designation</th>
+                  <th style={{padding:'7px 10px',background:'rgba(245,158,11,.08)',color:'var(--accent)',fontSize:10,letterSpacing:1,textAlign:'left'}}>Section</th>
+                  <th style={{padding:'7px 10px',background:'rgba(245,158,11,.08)',color:'var(--accent)',fontSize:10,letterSpacing:1,textAlign:'left'}}>Exit Date</th>
+                </tr></thead>
+                <tbody>
+                  {pendingResign.map(e=>(
+                    <tr key={e.empId}>
+                      <td style={{padding:'7px 10px',fontFamily:'var(--fm)',color:'var(--accent)',borderBottom:'1px solid var(--border)'}}>{e.empId}</td>
+                      <td style={{padding:'7px 10px',fontWeight:600,borderBottom:'1px solid var(--border)'}}>{e.name}</td>
+                      <td style={{padding:'7px 10px',fontSize:11,borderBottom:'1px solid var(--border)'}}>{e.designation}</td>
+                      <td style={{padding:'7px 10px',fontSize:11,borderBottom:'1px solid var(--border)'}}>{e.section}</td>
+                      <td style={{padding:'7px 10px',fontFamily:'var(--fm)',fontWeight:700,color:'var(--accent)',borderBottom:'1px solid var(--border)'}}>{e.exitDate}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
