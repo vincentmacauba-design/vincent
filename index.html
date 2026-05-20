@@ -656,10 +656,11 @@ function App() {
       if (raw) {
         const d = JSON.parse(raw);
         if (d.assets) {
-          // Normalise plant names to UPPERCASE on load (one-time migration)
+          // Normalise plant names to UPPERCASE + deduplicate by asset number
           const na = d.assets.map(a=>({...a,plant:(a.plant||'').toUpperCase()}));
-          setAssets(na);
-          try { localStorage.setItem(STORE_KEY, JSON.stringify({...d,assets:na})); } catch(_){}
+          const deduped = [...new Map(na.map(a=>[a.num,a])).values()];
+          setAssets(deduped);
+          try { localStorage.setItem(STORE_KEY, JSON.stringify({...d,assets:deduped})); } catch(_){}
         } else setAssets([]);
         if (d.jobOrders) setJobOrders(d.jobOrders);
         if (d.joCounter) setJoCounter(d.joCounter);
@@ -1252,7 +1253,7 @@ function AssetDoughnutChart({assets}) {
 function DashboardPage({assets, jobOrders, setPage, setJoModal, customPlants=[], employees=[]}) {
   const today = new Date().toISOString().split('T')[0];
   const resignCount = employees.filter(e => (!e.exitDate||e.exitDate>today) && e.exitDate).length;
-  const allCats = [...new Set([...customPlants,...assets.map(a=>a.plant)].filter(Boolean))].sort();
+  const allCats = [...new Set([...customPlants,...assets.map(a=>(a.plant||'').toUpperCase())].filter(Boolean))].sort();
   const catStats = allCats.map(cat => {
     const ca = assets.filter(a=>a.plant===cat);
     return {
@@ -1341,10 +1342,13 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
   const [pg, setPg] = useState(1);
   const importRef = useRef(null);
 
-  const allCats = [...new Set([...customPlants,...assets.map(a=>a.plant)].filter(Boolean))].sort();
-  const filtered = assets.filter(a => {
-    const hay = [a.num,a.plant,a.desc,a.code,a.model,a.loc,a.serial].join(' ').toLowerCase();
-    return (!q||hay.includes(q.toLowerCase())) && (!cat||a.plant.toUpperCase()===cat) && (!status||(a.status||'').toUpperCase()===status);
+  // Deduplicate assets by num before any display
+  const uniqueAssets = [...new Map(assets.map(a=>[a.num,a])).values()];
+  // All categories: normalize to uppercase to avoid case-duplicate entries
+  const allCats = [...new Set([...customPlants,...uniqueAssets.map(a=>(a.plant||'').toUpperCase())].filter(Boolean))].sort();
+  const filtered = uniqueAssets.filter(a => {
+    const hay = [a.num,(a.plant||''),(a.desc||''),(a.code||''),(a.model||''),(a.loc||''),(a.serial||'')].join(' ').toLowerCase();
+    return (!q||hay.includes(q.toLowerCase())) && (!cat||(a.plant||'').toUpperCase()===cat) && (!status||(a.status||'').toUpperCase()===status);
   });
   const sorted = sortByAssetNum(filtered);
   const total = Math.ceil(sorted.length/PER_PAGE);
@@ -1356,7 +1360,7 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
       <div className="page-header" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
         <div>
           <div className="page-title">ASSET <span>REGISTRY</span></div>
-          <div className="page-sub">{assets.length} ASSETS ACROSS {allCats.length} CATEGORIES</div>
+          <div className="page-sub">{uniqueAssets.length} ASSETS ACROSS {allCats.length} CATEGORIES</div>
         </div>
         <div className="controls">
           <input className="search-box" value={q} onChange={e=>{setQ(e.target.value);setPg(1);}} placeholder="🔍 Search assets..."/>
