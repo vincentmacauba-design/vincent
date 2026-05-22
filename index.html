@@ -322,12 +322,12 @@ th{padding:9px 12px;text-align:left;font-family:var(--fh);font-size:11px;letter-
 td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle;}
 tr:last-child td{border-bottom:none;}tr:hover td{background:rgba(255,255,255,.02);}
 .sb-base{display:inline-block;padding:2px 9px;border-radius:3px;font-family:var(--fm);font-size:10px;letter-spacing:1px;font-weight:600;}
-.so{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3);}
-.sb{background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.3);}
-.sm{background:rgba(249,115,22,.15);color:var(--orange);border:1px solid rgba(249,115,22,.3);}
-.si{background:rgba(148,163,184,.15);color:var(--gray);border:1px solid rgba(148,163,184,.2);}
-.sn{background:rgba(26,86,219,.15);color:#60a5fa;border:1px solid rgba(26,86,219,.3);}
-.sl{background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.3);}
+.so{background:rgba(16,185,129,.22);color:var(--green);border:1px solid rgba(16,185,129,.45);}
+.sb{background:rgba(239,68,68,.22);color:var(--red);border:1px solid rgba(239,68,68,.45);}
+.sm{background:rgba(249,115,22,.22);color:var(--orange);border:1px solid rgba(249,115,22,.45);}
+.si{background:rgba(148,163,184,.18);color:var(--gray);border:1px solid rgba(148,163,184,.3);}
+.sn{background:rgba(26,86,219,.25);color:#60a5fa;border:1px solid rgba(26,86,219,.5);}
+.sl{background:rgba(245,158,11,.22);color:var(--yellow);border:1px solid rgba(245,158,11,.45);}
 .jop{background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.3);}
 .jcl{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3);}
 .jip{background:rgba(26,86,219,.15);color:#60a5fa;border:1px solid rgba(26,86,219,.3);}
@@ -3019,6 +3019,9 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
       if (!exitDate) { alert('Exit date required'); return; }
       updates = {exitDate, siteStatus:'ON DUTY'};
       entry = {...entry, type:'RESIGN', exitDate};
+    } else if (updateType==='offsite') {
+      updates = {siteStatus:'OFF SITE'};
+      entry = {...entry, type:'OFF SITE'};
     } else {
       if (!leaveStart||!leaveEnd) { alert('Leave dates required'); return; }
       const onL = leaveStart<=today && leaveEnd>=today;
@@ -3206,10 +3209,11 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
             </div>
             <div className="modal-body" style={{minHeight:300}}>
               <div style={{display:'flex',gap:8,marginBottom:16}}>
-                <button className={`btn btn-sm ${updateType==='leave'?'btn-primary':'btn-ghost'}`} onClick={()=>setUpdateType('leave')}>Leave Update</button>
+                <button className={`btn btn-sm ${updateType==='leave'?'btn-primary':'btn-ghost'}`} onClick={()=>setUpdateType('leave')}>Leave</button>
+                <button className={`btn btn-sm ${updateType==='offsite'?'btn-primary':'btn-ghost'}`} style={updateType==='offsite'?{background:'rgba(26,86,219,.25)',color:'#60a5fa',border:'1px solid rgba(26,86,219,.4)'}:{}} onClick={()=>setUpdateType('offsite')}>Off Site</button>
                 <button className={`btn btn-sm ${updateType==='resign'?'btn-danger':'btn-ghost'}`} onClick={()=>setUpdateType('resign')}>Resignation</button>
               </div>
-              {/* Leave fields — always rendered, hidden when not active */}
+              {/* Leave fields */}
               <div style={{display:updateType==='leave'?'block':'none'}}>
                 <div className="form-row">
                   <div className="form-group">
@@ -3226,7 +3230,13 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
                   <div className="form-group"><label>Leave End</label><input type="date" value={leaveEnd} onChange={e=>setLeaveEnd(e.target.value)}/></div>
                 </div>
               </div>
-              {/* Resign fields — always rendered, hidden when not active */}
+              {/* Off Site fields */}
+              <div style={{display:updateType==='offsite'?'block':'none'}}>
+                <div style={{background:'rgba(26,86,219,.08)',border:'1px solid rgba(26,86,219,.25)',borderRadius:6,padding:'8px 12px',fontSize:11,color:'#60a5fa',fontFamily:'var(--fm)',marginBottom:12}}>
+                  Employee will be marked as <strong>Off Site</strong>. To return to duty, update via Leave or edit the employee directly.
+                </div>
+              </div>
+              {/* Resign fields */}
               <div style={{display:updateType==='resign'?'block':'none'}}>
                 <div style={{background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.25)',borderRadius:6,padding:'8px 12px',fontSize:11,color:'var(--accent)',fontFamily:'var(--fm)',marginBottom:12}}>
                   ⚠ Employee becomes Inactive automatically on the exit date.
@@ -3239,8 +3249,8 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
               </div>
               <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:12}}>
                 <button className="btn btn-ghost" onClick={()=>setUpdateModal(null)}>Cancel</button>
-                <button className={`btn ${updateType==='resign'?'btn-danger':'btn-success'}`} onClick={doUpdate}>
-                  {updateType==='resign'?'Save Resignation':'Save Leave'}
+                <button className={`btn ${updateType==='resign'?'btn-danger':updateType==='offsite'?'btn-primary':'btn-success'}`} onClick={doUpdate}>
+                  {updateType==='resign'?'Save Resignation':updateType==='offsite'?'Mark Off Site':'Save Leave'}
                 </button>
               </div>
             </div>
