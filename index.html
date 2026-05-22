@@ -150,78 +150,9 @@ function computeNextService(dateStr,freq){
   else if(freq==='Yearly')d.setFullYear(d.getFullYear()+1);
   return d.toISOString().split('T')[0];
 }
-const BASE_PM = [
-  {id:'pm-001',assetNum:'1001',assetDesc:'FUEL TANKS',category:'01 FUEL FARM',location:'FUEL FARM',frequency:'Monthly',lastService:'2026-03-15',nextService:'2026-04-15',notes:'Check fuel level, inspect for leaks, test alarms',serviceHistory:[{date:'2026-03-15',jobNo:null,notes:'Monthly check - all normal'},{date:'2026-02-15',jobNo:null,notes:'No issues found'},{date:'2026-01-15',jobNo:null,notes:'Monthly check completed'}]},
-  {id:'pm-002',assetNum:'4001',assetDesc:'GENERATOR SET-1',category:'04 POWER HOUSE',location:'POWERHOUSE',frequency:'Weekly',lastService:'2026-05-09',nextService:'2026-05-16',notes:'Check oil, coolant, belts, battery, run load test',serviceHistory:[{date:'2026-05-09',jobNo:null,notes:'Weekly check OK'},{date:'2026-05-02',jobNo:null,notes:'Oil level topped up'},{date:'2026-04-25',jobNo:null,notes:'Weekly check done'}]},
-  {id:'pm-003',assetNum:'4004',assetDesc:'SEA WATER DESALATION UNIT',category:'04 POWER HOUSE',location:'POWERHOUSE',frequency:'Half-Yearly',lastService:'2025-11-20',nextService:'2026-05-20',notes:'Full inspection, membrane check, chemical dosing review',serviceHistory:[{date:'2025-11-20',jobNo:null,notes:'6-monthly service - all systems OK'},{date:'2025-05-20',jobNo:null,notes:'6-monthly service completed'}]},
-  {id:'pm-004',assetNum:'4002',assetDesc:'GENERATOR SET-2',category:'04 POWER HOUSE',location:'POWERHOUSE',frequency:'Monthly',lastService:'2026-04-22',nextService:'2026-05-22',notes:'Check oil, coolant, air filter replacement',serviceHistory:[{date:'2026-04-22',jobNo:null,notes:'Monthly service - filter replaced'},{date:'2026-03-22',jobNo:null,notes:'Monthly service'}]},
-  {id:'pm-005',assetNum:'7001',assetDesc:'MOBILE CRANE-80T',category:'07 MOBILE MACHINERY',location:'Q-MARINE',frequency:'Monthly',lastService:'2026-05-05',nextService:'2026-06-05',notes:'Lubricate all pivot points, check wire rope, test load limiters',serviceHistory:[{date:'2026-05-05',jobNo:null,notes:'Monthly inspection passed'},{date:'2026-04-05',jobNo:null,notes:'Wire rope checked - within limits'}]},
-  {id:'pm-006',assetNum:'9001',assetDesc:'Fire Pump-1',category:'09 FIRE PUMP SYSTEM',location:'Wtr Pump Room',frequency:'Monthly',lastService:'2026-05-01',nextService:'2026-06-01',notes:'Test run 30 min, check pressure gauges, inspect connections',serviceHistory:[{date:'2026-05-01',jobNo:null,notes:'Monthly test - pressure 8.2 bar, all OK'},{date:'2026-04-01',jobNo:null,notes:'Monthly test passed'}]},
-  {id:'pm-007',assetNum:'4005',assetDesc:'AIR COMPRESSOR-1',category:'04 POWER HOUSE',location:'POWERHOUSE',frequency:'Quarterly',lastService:'2026-04-01',nextService:'2026-07-01',notes:'Check belt tension, oil change, drain moisture traps',serviceHistory:[{date:'2026-04-01',jobNo:null,notes:'Quarterly service - belt adjusted, oil changed'},{date:'2026-01-01',jobNo:null,notes:'Quarterly service completed'}]},
-  {id:'pm-008',assetNum:'6001',assetDesc:'PUMP BOOSTER',category:'06 OXYGEN PLANT',location:'OXYGEN PLANT',frequency:'Quarterly',lastService:'2026-05-01',nextService:'2026-08-01',notes:'Inspect pump seals, check bearings, measure pressure differential',serviceHistory:[{date:'2026-05-01',jobNo:null,notes:'Quarterly check - seals in good condition'},{date:'2026-02-01',jobNo:null,notes:'Quarterly check'}]},
-  {id:'pm-009',assetNum:'3001',assetDesc:'LPG SPHERE TANKS',category:'03 LPG PLANT',location:'LPG TANK AREA',frequency:'Yearly',lastService:'2025-12-01',nextService:'2026-12-01',notes:'Annual inspection, NDT testing, safety valve calibration',serviceHistory:[{date:'2025-12-01',jobNo:null,notes:'Annual inspection - no defects found'},{date:'2024-12-01',jobNo:null,notes:'Annual inspection passed'}]},
-  {id:'pm-010',assetNum:'7006',assetDesc:'FORKLIFT-5T',category:'07 MOBILE MACHINERY',location:'GENERAL STORE',frequency:'Monthly',lastService:'2026-05-10',nextService:'2026-06-10',notes:'Check tyres, hydraulics, engine oil, mast chains',serviceHistory:[{date:'2026-05-10',jobNo:null,notes:'Monthly service - tyre pressure adjusted'},{date:'2026-04-10',jobNo:null,notes:'Monthly service done'}]},
-  {id:'pm-011',assetNum:'5009',assetDesc:'AIR COMPRESSOR (ROOFING)',category:'05 ROOFING PLANT',location:'ROOFING PLANT',frequency:'Monthly',lastService:'2026-04-15',nextService:'2026-05-15',notes:'Oil level check, drain moisture, inspect safety valve',serviceHistory:[{date:'2026-04-15',jobNo:null,notes:'Monthly check - oil level OK'},{date:'2026-03-15',jobNo:null,notes:'Monthly check done'}]},
-  {id:'pm-012',assetNum:'4003',assetDesc:'GENERATOR SET-3',category:'04 POWER HOUSE',location:'POWERHOUSE',frequency:'Weekly',lastService:'2026-05-16',nextService:'2026-05-23',notes:'Check oil, coolant, belts, battery, run load test',serviceHistory:[{date:'2026-05-16',jobNo:null,notes:'Weekly check - minor coolant top up'},{date:'2026-05-09',jobNo:null,notes:'Weekly check OK'}]},
-];
+const BASE_PM = [];
 const EMPLOYEES_KEY = 'cmms_vg_employees';
-const BASE_EMPLOYEES = [
-  {empId:'56251',name:'SOBITHA AJITH PRIYANTHA ATHAPATHTHU HEWAWASAM LIYANAGE',designation:'SENIOR MANAGER, ENGINEERING AND MAINTENANCE',section:'ENGINEERING ADMINISTRATION',nationality:'SRI LANKAN',siteStatus:'ON LEAVE',leaveType:'AL',leaveStart:'2026-05-14',leaveEnd:'2026-06-11',exitDate:''},
-  {empId:'3047',name:'MOHAMED JAMEEL',designation:'CHIEF ENGINEER',section:'ENGINEERING ADMINISTRATION',nationality:'MALDIVIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'31606',name:'AHMED MOHAMED',designation:'DEPUTY CHIEF ENGINEER',section:'ENGINEERING ADMINISTRATION',nationality:'MALDIVIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'55050',name:'VINCENT FLORES MACAUBA',designation:'TECHNICAL OPERATIONS SUPERVISOR',section:'ENGINEERING ADMINISTRATION',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'55049',name:'MICHAEL MACION ANGELO',designation:'INDUSTRIAL ELECTRICIAN',section:'ENGINEERING ADMINISTRATION',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'57146',name:'IMMYHAMI MUDIYANSELAGE SHASHIKA RATNAYAKE',designation:'ELECTRICAL ENGINEER',section:'ENGINEERING ADMINISTRATION',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'57361',name:'RAM JASINTHAN GUNASEELAN',designation:'PROCESS SAFETY ENGINEER',section:'ENGINEERING ADMINISTRATION',nationality:'MALAYSIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'57736',name:'AHMED RASHEED',designation:'MARINE ENGINEER',section:'ENGINEERING ADMINISTRATION',nationality:'MALDIVIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'58129',name:'MOKIMULLAH MUFTI',designation:'ASSISTANT ENGINEER',section:'ENGINEERING ADMINISTRATION',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'56454',name:'JOHNASSES FARAON AMUL',designation:'INSTRUMENTATION AND CONTROL TECHNICIAN',section:'ENGINEERING ADMINISTRATION',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'55428',name:'ARNEL SARABIA CARAMPATAN',designation:'LIGHT AND HEAVY EQUIPMENT MECHANIC',section:'MECHANICAL',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'50736',name:'MOHAMED MUNIR MOHAMED BURHANUDEEN',designation:'MECHANICAL OPERATIONS SUPERVISOR',section:'MECHANICAL',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'44384',name:'ROBEL CHANDRA MAZOMDAR',designation:'SENIOR MECHANIC',section:'MECHANICAL',nationality:'BANGLADESHI',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'53156',name:'RAVINDRAN RAMAN',designation:'MECHANIC',section:'MECHANICAL',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'55281',name:'JOEL CALMA SANTOS',designation:'LIGHT AND HEAVY EQUIPMENT MECHANIC',section:'MECHANICAL',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'54927',name:'MANOJ LAKSHITHA PRIYANKARA MUDANNEHELAGE',designation:'WELDER',section:'MECHANICAL',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'58648',name:'ANEESH BINOY',designation:'MECHANICAL SUPPORT CREW',section:'MECHANICAL',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'58693',name:'MAHESH RANGA BOTHEJU WELATHANTHIRIGE',designation:'MECHANIC',section:'MECHANICAL',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:'2026-05-26'},
-  {empId:'58735',name:'LAKINDU RANDULA DIAS KODITHUWAKKU KEKIRIWARAGODAGE',designation:'MECHANIC',section:'MECHANICAL',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'57586',name:'NAGOOR MEERAN MOHAMED KANI',designation:'6G WELDER',section:'MECHANICAL',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'57622',name:'SACHIDA NAND SINGH',designation:'6G WELDER',section:'MECHANICAL',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'58000',name:'JOEL BUGARIN ADERES',designation:'6G WELDER',section:'MECHANICAL',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:'2026-06-26'},
-  {empId:'59217',name:'RAJKUMAR GUPTA',designation:'TINKER',section:'MECHANICAL',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'34469',name:'IBRAHIM ABDUL RAHEEM',designation:'ELECTRICAL OPERATIONS SUPERVISOR',section:'ELECTRICAL',nationality:'MALDIVIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'55034',name:'KARUPPAIYA VEERAMURUGAN',designation:'ASSISTANT ELECTRICIAN',section:'ELECTRICAL',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:'2026-05-20'},
-  {empId:'57229',name:'DASUN THARAKA SANDARUWAN KONARA MUDIYANSELAGE',designation:'AUTO ELECTRICIAN',section:'ELECTRICAL',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'59531',name:'CHAMIDU PRABASHANA KARUNARATHNA MAHAWATHTHAGE',designation:'REFRIGERATION AND AIR CONDITIONING TECHNICIAN',section:'ELECTRICAL',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'40579',name:'MOOSA ADAM',designation:'MANAGER, MAINTENANCE',section:'MAINTENANCE',nationality:'MALDIVIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'46785',name:'LALU MIAH',designation:'CONSTRUCTION CARPENTER',section:'MAINTENANCE',nationality:'BANGLADESHI',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'49454',name:'MOHAMMAD MAMUN MIAH',designation:'MAINTENANCE ASSISTANT',section:'MAINTENANCE',nationality:'BANGLADESHI',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'50489',name:'MOHAMMAD ASAD MIAH',designation:'MAINTENANCE OPERATIONS SUPERVISOR',section:'MAINTENANCE',nationality:'BANGLADESHI',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'52807',name:'MD SHAKIL AHMED',designation:'SENIOR MASON',section:'MAINTENANCE',nationality:'BANGLADESHI',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'49026',name:'SHOKUMER',designation:'CONSTRUCTION CARPENTER',section:'MAINTENANCE',nationality:'BANGLADESHI',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'36862',name:'ABDULLA NAAIF',designation:'POWER SYSTEMS SUPERVISOR',section:'POWER HOUSE',nationality:'MALDIVIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'50410',name:'MOJIBUR RAHMAN',designation:'TECHNICAL OPERATOR - POWER SYSTEMS',section:'POWER HOUSE',nationality:'BANGLADESHI',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'52684',name:'KARANRAJ GANESAN',designation:'DUTY DRIVER',section:'POWER HOUSE',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'58502',name:'SANI PRODHAN',designation:'DUTY DRIVER',section:'POWER HOUSE',nationality:'BANGLADESHI',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'59158',name:'ELIOUS',designation:'DUTY DRIVER',section:'POWER HOUSE',nationality:'BANGLADESHI',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'52527',name:'JAYASURYA SEKAR',designation:'BLASTING & PAINTING SUPERVISOR',section:'PAINTING PROJECT',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'57785',name:'THILAKASIRI MATARAMBA KORALAG',designation:'SITE MANAGER, BLASTING & PAINTING',section:'PAINTING PROJECT',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'57788',name:'JOHN NOMER REY GARCIA',designation:'SCAFFOLDER',section:'PAINTING PROJECT',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'57790',name:'RYAN ALVAREZ PATYAG',designation:'SCAFFOLDER',section:'PAINTING PROJECT',nationality:'FILIPINO',siteStatus:'ON LEAVE',leaveType:'AL',leaveStart:'2026-05-15',leaveEnd:'2026-06-21',exitDate:''},
-  {empId:'57786',name:'ADRIAN SALUDO ANTENOR',designation:'SCAFFOLDER',section:'PAINTING PROJECT',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'58786',name:'NOEL LUANGCO',designation:'SCAFFOLDER',section:'PAINTING PROJECT',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'59192',name:'SANNY MORENO ALCERA',designation:'SCAFFOLDER',section:'PAINTING PROJECT',nationality:'FILIPINO',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'57945',name:'SUSANTHA SENEVIRATHNA',designation:'GRIT BLASTER',section:'PAINTING PROJECT',nationality:'SRI LANKAN',siteStatus:'ON LEAVE',leaveType:'AL',leaveStart:'2026-05-15',leaveEnd:'2026-06-21',exitDate:''},
-  {empId:'58122',name:'NILANKA PRASANNA PERERA JAYAKODY ARACHCHIGE',designation:'GRIT BLASTER',section:'PAINTING PROJECT',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'58151',name:'SURESH JAYARATHNA MUTHUNAYAKA PEDIGE',designation:'GRIT BLASTER',section:'PAINTING PROJECT',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'58519',name:'PRABAKARAN ANBAZHAGAN',designation:'MAINTENANCE SUPPORT - PAINTING',section:'PAINTING PROJECT',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'58520',name:'ABDUR RAHEEM PERIYASAMY',designation:'MAINTENANCE SUPPORT - PAINTING',section:'PAINTING PROJECT',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'58523',name:'GOPINATH SELVARAJ',designation:'MAINTENANCE SUPPORT - PAINTING',section:'PAINTING PROJECT',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'58541',name:'MOAJIAM MIAH',designation:'MAINTENANCE SUPPORT - PAINTING',section:'PAINTING PROJECT',nationality:'INDIAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'59410',name:'JANAKA KUMARA AHANGAMA VITHANAGE',designation:'GRIT BLASTER',section:'PAINTING PROJECT',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'59411',name:'NIMAL KARUNATHILAKA KIRUNGA NEKETHTHALAGE GEDARA',designation:'GRIT BLASTER',section:'PAINTING PROJECT',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-  {empId:'59610',name:'RASHI PRABHATH SUSANTHA PEDURU ARACHCHIGE',designation:'QA/QC SUPERVISOR',section:'PAINTING PROJECT',nationality:'SRI LANKAN',siteStatus:'ON DUTY',leaveType:'',leaveStart:'',leaveEnd:'',exitDate:''},
-];
+const BASE_EMPLOYEES = [];
 const USERS_KEY = 'cmms_vg_users';
 const PER_PAGE = 20;
 const PLANTS = ['01 FUEL FARM','02 CEMENT PLANT','03 LPG PLANT','04 POWER HOUSE','05 ROOFING PLANT','06 OXYGEN PLANT','07 MOBILE MACHINERY','08 VEHICLES','09 FIRE PUMP SYSTEM','10 BATCHING PLANT'];
@@ -979,10 +910,19 @@ function App() {
     setAssets([]);
     setJobOrders([]);
     setJoCounter(1000);
+    setPM([]);
+    setEmployees([]);
+    setCustomPlants([]);
     try { localStorage.setItem(STORE_KEY, JSON.stringify({assets:[], jobOrders:[], joCounter:1000})); } catch(e) {}
+    try { localStorage.setItem(PM_KEY, JSON.stringify([])); } catch(e) {}
+    try { localStorage.setItem(EMPLOYEES_KEY, JSON.stringify([])); } catch(e) {}
+    try { localStorage.setItem(CUSTOM_PLANTS_KEY, JSON.stringify([])); } catch(e) {}
     dbSave('assets', []);
     dbSave('jobOrders', []);
-    addToast('All data has been reset to factory defaults.');
+    dbSave('pm', []);
+    dbSave('employees', []);
+    dbSave('customPlants', []);
+    addToast('All data has been reset.');
   }
 
   // ── Custom Plants
