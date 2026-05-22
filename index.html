@@ -611,6 +611,14 @@ function downloadAssetTemplate() {
   const ex='"A001","01 FUEL FARM","Sample Equipment","EQ-001","Model XYZ","100 KW","","","SN-0001","FUEL FARM","OPERATIONAL"';
   dlCSV(hdr+'\n'+ex,'assets_template.csv');
 }
+function exportPMCSV(pm) {
+  const hdr='ID,Asset No.,Asset Description,Category,Location,Frequency,Last Service,Next Service,Notes';
+  const rows=pm.map(p=>[p.id||'',p.assetNum||'',p.assetDesc||'',p.category||'',p.location||'',p.frequency||'',p.lastService||'',p.nextService||'',p.notes||''].map(csvCell).join(','));
+  dlCSV([hdr,...rows].join('\n'),'pm_schedule_export.csv');
+}
+function downloadPMTemplate() {
+  dlCSV('ID,Asset No.,Asset Description,Category,Location,Frequency,Last Service,Next Service,Notes\n"","4001","GENERATOR SET-1","04 POWER HOUSE","POWERHOUSE","Monthly","2026-05-01","2026-06-01","Check oil and belts"','pm_template.csv');
+}
 function downloadJOTemplate() {
   const hdr='Job No.,Date,Asset No.,Asset Desc.,Asset Category,Location,Eq. Code,Dept,Requested By,Priority,Repair Type,Problem,Status,Target,Section,Tech 1,Tech 1 Hrs,Tech 2,Tech 2 Hrs,Work Done,Work Status,Evaluation,Downtime,Acceptance,Completion Date,Received By,Approved By';
   dlCSV(hdr+'\n"JO-9999","2024-01-01","A001","Sample Equipment","01 FUEL FARM","FUEL FARM","EQ-001","Engineering","John Doe","High","Unplanned","Describe problem","OPEN","2024-01-07","Maintenance","","","","","","","","","Accepted","","","Admin"','joborders_template.csv');
@@ -880,6 +888,23 @@ function App() {
       return next;
     });
   }
+  function importPMFromCSV(file) {
+    importCSVFile(file, rows => {
+      const newPM = rows.map(r => ({
+        id: r[0] || 'pm-' + Date.now().toString(36) + Math.random().toString(36).slice(2,5),
+        assetNum: r[1]||'', assetDesc: r[2]||'', category: r[3]||'',
+        location: r[4]||'', frequency: r[5]||'Monthly',
+        lastService: r[6]||'', nextService: r[7]||'', notes: r[8]||'', serviceHistory:[]
+      })).filter(p => p.assetDesc);
+      setPM(prev => {
+        const existing = new Set(prev.map(p => p.id));
+        const next = [...prev, ...newPM.filter(p => !existing.has(p.id))];
+        try { localStorage.setItem(PM_KEY, JSON.stringify(next)); } catch(e) {}
+        return next;
+      });
+      addToast('PM schedule imported.');
+    });
+  }
   function recordPMService(pmId, record) {
     setPM(prev => {
       const next = prev.map(p => {
@@ -1043,7 +1068,7 @@ function App() {
             {page==='dashboard' && <DashboardPage assets={assets} jobOrders={jobOrders} setPage={setPage} setJoModal={setJoModal} customPlants={customPlants} employees={employees}/>}
             {page==='assets'    && <AssetsPage assets={assets} setAssetModal={setAssetModal} setJoModal={setJoModal} onStatusChange={updateAssetStatus} onDeleteAsset={deleteAsset} customPlants={customPlants} onExportCSV={()=>exportAssetsCSV(assets)} onImportCSV={importAssetsFromCSV} currentUser={currentUser}/>}
             {page==='joborders' && <JobOrdersPage assets={assets} jobOrders={jobOrders} setJoModal={setJoModal} setJoViewModal={setJoViewModal} onStatusChange={updateJOStatus} onDeleteJO={deleteJO} onExportCSV={()=>exportJobOrdersCSV(jobOrders)} onImportCSV={importJOsFromCSV} onApproveJO={approveJO} onRevertJO={revertJO} currentUser={currentUser}/>}
-            {page==='pmschedule' && <PMSchedulePage pm={pm} assets={assets} setJoModal={setJoModal} onSavePM={savePMItem} onRecordService={recordPMService} currentUser={currentUser}/>}
+            {page==='pmschedule' && <PMSchedulePage pm={pm} assets={assets} setJoModal={setJoModal} onSavePM={savePMItem} onRecordService={recordPMService} onImportPM={importPMFromCSV} onExportPM={()=>exportPMCSV(pm)} currentUser={currentUser}/>}
             {page==='employees' && <EmployeesPage employees={employees} onSaveEmployee={saveEmployee} onUpdateStatus={updateEmployeeStatus} currentUser={currentUser}/>}
             {page==='reports'   && <ReportsPage assets={assets} jobOrders={jobOrders}/>}
             {page==='settings'  && <SettingsPage users={users} currentUser={currentUser} onSaveUser={saveUser} onDeleteUser={deleteUser} onResetData={resetData}/>}
@@ -2634,8 +2659,9 @@ function UserFormModal({mode, user, onClose, onSave}) {
 }
 
 // ─── PM SCHEDULE PAGE ─────────────────────────────────────────────────────────
-function PMSchedulePage({pm, assets, setJoModal, onSavePM, onRecordService, currentUser={}}) {
+function PMSchedulePage({pm, assets, setJoModal, onSavePM, onRecordService, onImportPM, onExportPM, currentUser={}}) {
   const today = new Date().toISOString().split('T')[0];
+  const pmImportRef = useRef(null);
   const [q, setQ] = useState('');
   const [filterFreq, setFilterFreq] = useState('');
   const [filterCat, setFilterCat] = useState('');
@@ -2747,6 +2773,11 @@ function PMSchedulePage({pm, assets, setJoModal, onSavePM, onRecordService, curr
             <option value="ok">Up to Date</option>
           </select>
           {canEdit&&<button className="btn btn-accent" onClick={openAdd}>＋ Add PM Schedule</button>}
+          <button className="btn btn-csv btn-sm" onClick={onExportPM}>↓ Export</button>
+          {canEdit&&<label className="btn btn-csv btn-sm" style={{cursor:'pointer'}}>↑ Import
+            <input type="file" accept=".csv" style={{display:'none'}} ref={pmImportRef} onChange={e=>{if(e.target.files[0]){onImportPM(e.target.files[0]);e.target.value='';}}}/>
+          </label>}
+          {canEdit&&<button className="btn btn-csv btn-sm" onClick={downloadPMTemplate}>⬇ Template</button>}
         </div>
       </div>
 
@@ -2802,7 +2833,7 @@ function PMSchedulePage({pm, assets, setJoModal, onSavePM, onRecordService, curr
                       <div style={{display:'flex',gap:4,flexWrap:'nowrap'}}>
                         <button className="btn btn-ghost btn-sm btn-icon" title="Service History" style={{padding:'3px 5px',fontSize:11}} onClick={()=>setHistoryModal(item)}>📋</button>
                         {canEdit&&<button className="btn btn-success btn-sm btn-icon" title="Record Service" style={{padding:'3px 5px',fontSize:11}} onClick={()=>{setRecordModal(item);setRecordDate(today);setRecordNotes('');setRecordJobNo('');}}>✓</button>}
-                        <button className="btn btn-primary btn-sm btn-icon" title="Raise Job Order" style={{padding:'3px 5px',fontSize:11}} onClick={()=>setJoModal({mode:'add',preAsset:item.assetNum})}>＋JO</button>
+                        {canEdit&&<button className="btn btn-primary btn-sm btn-icon" title="Raise Job Order" style={{padding:'3px 5px',fontSize:11}} onClick={()=>setJoModal({mode:'add',preAsset:item.assetNum})}>＋JO</button>}
                         {canEdit&&<button className="btn btn-warning btn-sm btn-icon" title="Edit" style={{padding:'3px 5px',fontSize:11}} onClick={()=>openEdit(item)}>✏</button>}
                       </div>
                     </td>
@@ -3050,10 +3081,10 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
         <div className="controls">
           {canAdmin&&<button className="btn btn-accent" onClick={()=>{setEmpForm({empId:'',name:'',designation:'',section:'',nationality:'',siteStatus:'ON DUTY'});setEmpFormIsEdit(false);}}>＋ Add Employee</button>}
           <button className="btn btn-csv btn-sm" onClick={exportEmpsCSV}>↓ Export</button>
-          <label className="btn btn-csv btn-sm" style={{cursor:'pointer'}}>↑ Import
+          {canEdit&&<label className="btn btn-csv btn-sm" style={{cursor:'pointer'}}>↑ Import
             <input type="file" accept=".csv" style={{display:'none'}} ref={importRef} onChange={e=>{if(e.target.files[0]){importEmpsFromFile(e.target.files[0]);e.target.value='';}}}/>
-          </label>
-          <button className="btn btn-csv btn-sm" onClick={downloadEmpTemplate}>⬇ Template</button>
+          </label>}
+          {canEdit&&<button className="btn btn-csv btn-sm" onClick={downloadEmpTemplate}>⬇ Template</button>}
         </div>
       </div>
 
