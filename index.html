@@ -616,7 +616,7 @@ function App() {
 
   // ── Load from Supabase on mount
   useEffect(() => {
-    sb.from('app_data').select('*').then(({data, error}) => {
+    sb.from('app_data').select('*').then(({data, error}) => { if (error) { console.error('Supabase load error:', error); setDbLoaded(true); return; }
       if (data && data.length > 0) {
         const map = {};
         data.forEach(r => { map[r.key] = r.value; });
@@ -624,7 +624,7 @@ function App() {
           const deduped = [...new Map((map.assets||[]).map(a => [a.num, {...a, plant:(a.plant||'').toUpperCase()}])).values()];
           setAssets(deduped);
         }
-        if ('jobOrders' in map) setJobOrders(map.jobOrders||[]);
+        if ('jobOrders' in map) { const jos=map.jobOrders||[]; setJobOrders(jos); if(jos.length){const maxN=Math.max(...jos.map(j=>parseInt((j.jobNo||'').replace(/\D/g,''))||0)); if(maxN>0) setJoCounter(maxN);} }
         if ('pm' in map) setPM(map.pm||[]);
         if ('employees' in map) setEmployees(map.employees||[]);
         if ('users' in map && map.users?.length) setUsers(map.users);
@@ -656,7 +656,7 @@ function App() {
   // ── Real-time sync via Supabase
   useEffect(() => {
     const ch = sb.channel('cmms_sync')
-      .on('postgres_changes', {event:'UPDATE', schema:'public', table:'app_data'}, ({new:row}) => {
+      .on('postgres_changes', {event:'*', schema:'public', table:'app_data'}, ({new:row}) => {
         if (row.key==='assets')        setAssets(row.value);
         else if (row.key==='jobOrders')    setJobOrders(row.value);
         else if (row.key==='pm')           setPM(row.value);
@@ -714,7 +714,7 @@ function App() {
         const existing = prev.find(u => u.id === editId);
         const updated = {...user, id: editId, password: user.password || existing.password};
         next = prev.map(u => u.id === editId ? updated : u);
-        if (currentUser && currentUser.id === editId) setCurrentUser(updated);
+        if (currentUser && currentUser.id === editId) { setCurrentUser(updated); try{localStorage.setItem(SESSION_KEY,JSON.stringify(updated));}catch(_){} }
       } else {
         const newId = Math.max(0, ...prev.map(u => u.id)) + 1;
         next = [...prev, {...user, id: newId}];
@@ -907,6 +907,7 @@ function App() {
     addToast('Employee record updated.');
   }
   function resetData() {
+    clearTimeout(saveTimer.current);
     setAssets([]);
     setJobOrders([]);
     setJoCounter(1000);
@@ -922,6 +923,8 @@ function App() {
     dbSave('pm', []);
     dbSave('employees', []);
     dbSave('customPlants', []);
+    dbSave('users', DEFAULT_USERS);
+    try { localStorage.removeItem(USERS_KEY); } catch(e) {}
     addToast('All data has been reset.');
   }
 
@@ -952,7 +955,7 @@ function App() {
       persist(next, jobOrders, joCounter);
       return next;
     });
-    setJobOrders(prev => prev.map(j => j.assetCategory===oldName ? {...j, assetCategory:upper} : j));
+    setJobOrders(prev => { const next=prev.map(j => j.assetCategory===oldName ? {...j, assetCategory:upper} : j); dbSave('jobOrders', next); return next; });
     addToast(`Renamed "${oldName}" → "${upper}"`);
   }
   function importAssetsFromCSV(file) {
@@ -1425,7 +1428,7 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
                   <td className="col-hide-md" style={{fontFamily:'var(--fm)',fontSize:11}}>{a.serial||'—'}</td>
                   <td style={{fontSize:12}}>{a.loc||'—'}</td>
                   <td>
-                    <select className={`sb-base ${statusCls(a.status)}`} value={a.status||''} onChange={e=>onStatusChange(a.num,e.target.value)}>
+                    <select className={`sb-base ${statusCls(a.status)}`} value={a.status||''} onChange={e=>onStatusChange(a.num,e.target.value)} disabled={!canEdit} style={{opacity:canEdit?1:.6,cursor:canEdit?'pointer':'default'}}>
                       {['OPERATIONAL','BREAKDOWN','UNDER MAINTENANCE','NEW','Inactive','idle'].map(s=><option key={s} value={s}>{s==='UNDER MAINTENANCE'?'UNDER MAINT.':s.toUpperCase()}</option>)}
                     </select>
                   </td>
@@ -2579,7 +2582,7 @@ function JOViewModal({jo, onClose, onEdit, currentUser={}}) {
 // ─── USER FORM MODAL ──────────────────────────────────────────────────────────
 function UserFormModal({mode, user, onClose, onSave}) {
   const [f, setF] = useState(user ? {...user, password:''} : {
-    username:'', password:'', fullName:'', email:'', role:'Operator', active:true
+    username:'', password:'', fullName:'', email:'', role:'Assistant Engineer', active:true
   });
 
   function handleSave() {
@@ -2621,7 +2624,7 @@ function UserFormModal({mode, user, onClose, onSave}) {
           <div className="form-row">
             <div className="form-group">
               <label>Role</label>
-              <select value={f.role||'Operator'} onChange={e=>setF({...f,role:e.target.value})}>
+              <select value={f.role||'Assistant Engineer'} onChange={e=>setF({...f,role:e.target.value})}>
                 <option>Admin</option>
                 <option>Assistant Engineer</option>
                 <option>Senior Engineer</option>
@@ -3024,9 +3027,16 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
   }
   function importEmpsFromFile(file) {
     importCSVFile(file, rows=>{
-      const newEmps=rows.map(r=>({empId:r[0]||'',name:r[1]||'',designation:r[2]||'',section:r[3]||'',nationality:r[4]||'',siteStatus:r[5]||'ON DUTY',leaveType:r[6]||'',leaveStart:r[7]||'',leaveEnd:r[8]||'',exitDate:r[9]||''})).filter(e=>e.empId&&e.name);
-      let added=0;
-      newEmps.forEach(e=>{if(!employees.find(x=>x.empId===e.empId)){onSaveEmployee(e,null);added++;}});
+      const newEmps=rows.map(r=>({empId:r[0]||'',name:r[1]||'',designation:r[2]||'',section:r[3]||'',nationality:r[4]||'',siteStatus:r[5]||'ON DUTY',leaveType:r[6]||'',leaveStart:r[7]||'',leaveEnd:r[8]||'',exitDate:r[9]||'',leaveHistory:[]})).filter(e=>e.empId&&e.name);
+      setEmployees(prev=>{
+        const existing=new Set(prev.map(e=>e.empId));
+        const toAdd=newEmps.filter(e=>!existing.has(e.empId));
+        if(!toAdd.length){addToast('No new employees to import.');return prev;}
+        const next=[...prev,...toAdd];
+        persistEmployees(next);
+        addToast(toAdd.length+' employee(s) imported.');
+        return next;
+      });
     });
   }
 
@@ -3072,10 +3082,10 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
         <div className="controls">
           {canAdmin&&<button className="btn btn-accent" onClick={()=>{setEmpForm({empId:'',name:'',designation:'',section:'',nationality:'',siteStatus:'ON DUTY'});setEmpFormIsEdit(false);}}>＋ Add Employee</button>}
           <button className="btn btn-csv btn-sm" onClick={exportEmpsCSV}>↓ Export</button>
-          {canEdit&&<label className="btn btn-csv btn-sm" style={{cursor:'pointer'}}>↑ Import
+          {canAdmin&&<label className="btn btn-csv btn-sm" style={{cursor:'pointer'}}>↑ Import
             <input type="file" accept=".csv" style={{display:'none'}} ref={importRef} onChange={e=>{if(e.target.files[0]){importEmpsFromFile(e.target.files[0]);e.target.value='';}}}/>
           </label>}
-          {canEdit&&<button className="btn btn-csv btn-sm" onClick={downloadEmpTemplate}>⬇ Template</button>}
+          {canAdmin&&<button className="btn btn-csv btn-sm" onClick={downloadEmpTemplate}>⬇ Template</button>}
         </div>
       </div>
 
