@@ -3056,10 +3056,10 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
 
       {/* Stats */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:18}}>
-        {[['Total\nActive',total,'var(--blue)','sc-blue'],['On\nDuty',onDuty,'var(--green)','sc-green'],['On\nLeave',onLeave,'var(--yellow)','sc-yellow'],['Pending\nResign',resignCount,'var(--red)','sc-red']].map(([l,n,c,cls])=>(
-          <div key={l} className={`stat-card ${cls}`} style={{padding:'8px 12px',height:64,display:'flex',flexDirection:'column',justifyContent:'center'}}>
+        {[['Total Active',total,'var(--blue)','sc-blue'],['On Duty',onDuty,'var(--green)','sc-green'],['On Leave',onLeave,'var(--yellow)','sc-yellow'],['Pending Resignation',resignCount,'var(--red)','sc-red']].map(([l,n,c,cls])=>(
+          <div key={l} className={`stat-card ${cls}`} style={{padding:'8px 12px',height:60,display:'flex',flexDirection:'column',justifyContent:'center'}}>
             <div style={{fontFamily:'var(--fh)',fontSize:22,fontWeight:700,color:c,lineHeight:1}}>{n}</div>
-            <div style={{fontSize:9,color:'var(--gray)',fontFamily:'var(--fm)',letterSpacing:.5,marginTop:3,textTransform:'uppercase',whiteSpace:'pre-line',lineHeight:1.3}}>{l}</div>
+            <div style={{fontSize:8,color:'var(--gray)',fontFamily:'var(--fm)',letterSpacing:0,marginTop:3,textTransform:'uppercase',whiteSpace:'nowrap'}}>{l}</div>
           </div>
         ))}
       </div>
@@ -3117,17 +3117,16 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
                 const resigning = isActive(e) && e.exitDate;
                 const rowStyle  = resigning ? {background:'rgba(245,158,11,.06)'} : {};
                 const dispStatus = getStatus(e);
-                const effStatus  = resigning ? 'PENDING RESIGN' : dispStatus;
                 return (
                 <tr key={e.empId} style={rowStyle}>
-                  <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)'}}>{e.empId}</td>
-                  <td style={{fontWeight:600,fontSize:12,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={e.name}>{e.name}</td>
-                  <td style={{fontSize:11,maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={e.designation}>{e.designation}</td>
-                  <td style={{fontSize:11}}>{e.section}</td>
+                  <td style={{fontFamily:'var(--fm)',fontSize:11,color:'var(--accent)'}}>{e.empId}</td>
+                  <td style={{fontWeight:600,fontSize:11,maxWidth:180,wordBreak:'break-word'}}>{e.name}</td>
+                  <td style={{fontSize:11,maxWidth:160,wordBreak:'break-word'}}>{e.designation}</td>
+                  <td style={{fontSize:11,wordBreak:'break-word'}}>{e.section}</td>
                   <td style={{fontSize:11}}>{e.nationality}</td>
                   <td>
-                    <span className={`sb-base ${empStatusCls(effStatus)}`} style={{fontSize:10,whiteSpace:'nowrap'}}>
-                      {shortStatus(effStatus)}{!resigning&&e.leaveType&&dispStatus==='ON LEAVE'?` (${e.leaveType})`:''}
+                    <span className={`sb-base ${empStatusCls(dispStatus)}`} style={{fontSize:10,whiteSpace:'nowrap'}}>
+                      {shortStatus(dispStatus)}
                     </span>
                   </td>
                   <td style={{fontFamily:'var(--fm)',fontSize:11,color:e.leaveStart?'var(--yellow)':'var(--gray)'}}>{fmtD(e.leaveStart)}</td>
