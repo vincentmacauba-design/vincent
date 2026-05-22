@@ -2984,9 +2984,10 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
       return (a[sortCol]||'').localeCompare(b[sortCol]||'');
     });
 
-  const total   = employees.filter(isActive).length;
-  const onDuty  = employees.filter(e=>isActive(e)&&e.siteStatus==='ON DUTY').length;
-  const onLeave = employees.filter(e=>isActive(e)&&e.siteStatus==='ON LEAVE').length;
+  const total       = employees.filter(isActive).length;
+  const onDuty      = employees.filter(e=>isActive(e)&&e.siteStatus==='ON DUTY').length;
+  const onLeave     = employees.filter(e=>isActive(e)&&e.siteStatus==='ON LEAVE').length;
+  const resignCount = employees.filter(e=>isActive(e)&&e.exitDate).length;
 
   function exportEmpsCSV() {
     const hdr='Emp ID,Name,Designation,Section,Nationality,Site Status,Leave Type,Leave Start,Leave End,Exit Date';
@@ -3051,8 +3052,8 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
       </div>
 
       {/* Stats */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:18}}>
-        {[['Total Active',total,'var(--blue)','sc-blue'],['On Duty',onDuty,'var(--green)','sc-green'],['On Leave',onLeave,'var(--yellow)','sc-yellow']].map(([l,n,c,cls])=>(
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:18}}>
+        {[['Total Active',total,'var(--blue)','sc-blue'],['On Duty',onDuty,'var(--green)','sc-green'],['On Leave',onLeave,'var(--yellow)','sc-yellow'],['Resignations',resignCount,'var(--red)','sc-red']].map(([l,n,c,cls])=>(
           <div key={l} className={`stat-card ${cls}`} style={{padding:'10px 14px'}}>
             <div style={{fontFamily:'var(--fh)',fontSize:24,fontWeight:700,color:c,lineHeight:1}}>{n}</div>
             <div style={{fontSize:10,color:'var(--gray)',fontFamily:'var(--fm)',letterSpacing:1,marginTop:3,textTransform:'uppercase'}}>{l}</div>
