@@ -620,15 +620,15 @@ function App() {
       if (data && data.length > 0) {
         const map = {};
         data.forEach(r => { map[r.key] = r.value; });
-        if (map.assets?.length) {
-          const deduped = [...new Map(map.assets.map(a => [a.num, {...a, plant:(a.plant||'').toUpperCase()}])).values()];
+        if ('assets' in map) {
+          const deduped = [...new Map((map.assets||[]).map(a => [a.num, {...a, plant:(a.plant||'').toUpperCase()}])).values()];
           setAssets(deduped);
         }
-        if (map.jobOrders?.length) setJobOrders(map.jobOrders);
-        if (map.pm?.length) setPM(map.pm);
-        if (map.employees?.length) setEmployees(map.employees);
-        if (map.users?.length) setUsers(map.users);
-        if (Array.isArray(map.customPlants)) setCustomPlants(map.customPlants);
+        if ('jobOrders' in map) setJobOrders(map.jobOrders||[]);
+        if ('pm' in map) setPM(map.pm||[]);
+        if ('employees' in map) setEmployees(map.employees||[]);
+        if ('users' in map && map.users?.length) setUsers(map.users);
+        if ('customPlants' in map) setCustomPlants(map.customPlants||[]);
       }
       if (!data || data.length === 0) {
         // Seed base data on first load
