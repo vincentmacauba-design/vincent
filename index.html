@@ -532,7 +532,8 @@ function printAssetPDF(a, rel) {
 function printJOPDF(jo) {
   const jsc=jo.status==='OPEN'?'#92400e':jo.status==='IN PROGRESS'?'#1e40af':'#065f46';
   const jsb=jo.status==='OPEN'?'#fef3c7':jo.status==='IN PROGRESS'?'#dbeafe':'#d1fae5';
-  const partsRows=(jo.parts||[]).filter(p=>p.desc).map(p=>`<tr><td>${p.desc}</td><td style="text-align:center">${p.qty}</td><td style="text-align:center">${p.unit}</td><td style="text-align:right">${p.srp}</td></tr>`).join('')||`<tr><td colspan="4" style="color:#94a3b8;text-align:center;padding:8px">No parts recorded</td></tr>`;
+  const partsRows=(jo.parts||[]).filter(p=>p.desc||p.itemCode).map(p=>`<tr><td style="font-family:monospace;font-size:10px">${p.itemCode||'—'}</td><td>${p.desc||'—'}</td><td style="text-align:center">${p.qty||'—'}</td><td style="text-align:center">${p.unit||'—'}</td></tr>`).join('')||`<tr><td colspan="4" style="color:#94a3b8;text-align:center;padding:8px">No parts recorded</td></tr>`;
+  const mpRows=(jo.manpower||[]).filter(m=>m.empId||m.name).map(m=>`<tr><td style="font-family:monospace;font-size:10px">${m.empId||'—'}</td><td style="font-weight:600">${m.name||'—'}</td><td>${m.designation||'—'}</td><td style="text-align:center">${m.hours||0} hrs</td></tr>`).join('')||`<tr><td colspan="4" style="color:#94a3b8;text-align:center;padding:8px">No manpower recorded</td></tr>`;
   const sect = (title,content) => `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 14px;margin-bottom:10px"><div style="font-size:9px;color:#f59e0b;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px">${title}</div>${content}</div>`;
   const grid3 = items => `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">${items.map(([l,v])=>`<div><div style="font-size:9px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">${l}</div><div style="font-size:11px;font-weight:600">${v}</div></div>`).join('')}</div>`;
   openPrintWindow(`Job Order ${jo.jobNo}`, `
@@ -548,14 +549,24 @@ function printJOPDF(jo) {
     </div>
     ${sect('Authorisation', grid3([['Received By',jo.recvName||'—'],['Section',jo.section||'—'],['Approved By',jo.approved||'—'],['Target Completion',jo.target||'—'],['Completion Date',`<span style="color:#059669;font-weight:700">${jo.completionDate||'—'}</span>`]]))}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-      ${sect('Manpower', [['Technician 1',`${jo.tech1||'—'} (${jo.tech1h||0} hrs)`],['Technician 2',`${jo.tech2||'—'} (${jo.tech2h||0} hrs)`],['Downtime',`${jo.downtime||0} hours`]].map(([l,v])=>`<div style="margin-bottom:6px"><div style="font-size:9px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">${l}</div><div style="font-size:11px;font-weight:600">${v}</div></div>`).join(''))}
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 14px;margin-bottom:10px">
+        <div style="font-size:9px;color:#f59e0b;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">MANPOWER UTILISATION</div>
+        <table style="width:100%;border-collapse:collapse"><thead><tr>
+          <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;letter-spacing:1px;text-align:left">Emp ID</th>
+          <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;text-align:left">Name</th>
+          <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;text-align:left">Designation</th>
+          <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;text-align:center">Hours</th>
+        </tr></thead><tbody>${mpRows}</tbody></table>
+        <div style="margin-top:8px;font-size:10px;color:#64748b">Downtime: <strong>${jo.downtime||0} hrs</strong></div>
+      </div>
       ${sect('Service Report', [['Work Status',jo.workStatus||'—'],['Evaluation',jo.eval||'—'],['Acceptance',jo.accept||'—']].map(([l,v])=>`<div style="margin-bottom:6px"><div style="font-size:9px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">${l}</div><div style="font-size:11px;font-weight:600">${v}</div></div>`).join(''))}
     </div>
     ${jo.workDone?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:12px 14px;margin-bottom:10px"><div style="font-size:9px;color:#f59e0b;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">WORK DONE</div><div style="font-size:11px;line-height:1.65">${jo.workDone}</div></div>`:''}
     <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 14px">
       <div style="font-size:9px;color:#f59e0b;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">MATERIALS / SPARE PARTS</div>
       <table style="width:100%;border-collapse:collapse"><thead><tr>
-        <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;letter-spacing:1px;text-align:left">Description</th>
+        <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;letter-spacing:1px;text-align:left">Item Code</th>
+        <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;text-align:left">Description</th>
         <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;text-align:center">Qty</th>
         <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;text-align:center">Unit</th>
         <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;text-align:right">SRP</th>
@@ -1257,7 +1268,6 @@ function AssetDoughnutChart({assets}) {
 
 function DashboardPage({assets, jobOrders, setPage, setJoModal, customPlants=[], employees=[]}) {
   const today = new Date().toISOString().split('T')[0];
-  const resignCount = employees.filter(e => (!e.exitDate||e.exitDate>today) && e.exitDate).length;
   const allCats = [...new Set([...customPlants,...assets.map(a=>(a.plant||'').toUpperCase())].filter(Boolean))].sort();
   const catStats = allCats.map(cat => {
     const ca = assets.filter(a=>a.plant===cat);
@@ -1282,7 +1292,6 @@ function DashboardPage({assets, jobOrders, setPage, setJoModal, customPlants=[],
         <div className="stat-card sc-red"><div className="stat-num">{assets.filter(a=>a.status==='BREAKDOWN').length}</div><div className="stat-label">Breakdown</div></div>
         <div className="stat-card sc-orange"><div className="stat-num">{assets.filter(a=>a.status==='UNDER MAINTENANCE').length}</div><div className="stat-label">Under Maintenance</div></div>
         <div className="stat-card sc-yellow"><div className="stat-num">{jobOrders.filter(j=>j.status!=='CLOSED').length}</div><div className="stat-label">Open Job Orders</div></div>
-        <div className="stat-card sc-red"><div className="stat-num">{resignCount}</div><div className="stat-label">Resignations</div></div>
       </div>
 
       {/* Side-by-side: Recent JOs | Assets by Category */}
@@ -1453,7 +1462,7 @@ function JobOrdersPage({assets, jobOrders, setJoModal, setJoViewModal, onStatusC
 
   const canAdvanceOpen = currentUser.role==='Admin' || currentUser.role==='Assistant Engineer';
   const canComplete    = currentUser.role==='Admin' || currentUser.role==='Assistant Engineer';
-  const canClose       = currentUser.role==='Admin' || currentUser.role==='Senior Engineer';
+  const canClose       = currentUser.role==='Admin' || currentUser.role==='Senior Engineer' || currentUser.role==='Assistant Engineer';
   const canRevert      = currentUser.role==='Admin';
   const canEditJO      = currentUser.role !== 'Senior Engineer';
   const canRaiseJO     = currentUser.role !== 'Senior Engineer';
@@ -2212,7 +2221,7 @@ function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave, em
       eqcode:'', problem:'', priority:'High', repairType:'Planned',
       recvName:'', section:'', target:'',
       manpower:[{empId:'',name:'',designation:'',hours:''}],
-      parts:[{desc:'',qty:'',unit:'',srp:''}],
+      parts:[{itemCode:'',desc:'',qty:'',unit:''}],
       workDone:'', workStatus:'', eval:'', downtime:'', accept:'Accepted', status:'OPEN', completionDate:'',
     };
     if (preAsset) {
@@ -2245,7 +2254,7 @@ function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave, em
       return {...prev,parts};
     });
   }
-  function addPart() { setF(prev=>({...prev,parts:[...(prev.parts||[]),{desc:'',qty:'',unit:'',srp:''}]})); }
+  function addPart() { setF(prev=>({...prev,parts:[...(prev.parts||[]),{itemCode:'',desc:'',qty:'',unit:''}]})); }
   function removePart(idx) { setF(prev=>({...prev,parts:(prev.parts||[]).filter((_,i)=>i!==idx)})); }
 
   function handleSave() {
@@ -2376,7 +2385,7 @@ function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave, em
           </div>
 
           <div className="jc-section">
-            <div className="jc-section-title">Authorisation</div>
+            <div className="jc-section-title">Work Assigned To</div>
             <div className="form-row">{fld('Received By','recvName')}{fld('Section Assigned','section')}</div>
             <div className="form-row">
               <div className="form-group"><label>Target Completion</label><input type="date" value={f.target||''} onChange={e=>setF({...f,target:e.target.value})}/></div>
@@ -2421,14 +2430,14 @@ function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave, em
           <div className="jc-section">
             <div className="jc-section-title">Material / Spare Parts</div>
             <table className="parts-table">
-              <thead><tr><th style={{width:'48%'}}>Description</th><th style={{width:'12%'}}>Qty</th><th style={{width:'14%'}}>Unit</th><th style={{width:'18%'}}>SRP</th><th style={{width:'8%'}}></th></tr></thead>
+              <thead><tr><th style={{width:'16%'}}>Item Code</th><th style={{width:'44%'}}>Description</th><th style={{width:'12%'}}>Qty</th><th style={{width:'14%'}}>Unit</th><th style={{width:'8%'}}></th></tr></thead>
               <tbody>
                 {(f.parts||[]).map((p,i)=>(
                   <tr key={i}>
+                    <td><input value={p.itemCode||''} onChange={e=>setParts(i,'itemCode',e.target.value)} placeholder="Code"/></td>
                     <td><input value={p.desc||''} onChange={e=>setParts(i,'desc',e.target.value)} placeholder="Description"/></td>
                     <td><input type="number" value={p.qty||''} onChange={e=>setParts(i,'qty',e.target.value)} placeholder="0"/></td>
                     <td><input value={p.unit||''} onChange={e=>setParts(i,'unit',e.target.value)} placeholder="pcs"/></td>
-                    <td><input value={p.srp||''} onChange={e=>setParts(i,'srp',e.target.value)} placeholder="0.00"/></td>
                     <td><button className="btn btn-danger btn-sm" onClick={()=>removePart(i)}>✕</button></td>
                   </tr>
                 ))}
@@ -2532,9 +2541,9 @@ function JOViewModal({jo, onClose, onEdit, currentUser={}}) {
           <div className="jc-section">
             <div className="jc-section-title">Materials / Parts</div>
             <table className="parts-table">
-              <thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>SRP</th></tr></thead>
+              <thead><tr><th>Item Code</th><th>Description</th><th>Qty</th><th>Unit</th></tr></thead>
               <tbody>
-                {(jo.parts||[]).filter(p=>p.desc).map((p,i)=><tr key={i}><td>{p.desc}</td><td>{p.qty}</td><td>{p.unit}</td><td>{p.srp}</td></tr>)}
+                {(jo.parts||[]).filter(p=>p.desc||p.itemCode).map((p,i)=><tr key={i}><td style={{fontFamily:'var(--fm)',fontSize:11}}>{p.itemCode||'—'}</td><td>{p.desc||'—'}</td><td>{p.qty}</td><td>{p.unit}</td></tr>)}
                 {!(jo.parts||[]).filter(p=>p.desc).length&&<tr><td colSpan={4} style={{color:'var(--gray)',fontSize:12}}>No parts recorded</td></tr>}
               </tbody>
             </table>
@@ -2641,10 +2650,17 @@ function PMSchedulePage({pm, assets, setJoModal, onSavePM, onRecordService, curr
   const [recordDate, setRecordDate] = useState(today);
   const [recordNotes, setRecordNotes] = useState('');
   const [recordJobNo, setRecordJobNo] = useState('');
-  const [pmForm, setPmForm] = useState(null);     // null=closed | {mode,item}
-  const [pmF, setPmF] = useState({});             // form fields
+  const [pmForm, setPmForm] = useState(null);
+  const [pmF, setPmF] = useState({});
+  const [sortPMCol, setSortPMCol] = useState('daysUntil');
 
   const canEdit = currentUser.role !== 'Senior Engineer';
+
+  const SortThPM = ({label, col}) => (
+    <th onClick={()=>setSortPMCol(col)} style={{cursor:'pointer',userSelect:'none',whiteSpace:'nowrap'}}>
+      {label}{sortPMCol===col&&<span style={{marginLeft:4,color:'var(--accent)'}}>↑</span>}
+    </th>
+  );
 
   function daysUntil(ns) {
     if (!ns) return null;
@@ -2667,6 +2683,15 @@ function PMSchedulePage({pm, assets, setJoModal, onSavePM, onRecordService, curr
       (filterStatus==='ok'        && days!==null && days>7);
     const hay = [p.assetNum,p.assetDesc,p.category,p.location].join(' ').toLowerCase();
     return (!q||hay.includes(q.toLowerCase())) && (!filterFreq||p.frequency===filterFreq) && (!filterCat||p.category===filterCat) && sOk;
+  }).sort((a,b)=>{
+    if (sortPMCol==='daysUntil') {
+      const da=daysUntil(a.nextService), db=daysUntil(b.nextService);
+      if (da===null&&db===null) return 0;
+      if (da===null) return 1;
+      if (db===null) return -1;
+      return da-db;
+    }
+    return (a[sortPMCol]||'').toString().localeCompare((b[sortPMCol]||'').toString());
   });
 
   const overdueN  = pm.filter(p=>{const d=daysUntil(p.nextService);return d!==null&&d<0;}).length;
@@ -2745,8 +2770,14 @@ function PMSchedulePage({pm, assets, setJoModal, onSavePM, onRecordService, curr
         <div className="tbl-wrap">
           <table>
             <thead><tr>
-              <th>Asset</th><th>Category</th><th>Location</th><th>Frequency</th>
-              <th>Last Service</th><th>Next Service</th><th>Days Until</th><th>Actions</th>
+              <SortThPM label="Asset"        col="assetDesc"/>
+              <SortThPM label="Category"     col="category"/>
+              <SortThPM label="Location"     col="location"/>
+              <SortThPM label="Frequency"    col="frequency"/>
+              <SortThPM label="Last Service" col="lastService"/>
+              <SortThPM label="Next Service" col="nextService"/>
+              <SortThPM label="Days Until"   col="daysUntil"/>
+              <th>Actions</th>
             </tr></thead>
             <tbody>
               {filtered.length===0&&<tr><td colSpan={8}><div className="empty-state" style={{padding:40}}>No PM schedules found</div></td></tr>}
@@ -2774,10 +2805,10 @@ function PMSchedulePage({pm, assets, setJoModal, onSavePM, onRecordService, curr
                     </td>
                     <td>
                       <div style={{display:'flex',gap:4,flexWrap:'nowrap'}}>
-                        <button className="btn btn-ghost btn-sm btn-icon" title="Service History" onClick={()=>setHistoryModal(item)}>📋</button>
-                        {canEdit&&<button className="btn btn-success btn-sm btn-icon" title="Record Service" onClick={()=>{setRecordModal(item);setRecordDate(today);setRecordNotes('');setRecordJobNo('');}}>✓</button>}
-                        <button className="btn btn-primary btn-sm" title="Raise Job Order" style={{fontSize:11,padding:'4px 8px'}} onClick={()=>setJoModal({mode:'add',preAsset:item.assetNum})}>+ JO</button>
-                        {canEdit&&<button className="btn btn-warning btn-sm btn-icon" title="Edit" onClick={()=>openEdit(item)}>✏</button>}
+                        <button className="btn btn-ghost btn-sm btn-icon" title="Service History" style={{padding:'3px 5px',fontSize:11}} onClick={()=>setHistoryModal(item)}>📋</button>
+                        {canEdit&&<button className="btn btn-success btn-sm btn-icon" title="Record Service" style={{padding:'3px 5px',fontSize:11}} onClick={()=>{setRecordModal(item);setRecordDate(today);setRecordNotes('');setRecordJobNo('');}}>✓</button>}
+                        <button className="btn btn-primary btn-sm btn-icon" title="Raise Job Order" style={{padding:'3px 5px',fontSize:11}} onClick={()=>setJoModal({mode:'add',preAsset:item.assetNum})}>＋JO</button>
+                        {canEdit&&<button className="btn btn-warning btn-sm btn-icon" title="Edit" style={{padding:'3px 5px',fontSize:11}} onClick={()=>openEdit(item)}>✏</button>}
                       </div>
                     </td>
                   </tr>
@@ -2924,6 +2955,8 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
   const [leaveStart, setLeaveStart] = useState('');
   const [leaveEnd, setLeaveEnd] = useState('');
   const [exitDate, setExitDate] = useState('');
+  const [updateRemarks, setUpdateRemarks] = useState('');
+  const [historyModal, setHistoryModal] = useState(null);
   const [showResignModal, setShowResignModal] = useState(false);
   const importRef = useRef(null);
 
@@ -2939,7 +2972,10 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
       if (tab==='active' && !active) return false;
       if (tab==='inactive' && active) return false;
       if (filterSection && e.section!==filterSection) return false;
-      if (filterStatus && getStatus(e)!==filterStatus) return false;
+      if (filterStatus) {
+        if (filterStatus==='RESIGN') { if (!e.exitDate) return false; }
+        else if (getStatus(e)!==filterStatus) return false;
+      }
       if (q && ![e.empId,e.name,e.designation,e.section,e.nationality].join(' ').toLowerCase().includes(q.toLowerCase())) return false;
       return true;
     })
@@ -2974,20 +3010,24 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
   function doUpdate() {
     if (!updateModal) return;
     let updates = {};
+    let entry = {savedOn: today, remarks: updateRemarks};
     if (updateType==='resign') {
       if (!exitDate) { alert('Exit date required'); return; }
       updates = {exitDate, siteStatus:'ON DUTY'};
+      entry = {...entry, type:'RESIGN', exitDate};
     } else {
       if (!leaveStart||!leaveEnd) { alert('Leave dates required'); return; }
       const onL = leaveStart<=today && leaveEnd>=today;
       updates = {leaveType, leaveStart, leaveEnd, siteStatus: onL?'ON LEAVE':'ON DUTY'};
+      entry = {...entry, type:leaveType, start:leaveStart, end:leaveEnd};
     }
+    updates.leaveHistory = [...(updateModal.leaveHistory||[]), entry];
     onUpdateStatus(updateModal.empId, updates);
-    setUpdateModal(null);
+    setUpdateModal(null); setUpdateRemarks('');
   }
 
-  const SortTh = ({label,col}) => (
-    <th onClick={()=>setSortCol(col)} style={{cursor:'pointer',userSelect:'none',whiteSpace:'nowrap'}}>
+  const SortTh = ({label,col,style:sx}) => (
+    <th onClick={()=>setSortCol(col)} style={{cursor:'pointer',userSelect:'none',whiteSpace:'nowrap',...(sx||{})}}>
       {label}{sortCol===col?<span style={{marginLeft:4,color:'var(--accent)'}}>↑</span>:null}
     </th>
   );
@@ -3001,11 +3041,6 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
           <div className="page-sub">MANPOWER MANAGEMENT — SITE STATUS & LEAVE TRACKING</div>
         </div>
         <div className="controls">
-          {pendingResign.length>0&&(
-            <button className="btn btn-warning btn-sm" onClick={()=>setShowResignModal(true)}>
-              ⚠ Pending Resignations ({pendingResign.length})
-            </button>
-          )}
           {canAdmin&&<button className="btn btn-accent" onClick={()=>{setEmpForm({empId:'',name:'',designation:'',section:'',nationality:'',siteStatus:'ON DUTY'});setEmpFormIsEdit(false);}}>＋ Add Employee</button>}
           <button className="btn btn-csv btn-sm" onClick={exportEmpsCSV}>↓ Export</button>
           <label className="btn btn-csv btn-sm" style={{cursor:'pointer'}}>↑ Import
@@ -3047,28 +3082,29 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
             <option value="">All Sections</option>
             {allSections.map(s=><option key={s}>{s}</option>)}
           </select>
-          {tab==='active'&&<select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{fontSize:12}}>
+          <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{fontSize:12}}>
             <option value="">All Status</option>
-            <option value="ON DUTY">On Duty</option>
-            <option value="ON LEAVE">On Leave</option>
-          </select>}
+            {tab==='active'&&<><option value="ON DUTY">On Duty</option><option value="ON LEAVE">On Leave</option><option value="OFF SITE">Off Site</option><option value="RESIGN">Pending Resignation</option></>}
+            {tab==='inactive'&&<option value="INACTIVE">Inactive</option>}
+          </select>
         </div>
       </div>
 
       {/* Table */}
       <div className="panel" style={{borderTopLeftRadius:0,borderTopRightRadius:0,borderTop:'none'}}>
         <div className="tbl-wrap">
-          <table>
+          <table style={{tableLayout:'fixed',width:'100%'}}>
             <thead><tr>
-              <SortTh label="Emp ID"      col="empId"/>
-              <SortTh label="Name"        col="name"/>
-              <SortTh label="Designation" col="designation"/>
-              <SortTh label="Section"     col="section"/>
-              <SortTh label="Nationality" col="nationality"/>
-              <SortTh label="Site Status" col="siteStatus"/>
-              <th>Leave Start</th><th>Leave End</th>
-              <SortTh label="Exit Date"   col="exitDate"/>
-              {canEdit&&<th>Actions</th>}
+              <SortTh label="Emp ID"      col="empId"      style={{width:'7%'}}/>
+              <SortTh label="Name"        col="name"       style={{width:'18%'}}/>
+              <SortTh label="Designation" col="designation" style={{width:'16%'}}/>
+              <SortTh label="Section"     col="section"    style={{width:'12%'}}/>
+              <SortTh label="Nationality" col="nationality" style={{width:'9%'}}/>
+              <SortTh label="Site Status" col="siteStatus" style={{width:'9%'}}/>
+              <th style={{width:'8%'}}>Leave Start</th>
+              <th style={{width:'8%'}}>Leave End</th>
+              <SortTh label="Exit Date"   col="exitDate"   style={{width:'9%'}}/>
+              {canEdit&&<th style={{width:'11%'}}>Actions</th>}
             </tr></thead>
             <tbody>
               {displayList.length===0&&<tr><td colSpan={canEdit?10:9}><div className="empty-state" style={{padding:32}}>No employees found</div></td></tr>}
@@ -3094,9 +3130,10 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
                   <td style={{fontFamily:'var(--fm)',fontSize:11,color:e.leaveEnd?'var(--yellow)':'var(--gray)'}}>{e.leaveEnd||'—'}</td>
                   <td style={{fontFamily:'var(--fm)',fontSize:11,color:resigning?'var(--accent)':'var(--gray)',fontWeight:resigning?700:400}}>{e.exitDate||'—'}</td>
                   {canEdit&&<td>
-                    <div style={{display:'flex',gap:4,flexWrap:'nowrap'}}>
-                      {canAdmin&&<button className="btn btn-warning btn-sm btn-icon" title="Edit Employee" onClick={()=>{setEmpForm({...e});setEmpFormIsEdit(true);}}>✏</button>}
-                      <button className="btn btn-primary btn-sm" style={{fontSize:10,padding:'3px 7px'}} onClick={()=>{setUpdateModal(e);setUpdateType('leave');setLeaveType(e.leaveType||'AL');setLeaveStart(e.leaveStart||'');setLeaveEnd(e.leaveEnd||'');setExitDate(e.exitDate||'');}}>📋 Update</button>
+                    <div style={{display:'flex',gap:3,flexWrap:'nowrap'}}>
+                      {canAdmin&&<button className="btn btn-warning btn-sm btn-icon" title="Edit Employee" style={{padding:'3px 6px',fontSize:12}} onClick={()=>{setEmpForm({...e});setEmpFormIsEdit(true);}}>✏</button>}
+                      <button className="btn btn-primary btn-sm btn-icon" title="Update Leave / Resignation" style={{padding:'3px 6px',fontSize:12}} onClick={()=>{setUpdateModal(e);setUpdateType('leave');setLeaveType(e.leaveType||'AL');setLeaveStart(e.leaveStart||'');setLeaveEnd(e.leaveEnd||'');setExitDate(e.exitDate||'');setUpdateRemarks('');}}>📅</button>
+                      <button className="btn btn-ghost btn-sm btn-icon" title="Leave History" style={{padding:'3px 6px',fontSize:12}} onClick={()=>setHistoryModal(e)}>📜</button>
                     </div>
                   </td>}
                 </tr>
@@ -3136,7 +3173,7 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
                 <div className="form-group">
                   <label>Site Status</label>
                   <select value={empForm.siteStatus||'ON DUTY'} onChange={e=>setEmpForm({...empForm,siteStatus:e.target.value})}>
-                    <option>ON DUTY</option><option>ON LEAVE</option>
+                    <option>ON DUTY</option><option>ON LEAVE</option><option>OFF SITE</option>
                   </select>
                 </div>
               </div>
@@ -3153,20 +3190,24 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
         </div>
       )}
 
-      {/* Leave / Resignation Modal */}
+      {/* Leave / Resignation Modal — fixed size */}
       {updateModal&&(
         <div className="modal-overlay" onClick={()=>setUpdateModal(null)}>
           <div className="modal" style={{width:480}} onClick={e=>e.stopPropagation()}>
             <div className="modal-head">
-              <div className="modal-title">Update — {updateModal.name.split(' ')[0]}</div>
+              <div>
+                <div className="modal-title">Staff Update — {updateModal.name.split(' ')[0]}</div>
+                <div style={{fontSize:10,color:'var(--gray)',fontFamily:'var(--fm)',marginTop:2}}>{updateModal.empId} · {updateModal.designation}</div>
+              </div>
               <button className="modal-close" onClick={()=>setUpdateModal(null)}>×</button>
             </div>
-            <div className="modal-body">
-              <div style={{display:'flex',gap:12,marginBottom:20}}>
-                <button className={`btn ${updateType==='leave'?'btn-primary':'btn-ghost'}`} onClick={()=>setUpdateType('leave')}>Leave Update</button>
-                <button className={`btn ${updateType==='resign'?'btn-danger':'btn-ghost'}`} onClick={()=>setUpdateType('resign')}>Resignation</button>
+            <div className="modal-body" style={{minHeight:300}}>
+              <div style={{display:'flex',gap:8,marginBottom:16}}>
+                <button className={`btn btn-sm ${updateType==='leave'?'btn-primary':'btn-ghost'}`} onClick={()=>setUpdateType('leave')}>Leave Update</button>
+                <button className={`btn btn-sm ${updateType==='resign'?'btn-danger':'btn-ghost'}`} onClick={()=>setUpdateType('resign')}>Resignation</button>
               </div>
-              {updateType==='leave'&&<div>
+              {/* Leave fields — always rendered, hidden when not active */}
+              <div style={{display:updateType==='leave'?'block':'none'}}>
                 <div className="form-row">
                   <div className="form-group">
                     <label>Leave Type</label>
@@ -3181,18 +3222,64 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
                   <div className="form-group"><label>Leave Start</label><input type="date" value={leaveStart} onChange={e=>setLeaveStart(e.target.value)}/></div>
                   <div className="form-group"><label>Leave End</label><input type="date" value={leaveEnd} onChange={e=>setLeaveEnd(e.target.value)}/></div>
                 </div>
-              </div>}
-              {updateType==='resign'&&<div>
-                <div style={{background:'rgba(245,158,11,.1)',border:'1px solid rgba(245,158,11,.3)',borderRadius:6,padding:'8px 12px',fontSize:11,color:'var(--accent)',fontFamily:'var(--fm)',marginBottom:14}}>
-                  ⚠ On the exit date the employee will automatically become Inactive.
+              </div>
+              {/* Resign fields — always rendered, hidden when not active */}
+              <div style={{display:updateType==='resign'?'block':'none'}}>
+                <div style={{background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.25)',borderRadius:6,padding:'8px 12px',fontSize:11,color:'var(--accent)',fontFamily:'var(--fm)',marginBottom:12}}>
+                  ⚠ Employee becomes Inactive automatically on the exit date.
                 </div>
                 <div className="form-group"><label>Exit / Resignation Date</label><input type="date" value={exitDate} onChange={e=>setExitDate(e.target.value)}/></div>
-              </div>}
-              <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:16}}>
+              </div>
+              <div className="form-group" style={{marginTop:10}}>
+                <label>Remarks</label>
+                <textarea value={updateRemarks} onChange={e=>setUpdateRemarks(e.target.value)} placeholder="Optional notes..." style={{minHeight:56}}/>
+              </div>
+              <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:12}}>
                 <button className="btn btn-ghost" onClick={()=>setUpdateModal(null)}>Cancel</button>
                 <button className={`btn ${updateType==='resign'?'btn-danger':'btn-success'}`} onClick={doUpdate}>
                   {updateType==='resign'?'Save Resignation':'Save Leave'}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Leave History Modal */}
+      {historyModal&&(
+        <div className="modal-overlay" onClick={()=>setHistoryModal(null)}>
+          <div className="modal" style={{width:560}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <div className="modal-title">Leave History — {historyModal.name.split(' ')[0]}</div>
+                <div style={{fontSize:10,color:'var(--gray)',fontFamily:'var(--fm)',marginTop:2}}>{historyModal.empId} · {historyModal.designation}</div>
+              </div>
+              <button className="modal-close" onClick={()=>setHistoryModal(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              {(historyModal.leaveHistory||[]).length===0
+                ? <div className="empty-state" style={{padding:24}}>No leave records found</div>
+                : <div className="tbl-wrap">
+                    <table>
+                      <thead><tr>
+                        <th>Type</th><th>Start / Exit Date</th><th>End Date</th><th>Remarks</th><th>Saved On</th>
+                      </tr></thead>
+                      <tbody>
+                        {[...(historyModal.leaveHistory||[])].reverse().map((h,i)=>(
+                          <tr key={i}>
+                            <td><span className={`sb-base ${h.type==='RESIGN'?'sb':h.type==='SL'?'sm':'sl'}`}>{h.type}</span></td>
+                            <td style={{fontFamily:'var(--fm)',fontSize:12}}>{h.start||h.exitDate||'—'}</td>
+                            <td style={{fontFamily:'var(--fm)',fontSize:12}}>{h.end||'—'}</td>
+                            <td style={{fontSize:11,color:'var(--gray)'}}>{h.remarks||'—'}</td>
+                            <td style={{fontFamily:'var(--fm)',fontSize:11,color:'var(--gray)'}}>{h.savedOn||'—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+              }
+              <div style={{marginTop:14,display:'flex',justifyContent:'flex-end'}}>
+                <button className="btn btn-ghost" onClick={()=>setHistoryModal(null)}>Close</button>
               </div>
             </div>
           </div>
