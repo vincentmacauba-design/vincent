@@ -166,6 +166,12 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 async function dbSave(key, value) {
   try { await sb.from('app_data').upsert({key, value, updated_at: new Date().toISOString()}); } catch(e) { console.warn('dbSave failed', e); }
 }
+async function hashPwd(pw) {
+  if (!pw) return '';
+  if (/^[0-9a-f]{64}$/.test(pw)) return pw;
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
 
 // ─── DEFAULT USERS ──────────────────────────────────────────────────────────
 const DEFAULT_USERS = [
@@ -628,7 +634,14 @@ function App() {
         if ('jobOrders' in map) { const jos=map.jobOrders||[]; setJobOrders(jos); if(jos.length){const maxN=Math.max(...jos.map(j=>parseInt((j.jobNo||'').replace(/\D/g,''))||0)); if(maxN>0) setJoCounter(maxN);} }
         if ('pm' in map) setPM(map.pm||[]);
         if ('employees' in map) setEmployees(map.employees||[]);
-        if ('users' in map && map.users?.length) setUsers(map.users);
+        if ('users' in map && map.users?.length) {
+          const rawUsers = map.users;
+          const needsMigration = rawUsers.some(u => u.password && !/^[0-9a-f]{64}$/.test(u.password));
+          if (needsMigration) {
+            Promise.all(rawUsers.map(async u => ({...u, password: await hashPwd(u.password)})))
+              .then(hashed => { setUsers(hashed); persistUsers(hashed); });
+          } else { setUsers(rawUsers); }
+        }
         if ('customPlants' in map) setCustomPlants(map.customPlants||[]);
       }
       if (!data || data.length === 0) {
@@ -640,7 +653,7 @@ function App() {
         dbSave('jobOrders', []);
         dbSave('pm', BASE_PM);
         dbSave('employees', BASE_EMPLOYEES);
-        dbSave('users', DEFAULT_USERS);
+        Promise.all(DEFAULT_USERS.map(async u=>({...u,password:await hashPwd(u.password)}))).then(h=>{setUsers(h);dbSave('users',h);});
         dbSave('customPlants', [...PLANTS].sort());
       }
       isLoaded.current = true;
@@ -696,8 +709,9 @@ function App() {
     dbSave('users', next);
   }
 
-  function handleLogin(username, password) {
-    const u = users.find(u => u.username === username && u.password === password && u.active !== false);
+  async function handleLogin(username, password) {
+    const hashed = await hashPwd(password);
+    const u = users.find(u => u.username === username && u.password === hashed && u.active !== false);
     if (u) { setCurrentUser(u); try{localStorage.setItem(SESSION_KEY,JSON.stringify(u));}catch(_){} return true; }
     return false;
   }
@@ -708,17 +722,18 @@ function App() {
     try { localStorage.removeItem(SESSION_KEY); } catch(_) {}
   }
 
-  function saveUser(user, editId) {
+  async function saveUser(user, editId) {
+    const hashedPwd = user.password ? await hashPwd(user.password) : null;
     setUsers(prev => {
       let next;
       if (editId) {
         const existing = prev.find(u => u.id === editId);
-        const updated = {...user, id: editId, password: user.password || existing.password};
+        const updated = {...user, id: editId, password: hashedPwd || existing.password};
         next = prev.map(u => u.id === editId ? updated : u);
         if (currentUser && currentUser.id === editId) { setCurrentUser(updated); try{localStorage.setItem(SESSION_KEY,JSON.stringify(updated));}catch(_){} }
       } else {
         const newId = Math.max(0, ...prev.map(u => u.id)) + 1;
-        next = [...prev, {...user, id: newId}];
+        next = [...prev, {...user, id: newId, password: hashedPwd||''}];
       }
       persistUsers(next);
       return next;
@@ -1115,8 +1130,8 @@ function LoginPage({onLogin}) {
     setError('');
     if (!username.trim() || !password) { setError('Please enter your username and password.'); return; }
     setLoading(true);
-    setTimeout(() => {
-      const ok = onLogin(username.trim(), password);
+    setTimeout(async () => {
+      const ok = await onLogin(username.trim(), password);
       if (!ok) { setError('Invalid username or password. Please try again.'); setLoading(false); }
     }, 350);
   }
