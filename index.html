@@ -3052,11 +3052,11 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
       </div>
 
       {/* Stats */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:18}}>
-        {[['Total Active',total,'var(--blue)','sc-blue'],['On Duty',onDuty,'var(--green)','sc-green'],['On Leave',onLeave,'var(--yellow)','sc-yellow'],['Resignations',resignCount,'var(--red)','sc-red']].map(([l,n,c,cls])=>(
-          <div key={l} className={`stat-card ${cls}`} style={{padding:'10px 14px'}}>
-            <div style={{fontFamily:'var(--fh)',fontSize:24,fontWeight:700,color:c,lineHeight:1}}>{n}</div>
-            <div style={{fontSize:10,color:'var(--gray)',fontFamily:'var(--fm)',letterSpacing:1,marginTop:3,textTransform:'uppercase'}}>{l}</div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:18}}>
+        {[['Total Active',total,'var(--blue)','sc-blue'],['On Duty',onDuty,'var(--green)','sc-green'],['On Leave',onLeave,'var(--yellow)','sc-yellow'],['Pending Resign',resignCount,'var(--red)','sc-red']].map(([l,n,c,cls])=>(
+          <div key={l} className={`stat-card ${cls}`} style={{padding:'8px 12px'}}>
+            <div style={{fontFamily:'var(--fh)',fontSize:22,fontWeight:700,color:c,lineHeight:1}}>{n}</div>
+            <div style={{fontSize:9,color:'var(--gray)',fontFamily:'var(--fm)',letterSpacing:.5,marginTop:3,textTransform:'uppercase',whiteSpace:'nowrap'}}>{l}</div>
           </div>
         ))}
       </div>
