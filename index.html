@@ -2964,6 +2964,7 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
   const getStatus  = emp => !isActive(emp) ? 'INACTIVE' : (emp.siteStatus||'ON DUTY');
   const fmtD = d => { if (!d||d==='—') return '—'; try { const [y,m,dy]=d.split('-'); return `${dy}-${m}-${y.slice(2)}`; } catch(_){return d;} };
   const empStatusCls = s => s==='ON DUTY'?'so':s==='INACTIVE'?'sb':s==='OFF SITE'?'sn':s==='PENDING RESIGN'?'sm':'sl';
+  const shortStatus  = s => s==='ON DUTY'?'OD':s==='ON LEAVE'?'OL':s==='OFF SITE'?'OS':s==='INACTIVE'?'INACT':s==='PENDING RESIGN'?'PR':s;
 
   const allSections = [...new Set(employees.map(e=>e.section).filter(Boolean))].sort();
   const pendingResign = employees.filter(e=>isActive(e)&&e.exitDate).sort((a,b)=>a.exitDate.localeCompare(b.exitDate));
@@ -3125,9 +3126,8 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
                   <td style={{fontSize:11}}>{e.section}</td>
                   <td style={{fontSize:11}}>{e.nationality}</td>
                   <td>
-                    <span className={`sb-base ${empStatusCls(effStatus)}`} style={{display:'inline-block',textAlign:'center',lineHeight:1.4,fontSize:9}}>
-                      {dispStatus}{!resigning&&e.leaveType&&dispStatus==='ON LEAVE'&&<><br/>({e.leaveType})</>}
-                      {resigning&&<><br/>(RESIGN)</>}
+                    <span className={`sb-base ${empStatusCls(effStatus)}`} style={{fontSize:10,whiteSpace:'nowrap'}}>
+                      {shortStatus(effStatus)}{!resigning&&e.leaveType&&dispStatus==='ON LEAVE'?` (${e.leaveType})`:''}
                     </span>
                   </td>
                   <td style={{fontFamily:'var(--fm)',fontSize:11,color:e.leaveStart?'var(--yellow)':'var(--gray)'}}>{fmtD(e.leaveStart)}</td>
