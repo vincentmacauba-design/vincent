@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CMMS — VHPL TIC Engineering Solutions</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -13,6 +14,14 @@
 <div id="root"></div>
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback } = React;
+
+/* SUPABASE SETUP — run this in Supabase SQL Editor:
+CREATE TABLE app_data (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+*/
 
 // ─── BASE ASSET DATA ────────────────────────────────────────────────────────
 const BASE_ASSETS = [
@@ -217,6 +226,14 @@ const USERS_KEY = 'cmms_vg_users';
 const PER_PAGE = 20;
 const PLANTS = ['01 FUEL FARM','02 CEMENT PLANT','03 LPG PLANT','04 POWER HOUSE','05 ROOFING PLANT','06 OXYGEN PLANT','07 MOBILE MACHINERY','08 VEHICLES','09 FIRE PUMP SYSTEM','10 BATCHING PLANT'];
 const CUSTOM_PLANTS_KEY = 'cmms_vg_plants';
+
+// ─── SUPABASE ───────────────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://adqifblwxzkbdetkqnxw.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkcWlmYmx3eHprYmRldGtxbnh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTc1OTcsImV4cCI6MjA5NTAzMzU5N30.dDOdSAY0h3NZcrCHzki9aObmMqHeXR3yexkYUK57QrE';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+async function dbSave(key, value) {
+  try { await sb.from('app_data').upsert({key, value, updated_at: new Date().toISOString()}); } catch(e) { console.warn('dbSave failed', e); }
+}
 
 // ─── DEFAULT USERS ──────────────────────────────────────────────────────────
 const DEFAULT_USERS = [
@@ -638,12 +655,13 @@ function importCSVFile(file, onRows) {
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
 function App() {
   const [page, setPage] = useState('dashboard');
-  const [assets, setAssets] = useState(() => JSON.parse(JSON.stringify(BASE_ASSETS)));
+  const [assets, setAssets] = useState(BASE_ASSETS);
   const [jobOrders, setJobOrders] = useState([]);
   const [joCounter, setJoCounter] = useState(1000);
   const [syncStatus, setSyncStatus] = useState('loading'); // loading | saving | ok
   const [toasts, setToasts] = useState([]);
   const [clock, setClock] = useState('');
+  const [dbLoaded, setDbLoaded] = useState(false);
   const saveTimer = useRef(null);
   const isLoaded = useRef(false);
 
@@ -652,10 +670,7 @@ function App() {
     try { const r = localStorage.getItem(SESSION_KEY); if (r) return JSON.parse(r); } catch(e) {}
     return null;
   });
-  const [users, setUsers] = useState(() => {
-    try { const r = localStorage.getItem(USERS_KEY); if (r) return JSON.parse(r); } catch(e) {}
-    return DEFAULT_USERS;
-  });
+  const [users, setUsers] = useState(DEFAULT_USERS);
 
   // modals
   const [assetModal, setAssetModal] = useState(null); // null | {mode:'view'|'edit'|'add', asset}
@@ -668,28 +683,61 @@ function App() {
     tick(); const id = setInterval(tick, 1000); return () => clearInterval(id);
   }, []);
 
-  // ── Load from localStorage on mount
+  // ── Load from Supabase on mount
   useEffect(() => {
+    sb.from('app_data').select('*').then(({data, error}) => {
+      if (data && data.length > 0) {
+        const map = {};
+        data.forEach(r => { map[r.key] = r.value; });
+        if (map.assets?.length) {
+          const deduped = [...new Map(map.assets.map(a => [a.num, {...a, plant:(a.plant||'').toUpperCase()}])).values()];
+          setAssets(deduped);
+        }
+        if (map.jobOrders?.length) setJobOrders(map.jobOrders);
+        if (map.pm?.length) setPM(map.pm);
+        if (map.employees?.length) setEmployees(map.employees);
+        if (map.users?.length) setUsers(map.users);
+        if (Array.isArray(map.customPlants)) setCustomPlants(map.customPlants);
+      }
+      if (!data || data.length === 0) {
+        // Seed base data on first load
+        const baseAssets = BASE_ASSETS.map(a => ({...a, plant: (a.plant||'').toUpperCase()}));
+        const deduped = [...new Map(baseAssets.map(a => [a.num, a])).values()];
+        setAssets(deduped);
+        dbSave('assets', deduped);
+        dbSave('jobOrders', []);
+        dbSave('pm', BASE_PM);
+        dbSave('employees', BASE_EMPLOYEES);
+        dbSave('users', DEFAULT_USERS);
+        dbSave('customPlants', [...PLANTS].sort());
+      }
+      isLoaded.current = true;
+      setSyncStatus('ok');
+      setDbLoaded(true);
+    });
+    // Also attempt to restore joCounter from localStorage as fallback
     try {
       const raw = localStorage.getItem(STORE_KEY);
-      if (raw) {
-        const d = JSON.parse(raw);
-        if (d.assets) {
-          // Normalise plant names to UPPERCASE + deduplicate by asset number
-          const na = d.assets.map(a=>({...a,plant:(a.plant||'').toUpperCase()}));
-          const deduped = [...new Map(na.map(a=>[a.num,a])).values()];
-          setAssets(deduped);
-          try { localStorage.setItem(STORE_KEY, JSON.stringify({...d,assets:deduped})); } catch(_){}
-        } else setAssets([]);
-        if (d.jobOrders) setJobOrders(d.jobOrders);
-        if (d.joCounter) setJoCounter(d.joCounter);
-      }
-    } catch(e) { /* no saved data yet */ }
-    isLoaded.current = true;
-    setSyncStatus('ok');
+      if (raw) { const d = JSON.parse(raw); if (d.joCounter) setJoCounter(d.joCounter); }
+    } catch(e) {}
   }, []);
 
-  // ── Persist (debounced) to localStorage
+  // ── Real-time sync via Supabase
+  useEffect(() => {
+    const ch = sb.channel('cmms_sync')
+      .on('postgres_changes', {event:'UPDATE', schema:'public', table:'app_data'}, ({new:row}) => {
+        if (row.key==='assets')        setAssets(row.value);
+        else if (row.key==='jobOrders')    setJobOrders(row.value);
+        else if (row.key==='pm')           setPM(row.value);
+        else if (row.key==='employees')    setEmployees(row.value);
+        else if (row.key==='users')        setUsers(row.value);
+        else if (row.key==='customPlants') setCustomPlants(row.value);
+      })
+      .subscribe();
+    return () => sb.removeChannel(ch);
+  }, []);
+
+  // ── Persist (debounced) to localStorage + Supabase
   const persist = useCallback((newAssets, newJOs, newCounter) => {
     if (!isLoaded.current) return;
     clearTimeout(saveTimer.current);
@@ -700,17 +748,20 @@ function App() {
           assets: newAssets, jobOrders: newJOs, joCounter: newCounter
         }));
         setSyncStatus('ok');
-        addToast('✓ Saved locally');
+        addToast('✓ Saved');
       } catch(e) {
         setSyncStatus('ok');
-        addToast('⚠ Could not save', true);
+        addToast('⚠ Could not save locally', true);
       }
+      dbSave('assets', newAssets);
+      dbSave('jobOrders', newJOs);
     }, 800);
   }, []);
 
   // ── Auth & User management
   function persistUsers(next) {
     try { localStorage.setItem(USERS_KEY, JSON.stringify(next)); } catch(e) {}
+    dbSave('users', next);
   }
 
   function handleLogin(username, password) {
@@ -849,12 +900,10 @@ function App() {
   }
 
   // ── Employees
-  const [employees, setEmployees] = useState(() => {
-    try { const r = localStorage.getItem(EMPLOYEES_KEY); if (r) return JSON.parse(r); } catch(e) {}
-    return BASE_EMPLOYEES;
-  });
+  const [employees, setEmployees] = useState(BASE_EMPLOYEES);
   function persistEmployees(next) {
     try { localStorage.setItem(EMPLOYEES_KEY, JSON.stringify(next)); } catch(e) {}
+    dbSave('employees', next);
   }
   function saveEmployee(emp, editId) {
     setEmployees(prev => {
@@ -870,10 +919,7 @@ function App() {
     addToast(editId ? 'Employee updated.' : 'Employee added.');
   }
   // ── PM Schedule
-  const [pm, setPM] = useState(() => {
-    try { const r = localStorage.getItem(PM_KEY); if (r) return JSON.parse(r); } catch(e) {}
-    return BASE_PM;
-  });
+  const [pm, setPM] = useState(BASE_PM);
   function savePMItem(item, editId) {
     setPM(prev => {
       let next;
@@ -885,6 +931,7 @@ function App() {
         next = [...prev, {...item, id:newId, serviceHistory:[]}];
       }
       try { localStorage.setItem(PM_KEY, JSON.stringify(next)); } catch(e) {}
+      dbSave('pm', next);
       return next;
     });
   }
@@ -900,6 +947,7 @@ function App() {
         const existing = new Set(prev.map(p => p.id));
         const next = [...prev, ...newPM.filter(p => !existing.has(p.id))];
         try { localStorage.setItem(PM_KEY, JSON.stringify(next)); } catch(e) {}
+        dbSave('pm', next);
         return next;
       });
       addToast('PM schedule imported.');
@@ -914,6 +962,7 @@ function App() {
         return {...p, lastService:record.date, nextService:next_, serviceHistory:history};
       });
       try { localStorage.setItem(PM_KEY, JSON.stringify(next)); } catch(e) {}
+      dbSave('pm', next);
       return next;
     });
   }
@@ -931,25 +980,13 @@ function App() {
     setJobOrders([]);
     setJoCounter(1000);
     try { localStorage.setItem(STORE_KEY, JSON.stringify({assets:[], jobOrders:[], joCounter:1000})); } catch(e) {}
+    dbSave('assets', []);
+    dbSave('jobOrders', []);
     addToast('All data has been reset to factory defaults.');
   }
 
   // ── Custom Plants
-  const [customPlants, setCustomPlants] = useState(() => {
-    try {
-      const r = localStorage.getItem(CUSTOM_PLANTS_KEY);
-      if (r) {
-        const stored = JSON.parse(r);
-        // Migrate: merge with PLANTS so all built-ins are always present
-        const merged = [...new Set([...PLANTS, ...stored])].sort();
-        localStorage.setItem(CUSTOM_PLANTS_KEY, JSON.stringify(merged));
-        return merged;
-      }
-    } catch(e) {}
-    const initial = [...PLANTS].sort();
-    try { localStorage.setItem(CUSTOM_PLANTS_KEY, JSON.stringify(initial)); } catch(e) {}
-    return initial;
-  });
+  const [customPlants, setCustomPlants] = useState([...PLANTS].sort());
   function addCustomPlant(name) {
     const upper = name.trim().toUpperCase();
     if (!upper) return;
@@ -957,6 +994,7 @@ function App() {
       if (prev.includes(upper)) return prev;
       const next = [...prev, upper].sort();
       try { localStorage.setItem(CUSTOM_PLANTS_KEY, JSON.stringify(next)); } catch(e) {}
+      dbSave('customPlants', next);
       return next;
     });
   }
@@ -966,6 +1004,7 @@ function App() {
     setCustomPlants(prev => {
       const next = prev.map(p => p===oldName ? upper : p);
       try { localStorage.setItem(CUSTOM_PLANTS_KEY, JSON.stringify(next)); } catch(e) {}
+      dbSave('customPlants', next);
       return next;
     });
     setAssets(prev => {
@@ -1008,6 +1047,14 @@ function App() {
 
   if (!currentUser) return (
     <><style>{CSS}</style><LoginPage onLogin={handleLogin} /></>
+  );
+
+  if (!dbLoaded) return (
+    <><style>{CSS}</style>
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--navy)',flexDirection:'column',gap:16}}>
+      <div style={{fontFamily:'var(--fh)',fontSize:24,color:'var(--accent)'}}>CMMS</div>
+      <div style={{color:'var(--gray)',fontSize:13}}>Loading data...</div>
+    </div></>
   );
 
   return (
