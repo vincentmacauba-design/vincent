@@ -534,50 +534,46 @@ function printJOPDF(jo) {
   const jsb=jo.status==='OPEN'?'#fef3c7':jo.status==='IN PROGRESS'?'#dbeafe':'#d1fae5';
   const partsRows=(jo.parts||[]).filter(p=>p.desc||p.itemCode).map(p=>`<tr><td style="font-family:monospace;font-size:10px">${p.itemCode||'—'}</td><td>${p.desc||'—'}</td><td style="text-align:center">${p.qty||'—'}</td><td style="text-align:center">${p.unit||'—'}</td></tr>`).join('')||`<tr><td colspan="4" style="color:#94a3b8;text-align:center;padding:8px">No parts recorded</td></tr>`;
   const mpRows=(jo.manpower||[]).filter(m=>m.empId||m.name).map(m=>`<tr><td style="font-family:monospace;font-size:10px">${m.empId||'—'}</td><td style="font-weight:600">${m.name||'—'}</td><td>${m.designation||'—'}</td><td style="text-align:center">${m.hours||0} hrs</td></tr>`).join('')||`<tr><td colspan="4" style="color:#94a3b8;text-align:center;padding:8px">No manpower recorded</td></tr>`;
-  const sect = (title,content) => `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 14px;margin-bottom:10px"><div style="font-size:9px;color:#f59e0b;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px">${title}</div>${content}</div>`;
+  const nb = 'page-break-inside:avoid;break-inside:avoid';
+  const sect = (title,content) => `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 14px;margin-bottom:10px;${nb}"><div style="font-size:9px;color:#f59e0b;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px">${title}</div>${content}</div>`;
   const grid3 = items => `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">${items.map(([l,v])=>`<div><div style="font-size:9px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">${l}</div><div style="font-size:11px;font-weight:600">${v}</div></div>`).join('')}</div>`;
+  const thStyle = 'padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;letter-spacing:1px;text-align:left';
   openPrintWindow(`Job Order ${jo.jobNo}`, `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #e2e8f0">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #e2e8f0;${nb}">
       <span style="font-size:20px;font-weight:900;font-family:Arial Black,sans-serif;color:#0a1628">${jo.jobNo}</span>
       <span style="background:${jsb};color:${jsc};padding:3px 14px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:1px">${jo.status}</span>
     </div>
     ${sect('Request Information', grid3([['Date',jo.date||'—'],['Requested By',jo.requester||'—'],['Department',jo.dept||'—'],['Priority',`<span style="font-weight:700;color:${jo.priority==='High'?'#dc2626':'#059669'}">${jo.priority||'—'}</span>`],['Type of Repair',jo.repairType||'—'],['Status',jo.status]]))}
     ${sect('Equipment Details', grid3([['Asset Number',jo.assetNum||'—'],['Asset Description',jo.assetDesc||'—'],['Location',jo.location||'—'],['Equipment Code',jo.eqcode||'—']]))}
-    <div style="background:#fff8ed;border:1px solid #fed7aa;border-radius:6px;padding:12px 14px;margin-bottom:10px">
+    <div style="background:#fff8ed;border:1px solid #fed7aa;border-radius:6px;padding:12px 14px;margin-bottom:10px;${nb}">
       <div style="font-size:9px;color:#f59e0b;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">PROBLEM DETAILS</div>
       <div style="font-size:11px;line-height:1.65">${jo.problem||'—'}</div>
     </div>
-    ${sect('Authorisation', grid3([['Received By',jo.recvName||'—'],['Section',jo.section||'—'],['Approved By',jo.approved||'—'],['Target Completion',jo.target||'—'],['Completion Date',`<span style="color:#059669;font-weight:700">${jo.completionDate||'—'}</span>`]]))}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 14px;margin-bottom:10px">
-        <div style="font-size:9px;color:#f59e0b;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">MANPOWER UTILISATION</div>
-        <table style="width:100%;border-collapse:collapse"><thead><tr>
-          <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;letter-spacing:1px;text-align:left">Emp ID</th>
-          <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;text-align:left">Name</th>
-          <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;text-align:left">Designation</th>
-          <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;text-align:center">Hours</th>
-        </tr></thead><tbody>${mpRows}</tbody></table>
-        <div style="margin-top:8px;font-size:10px;color:#64748b">Downtime: <strong>${jo.downtime||0} hrs</strong></div>
-      </div>
-      ${sect('Service Report', [['Work Status',jo.workStatus||'—'],['Evaluation',jo.eval||'—'],['Acceptance',jo.accept||'—']].map(([l,v])=>`<div style="margin-bottom:6px"><div style="font-size:9px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">${l}</div><div style="font-size:11px;font-weight:600">${v}</div></div>`).join(''))}
-    </div>
-    ${jo.workDone?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:12px 14px;margin-bottom:10px"><div style="font-size:9px;color:#f59e0b;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">WORK DONE</div><div style="font-size:11px;line-height:1.65">${jo.workDone}</div></div>`:''}
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 14px">
+    ${sect('Work Assigned To', grid3([['Received By',jo.recvName||'—'],['Section',jo.section||'—'],['Start Date',jo.target||'—'],['Completion Date',`<span style="color:#059669;font-weight:700">${jo.completionDate||'—'}</span>`]]))}
+    ${sect('Manpower Utilisation', `<table style="width:100%;border-collapse:collapse"><thead><tr>
+      <th style="${thStyle};width:12%">Emp ID</th>
+      <th style="${thStyle};width:28%">Name</th>
+      <th style="${thStyle};width:45%">Designation</th>
+      <th style="${thStyle};text-align:center;width:15%">Hours</th>
+    </tr></thead><tbody>${mpRows}</tbody></table>
+    <div style="margin-top:8px;font-size:10px;color:#64748b">Downtime: <strong>${jo.downtime||0} hrs</strong></div>`)}
+    ${sect('Service Report', `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">${[['Work Status',jo.workStatus||'—'],['Evaluation',jo.eval||'—'],['Acceptance',jo.accept||'—']].map(([l,v])=>`<div><div style="font-size:9px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">${l}</div><div style="font-size:11px;font-weight:600">${v}</div></div>`).join('')}</div>`)}
+    ${jo.workDone?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:12px 14px;margin-bottom:10px;${nb}"><div style="font-size:9px;color:#f59e0b;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">WORK DONE</div><div style="font-size:11px;line-height:1.65">${jo.workDone}</div></div>`:''}
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 14px;${nb}">
       <div style="font-size:9px;color:#f59e0b;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">MATERIALS / SPARE PARTS</div>
       <table style="width:100%;border-collapse:collapse"><thead><tr>
-        <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;letter-spacing:1px;text-align:left">Item Code</th>
-        <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;text-align:left">Description</th>
-        <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;text-align:center">Qty</th>
-        <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;text-align:center">Unit</th>
-        <th style="padding:6px 8px;background:#0a1628;color:#f59e0b;font-size:9px;text-align:right">SRP</th>
+        <th style="${thStyle};width:14%">Item Code</th>
+        <th style="${thStyle};width:52%">Description</th>
+        <th style="${thStyle};text-align:center;width:12%">Qty</th>
+        <th style="${thStyle};text-align:center;width:12%">Unit</th>
       </tr></thead><tbody>${partsRows}</tbody></table>
     </div>
-    ${jo.closedBy?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:12px 14px;margin-top:10px">
+    ${jo.closedBy?`<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:12px 14px;margin-top:10px;${nb}">
       <div style="font-size:9px;color:#059669;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px">APPROVAL</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-        <div><div style="font-size:9px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">Approved By</div><div style="font-size:11px;font-weight:700">${jo.closedBy}</div></div>
+        <div><div style="font-size:9px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">Closed By</div><div style="font-size:11px;font-weight:700">${jo.closedBy}</div></div>
         <div><div style="font-size:9px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">Designation</div><div style="font-size:11px;font-weight:600">${jo.closerDesignation||'—'}</div></div>
-        <div><div style="font-size:9px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">Approved Date</div><div style="font-size:11px;font-weight:600">${jo.closedDate||'—'}</div></div>
+        <div><div style="font-size:9px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">Closed Date</div><div style="font-size:11px;font-weight:600">${jo.closedDate||'—'}</div></div>
       </div>
     </div>`:''}
   `);
@@ -1771,9 +1767,9 @@ function openPrintWindow(title, bodyHtml) {
     .jop{background:#fef3c7;color:#92400e;}.jip{background:#dbeafe;color:#1e40af;}.jcl{background:#d1fae5;color:#065f46;}
     .hi{color:#dc2626;font-weight:700;}.lo{color:#059669;}
     .footer{margin-top:20px;font-size:9px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:10px;display:flex;justify-content:space-between;}
-    @media print{body{padding:12px 16px;}}
+    @media print{body{padding:12px 16px;}tr,td,th{page-break-inside:avoid;}}
   </style></head><body>
-    <div class="hdr"><div class="hdr-icon">CMM</div><div><div class="hdr-title">${title}</div><div class="hdr-sub">VHPL TIC — ENGINEERING SOLUTIONS DEPT</div></div></div>
+    <div class="hdr"><div class="hdr-icon">CMM</div><div><div class="hdr-title">${title}</div><div class="hdr-sub">VHPL TIC — ENGINEERING SOLUTIONS DEPARTMENT</div></div></div>
     <div class="meta"><span>Generated: ${now}</span></div>
     ${bodyHtml}
     <div class="footer"><span>VHPL TIC · CMMS</span><span>${title} · ${now}</span></div>
@@ -2388,7 +2384,7 @@ function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave, em
             <div className="jc-section-title">Work Assigned To</div>
             <div className="form-row">{fld('Received By','recvName')}{fld('Section Assigned','section')}</div>
             <div className="form-row">
-              <div className="form-group"><label>Target Completion</label><input type="date" value={f.target||''} onChange={e=>setF({...f,target:e.target.value})}/></div>
+              <div className="form-group"><label>Start Date</label><input type="date" value={f.target||''} onChange={e=>setF({...f,target:e.target.value})}/></div>
             </div>
           </div>
 
@@ -2533,8 +2529,7 @@ function JOViewModal({jo, onClose, onEdit, currentUser={}}) {
               <div>Tech 1: <strong>{jo.tech1||'—'}</strong> ({jo.tech1h||'0'} hrs)</div>
               <div>Tech 2: <strong>{jo.tech2||'—'}</strong> ({jo.tech2h||'0'} hrs)</div>
               <div>Section: <strong>{jo.section||'—'}</strong></div>
-              <div>Approved By: <strong>{jo.approved||'—'}</strong></div>
-              <div>Target: <strong>{jo.target||'—'}</strong></div>
+              <div>Start Date: <strong>{jo.target||'—'}</strong></div>
               <div>Completion: <strong style={{color:'var(--green)'}}>{jo.completionDate||'—'}</strong></div>
             </div>
           </div>
