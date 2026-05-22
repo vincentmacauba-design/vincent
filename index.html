@@ -3118,8 +3118,11 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
 
               {displayList.map(e=>{
                 const resigning = isActive(e) && e.exitDate;
-                const rowStyle  = resigning ? {background:'rgba(245,158,11,.06)'} : {};
                 const dispStatus = getStatus(e);
+                const rowStyle  = resigning ? {background:'rgba(245,158,11,.06)'}
+                  : dispStatus==='ON LEAVE' ? {background:'rgba(26,86,219,.08)'}
+                  : dispStatus==='OFF SITE' ? {background:'rgba(16,185,129,.07)'}
+                  : {};
                 return (
                 <tr key={e.empId} style={rowStyle}>
                   <td style={{fontFamily:'var(--fm)',fontSize:11,color:'var(--accent)'}}>{e.empId}</td>
