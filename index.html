@@ -2962,6 +2962,8 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
 
   const isActive   = emp => !emp.exitDate || emp.exitDate > today;
   const getStatus  = emp => !isActive(emp) ? 'INACTIVE' : (emp.siteStatus||'ON DUTY');
+  const fmtD = d => { if (!d||d==='—') return '—'; try { const [y,m,dy]=d.split('-'); return `${dy}-${m}-${y.slice(2)}`; } catch(_){return d;} };
+  const empStatusCls = s => s==='ON DUTY'?'so':s==='INACTIVE'?'sb':s==='OFF SITE'?'sn':s==='PENDING RESIGN'?'sm':'sl';
 
   const allSections = [...new Set(employees.map(e=>e.section).filter(Boolean))].sort();
   const pendingResign = employees.filter(e=>isActive(e)&&e.exitDate).sort((a,b)=>a.exitDate.localeCompare(b.exitDate));
@@ -3053,10 +3055,10 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
 
       {/* Stats */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:18}}>
-        {[['Total Active',total,'var(--blue)','sc-blue'],['On Duty',onDuty,'var(--green)','sc-green'],['On Leave',onLeave,'var(--yellow)','sc-yellow'],['Pending Resign',resignCount,'var(--red)','sc-red']].map(([l,n,c,cls])=>(
-          <div key={l} className={`stat-card ${cls}`} style={{padding:'8px 12px'}}>
+        {[['Total\nActive',total,'var(--blue)','sc-blue'],['On\nDuty',onDuty,'var(--green)','sc-green'],['On\nLeave',onLeave,'var(--yellow)','sc-yellow'],['Pending\nResign',resignCount,'var(--red)','sc-red']].map(([l,n,c,cls])=>(
+          <div key={l} className={`stat-card ${cls}`} style={{padding:'8px 12px',height:64,display:'flex',flexDirection:'column',justifyContent:'center'}}>
             <div style={{fontFamily:'var(--fh)',fontSize:22,fontWeight:700,color:c,lineHeight:1}}>{n}</div>
-            <div style={{fontSize:9,color:'var(--gray)',fontFamily:'var(--fm)',letterSpacing:.5,marginTop:3,textTransform:'uppercase',whiteSpace:'nowrap'}}>{l}</div>
+            <div style={{fontSize:9,color:'var(--gray)',fontFamily:'var(--fm)',letterSpacing:.5,marginTop:3,textTransform:'uppercase',whiteSpace:'pre-line',lineHeight:1.3}}>{l}</div>
           </div>
         ))}
       </div>
@@ -3112,9 +3114,9 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
 
               {displayList.map(e=>{
                 const resigning = isActive(e) && e.exitDate;
-                const rowStyle  = resigning ? {background:'rgba(245,158,11,.09)'} : {};
+                const rowStyle  = resigning ? {background:'rgba(245,158,11,.06)'} : {};
                 const dispStatus = getStatus(e);
-                const statusCls = dispStatus==='ON DUTY'?'so':dispStatus==='INACTIVE'?'sb':'sl';
+                const effStatus  = resigning ? 'PENDING RESIGN' : dispStatus;
                 return (
                 <tr key={e.empId} style={rowStyle}>
                   <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)'}}>{e.empId}</td>
@@ -3123,13 +3125,14 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
                   <td style={{fontSize:11}}>{e.section}</td>
                   <td style={{fontSize:11}}>{e.nationality}</td>
                   <td>
-                    <span className={`sb-base ${statusCls}`}>
-                      {dispStatus}{e.leaveType&&dispStatus==='ON LEAVE'?` (${e.leaveType})`:''}
+                    <span className={`sb-base ${empStatusCls(effStatus)}`} style={{display:'inline-block',textAlign:'center',lineHeight:1.4,fontSize:9}}>
+                      {dispStatus}{!resigning&&e.leaveType&&dispStatus==='ON LEAVE'&&<><br/>({e.leaveType})</>}
+                      {resigning&&<><br/>(RESIGN)</>}
                     </span>
                   </td>
-                  <td style={{fontFamily:'var(--fm)',fontSize:11,color:e.leaveStart?'var(--yellow)':'var(--gray)'}}>{e.leaveStart||'—'}</td>
-                  <td style={{fontFamily:'var(--fm)',fontSize:11,color:e.leaveEnd?'var(--yellow)':'var(--gray)'}}>{e.leaveEnd||'—'}</td>
-                  <td style={{fontFamily:'var(--fm)',fontSize:11,color:resigning?'var(--accent)':'var(--gray)',fontWeight:resigning?700:400}}>{e.exitDate||'—'}</td>
+                  <td style={{fontFamily:'var(--fm)',fontSize:11,color:e.leaveStart?'var(--yellow)':'var(--gray)'}}>{fmtD(e.leaveStart)}</td>
+                  <td style={{fontFamily:'var(--fm)',fontSize:11,color:e.leaveEnd?'var(--yellow)':'var(--gray)'}}>{fmtD(e.leaveEnd)}</td>
+                  <td style={{fontFamily:'var(--fm)',fontSize:11,color:resigning?'var(--accent)':'var(--gray)',fontWeight:resigning?700:400}}>{fmtD(e.exitDate)}</td>
                   {canEdit&&<td>
                     <div style={{display:'flex',gap:3,flexWrap:'nowrap'}}>
                       {canAdmin&&<button className="btn btn-warning btn-sm btn-icon" title="Edit Employee" style={{padding:'3px 6px',fontSize:12}} onClick={()=>{setEmpForm({...e});setEmpFormIsEdit(true);}}>✏</button>}
@@ -3269,8 +3272,8 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
                         {[...(historyModal.leaveHistory||[])].reverse().map((h,i)=>(
                           <tr key={i}>
                             <td><span className={`sb-base ${h.type==='RESIGN'?'sb':h.type==='SL'?'sm':'sl'}`}>{h.type}</span></td>
-                            <td style={{fontFamily:'var(--fm)',fontSize:12}}>{h.start||h.exitDate||'—'}</td>
-                            <td style={{fontFamily:'var(--fm)',fontSize:12}}>{h.end||'—'}</td>
+                            <td style={{fontFamily:'var(--fm)',fontSize:12}}>{fmtD(h.start||h.exitDate)}</td>
+                            <td style={{fontFamily:'var(--fm)',fontSize:12}}>{fmtD(h.end)}</td>
                             <td style={{fontSize:11,color:'var(--gray)'}}>{h.remarks||'—'}</td>
                             <td style={{fontFamily:'var(--fm)',fontSize:11,color:'var(--gray)'}}>{h.savedOn||'—'}</td>
                           </tr>
