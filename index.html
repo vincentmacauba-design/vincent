@@ -2961,7 +2961,12 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
   const importRef = useRef(null);
 
   const isActive   = emp => !emp.exitDate || emp.exitDate > today;
-  const getStatus  = emp => !isActive(emp) ? 'INACTIVE' : (emp.siteStatus||'ON DUTY');
+  const getStatus  = emp => {
+    if (!isActive(emp)) return 'INACTIVE';
+    const s = emp.siteStatus || 'ON DUTY';
+    if (s==='ON LEAVE' && emp.leaveEnd && emp.leaveEnd < today) return 'ON DUTY';
+    return s;
+  };
   const fmtD = d => { if (!d||d==='—') return '—'; try { const [y,m,dy]=d.split('-'); return `${dy}-${m}-${y.slice(2)}`; } catch(_){return d;} };
   const empStatusCls = s => s==='ON DUTY'?'so':s==='INACTIVE'?'sb':s==='OFF SITE'?'sn':s==='PENDING RESIGN'?'sm':'sl';
   const shortStatus  = s => s==='ON DUTY'?'OD':s==='ON LEAVE'?'OL':s==='OFF SITE'?'OS':s==='INACTIVE'?'INACT':s==='PENDING RESIGN'?'PR':s;
@@ -3119,9 +3124,9 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
               {displayList.map(e=>{
                 const resigning = isActive(e) && e.exitDate;
                 const dispStatus = getStatus(e);
-                const rowStyle  = resigning ? {background:'rgba(245,158,11,.06)'}
-                  : dispStatus==='ON LEAVE' ? {background:'rgba(26,86,219,.08)'}
-                  : dispStatus==='OFF SITE' ? {background:'rgba(16,185,129,.07)'}
+                const rowStyle  = resigning       ? {background:'rgba(245,158,11,.13)',borderLeft:'3px solid rgba(245,158,11,.6)'}
+                  : dispStatus==='ON LEAVE' ? {background:'rgba(26,86,219,.15)',borderLeft:'3px solid rgba(26,86,219,.6)'}
+                  : dispStatus==='OFF SITE' ? {background:'rgba(16,185,129,.12)',borderLeft:'3px solid rgba(16,185,129,.6)'}
                   : {};
                 return (
                 <tr key={e.empId} style={rowStyle}>
