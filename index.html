@@ -277,12 +277,12 @@ th{padding:9px 12px;text-align:left;font-family:var(--fh);font-size:11px;letter-
 td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle;}
 tr:last-child td{border-bottom:none;}tr:hover td{background:rgba(255,255,255,.02);}
 .sb-base{display:inline-block;padding:2px 9px;border-radius:3px;font-family:var(--fm);font-size:10px;letter-spacing:1px;font-weight:600;}
-.so{background:rgba(16,185,129,.22);color:var(--green);border:1px solid rgba(16,185,129,.45);}
-.sb{background:rgba(239,68,68,.22);color:var(--red);border:1px solid rgba(239,68,68,.45);}
-.sm{background:rgba(249,115,22,.22);color:var(--orange);border:1px solid rgba(249,115,22,.45);}
+.so{background:rgba(16,185,129,.35);color:#34d399;border:1px solid rgba(16,185,129,.65);}
+.sb{background:rgba(239,68,68,.3);color:#fca5a5;border:1px solid rgba(239,68,68,.6);}
+.sm{background:rgba(249,115,22,.3);color:#fb923c;border:1px solid rgba(249,115,22,.6);}
 .si{background:rgba(148,163,184,.18);color:var(--gray);border:1px solid rgba(148,163,184,.3);}
-.sn{background:rgba(26,86,219,.25);color:#60a5fa;border:1px solid rgba(26,86,219,.5);}
-.sl{background:rgba(245,158,11,.22);color:var(--yellow);border:1px solid rgba(245,158,11,.45);}
+.sn{background:rgba(26,86,219,.4);color:#93c5fd;border:1px solid rgba(26,86,219,.75);}
+.sl{background:rgba(245,158,11,.3);color:#fbbf24;border:1px solid rgba(245,158,11,.6);}
 .jop{background:rgba(245,158,11,.15);color:var(--yellow);border:1px solid rgba(245,158,11,.3);}
 .jcl{background:rgba(16,185,129,.15);color:var(--green);border:1px solid rgba(16,185,129,.3);}
 .jip{background:rgba(26,86,219,.15);color:#60a5fa;border:1px solid rgba(26,86,219,.3);}
@@ -3017,6 +3017,8 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
   const [historyModal, setHistoryModal] = useState(null);
   const [showResignModal, setShowResignModal] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [offsiteStart, setOffsiteStart] = useState('');
+  const [offsiteEnd, setOffsiteEnd] = useState('');
   const importRef = useRef(null);
 
   const isActive   = emp => !emp.exitDate || emp.exitDate > today;
@@ -3024,6 +3026,7 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
     if (!isActive(emp)) return 'INACTIVE';
     const s = emp.siteStatus || 'ON DUTY';
     if (s==='ON LEAVE' && emp.leaveEnd && emp.leaveEnd < today) return 'ON DUTY';
+    if (s==='OFF SITE' && emp.offsiteEnd && emp.offsiteEnd < today) return 'ON DUTY';
     return s;
   };
   const fmtD = d => { if (!d||d==='—') return '—'; try { const [y,m,dy]=d.split('-'); return `${dy}-${m}-${y.slice(2)}`; } catch(_){return d;} };
@@ -3084,13 +3087,15 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
       updates = {exitDate, siteStatus:'ON DUTY'};
       entry = {...entry, type:'RESIGN', exitDate};
     } else if (updateType==='offsite') {
-      updates = {siteStatus:'OFF SITE'};
-      entry = {...entry, type:'OFF SITE'};
+      if (!offsiteStart) { alert('Departure date required'); return; }
+      const returned = offsiteEnd && offsiteEnd < today;
+      updates = {siteStatus: returned?'ON DUTY':'OFF SITE', offsiteStart, offsiteEnd: offsiteEnd||''};
+      entry = {...entry, type:'OFF SITE', start: offsiteStart, end: offsiteEnd||''};
     } else {
-      if (!leaveStart||!leaveEnd) { alert('Leave dates required'); return; }
-      const onL = leaveStart<=today && leaveEnd>=today;
-      updates = {leaveType, leaveStart, leaveEnd, siteStatus: onL?'ON LEAVE':'ON DUTY'};
-      entry = {...entry, type:leaveType, start:leaveStart, end:leaveEnd};
+      if (!leaveStart) { alert('Leave start date required'); return; }
+      const onL = leaveStart<=today && (!leaveEnd || leaveEnd>=today);
+      updates = {leaveType, leaveStart, leaveEnd: leaveEnd||'', siteStatus: onL?'ON LEAVE':'ON DUTY'};
+      entry = {...entry, type:leaveType, start:leaveStart, end:leaveEnd||''};
     }
     updates.leaveHistory = [...(updateModal.leaveHistory||[]), entry];
     onUpdateStatus(updateModal.empId, updates);
@@ -3148,7 +3153,7 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
           </div>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',marginLeft:'auto',borderLeft:'1px solid var(--border)'}}>
-          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search..." style={{fontSize:12,padding:'5px 10px',minWidth:160,background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.12)',color:'var(--white)',borderRadius:5,outline:'none'}}/>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search..." style={{fontSize:12,padding:'5px 10px',minWidth:160,background:'rgba(255,255,255,.18)',border:'1px solid rgba(255,255,255,.35)',color:'var(--white)',borderRadius:5,outline:'none'}}/>
           <select value={filterSection} onChange={e=>setFilterSection(e.target.value)} style={{fontSize:12,minWidth:140}}>
             <option value="">All Sections</option>
             {allSections.map(s=><option key={s}>{s}</option>)}
@@ -3199,13 +3204,13 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
                       {shortStatus(dispStatus)}
                     </span>
                   </td>
-                  <td style={{fontFamily:'var(--fm)',fontSize:11,color:e.leaveStart?'var(--yellow)':'var(--gray)'}}>{fmtD(e.leaveStart)}</td>
-                  <td style={{fontFamily:'var(--fm)',fontSize:11,color:e.leaveEnd?'var(--yellow)':'var(--gray)'}}>{fmtD(e.leaveEnd)}</td>
+                  <td style={{fontFamily:'var(--fm)',fontSize:11,color:(dispStatus==='OFF SITE'?e.offsiteStart:e.leaveStart)?'var(--yellow)':'var(--gray)'}}>{fmtD(dispStatus==='OFF SITE'?e.offsiteStart:e.leaveStart)}</td>
+                  <td style={{fontFamily:'var(--fm)',fontSize:11,color:(dispStatus==='OFF SITE'?e.offsiteEnd:e.leaveEnd)?'var(--yellow)':'var(--gray)'}}>{fmtD(dispStatus==='OFF SITE'?e.offsiteEnd:e.leaveEnd)}</td>
                   <td style={{fontFamily:'var(--fm)',fontSize:11,color:resigning?'var(--accent)':'var(--gray)',fontWeight:resigning?700:400}}>{fmtD(e.exitDate)}</td>
                   {canEdit&&<td>
                     <div style={{display:'flex',gap:3,flexWrap:'nowrap'}}>
                       {canAdmin&&<button className="btn btn-warning btn-sm btn-icon" title="Edit Employee" style={{padding:'3px 6px',fontSize:12}} onClick={()=>{setEmpForm({...e});setEmpFormIsEdit(true);}}>✏</button>}
-                      <button className="btn btn-primary btn-sm btn-icon" title="Update Leave / Resignation" style={{padding:'3px 6px',fontSize:12}} onClick={()=>{setUpdateModal(e);setUpdateType('leave');setLeaveType(e.leaveType||'AL');setLeaveStart(e.leaveStart||'');setLeaveEnd(e.leaveEnd||'');setExitDate(e.exitDate||'');setUpdateRemarks('');}}>📅</button>
+                      <button className="btn btn-primary btn-sm btn-icon" title="Update Leave / Resignation" style={{padding:'3px 6px',fontSize:12}} onClick={()=>{setUpdateModal(e);setUpdateType(e.siteStatus==='OFF SITE'?'offsite':'leave');setLeaveType(e.leaveType||'AL');setLeaveStart(e.leaveStart||'');setLeaveEnd(e.leaveEnd||'');setExitDate(e.exitDate||'');setOffsiteStart(e.offsiteStart||'');setOffsiteEnd(e.offsiteEnd||'');setUpdateRemarks('');}}>📅</button>
                       <button className="btn btn-ghost btn-sm btn-icon" title="Leave History" style={{padding:'3px 6px',fontSize:12}} onClick={()=>setHistoryModal(e)}>📜</button>
                       {canAdmin&&<button className="btn btn-danger btn-sm btn-icon" title="Delete Employee" style={{padding:'3px 6px',fontSize:12}} onClick={()=>{if(window.confirm(`Delete ${e.name} (${e.empId})?`))onDeleteEmployee(e.empId);}}>🗑</button>}
                     </div>
@@ -3300,9 +3305,11 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
               </div>
               {/* Off Site fields */}
               <div style={{display:updateType==='offsite'?'block':'none'}}>
-                <div style={{background:'rgba(26,86,219,.08)',border:'1px solid rgba(26,86,219,.25)',borderRadius:6,padding:'8px 12px',fontSize:11,color:'#60a5fa',fontFamily:'var(--fm)',marginBottom:12}}>
-                  Employee will be marked as <strong>Off Site</strong>. To return to duty, update via Leave or edit the employee directly.
+                <div className="form-row">
+                  <div className="form-group"><label>Departure Date <span style={{color:'var(--red)'}}>*</span></label><input type="date" value={offsiteStart} onChange={e=>setOffsiteStart(e.target.value)}/></div>
+                  <div className="form-group"><label>Return Date <span style={{color:'var(--gray)',fontSize:10}}>(optional)</span></label><input type="date" value={offsiteEnd} onChange={e=>setOffsiteEnd(e.target.value)}/></div>
                 </div>
+                <div style={{fontSize:11,color:'#93c5fd',fontFamily:'var(--fm)',marginTop:4}}>Leave Return Date blank to update later. Employee returns to On Duty automatically when return date passes.</div>
               </div>
               {/* Resign fields */}
               <div style={{display:updateType==='resign'?'block':'none'}}>
@@ -3348,7 +3355,7 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
                       <tbody>
                         {[...(historyModal.leaveHistory||[])].reverse().map((h,i)=>(
                           <tr key={i}>
-                            <td><span className={`sb-base ${h.type==='RESIGN'?'sb':h.type==='SL'?'sm':'sl'}`}>{h.type}</span></td>
+                            <td><span className={`sb-base ${h.type==='RESIGN'?'sb':h.type==='OFF SITE'?'sn':h.type==='SL'?'sm':'sl'}`}>{h.type}</span></td>
                             <td style={{fontFamily:'var(--fm)',fontSize:12}}>{fmtD(h.start||h.exitDate)}</td>
                             <td style={{fontFamily:'var(--fm)',fontSize:12}}>{fmtD(h.end)}</td>
                             <td style={{fontSize:11,color:'var(--gray)'}}>{h.remarks||'—'}</td>
