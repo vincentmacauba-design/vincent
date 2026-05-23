@@ -256,7 +256,7 @@ body,#root{background:var(--navy);color:var(--white);font-family:var(--fb);font-
 .stat-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:18px 20px;backdrop-filter:blur(8px);position:relative;overflow:hidden;}
 .stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
 .sc-blue::before{background:var(--blue);}.sc-green::before{background:var(--green);}
-.sc-yellow::before{background:var(--yellow);}.sc-red::before{background:var(--red);}.sc-orange::before{background:var(--orange);}
+.sc-yellow::before{background:var(--yellow);}.sc-red::before{background:var(--red);}.sc-orange::before{background:var(--orange);}.sc-offsite::before{background:#60a5fa;}
 .stat-num{font-family:var(--fh);font-size:36px;font-weight:700;line-height:1;}
 .sc-blue .stat-num{color:var(--blue);}.sc-green .stat-num{color:var(--green);}
 .sc-yellow .stat-num{color:var(--yellow);}.sc-red .stat-num{color:var(--red);}.sc-orange .stat-num{color:var(--orange);}
@@ -3096,6 +3096,7 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
   const total       = employees.filter(isActive).length;
   const onDuty      = employees.filter(e=>isActive(e)&&getStatus(e)==='ON DUTY').length;
   const onLeave     = employees.filter(e=>isActive(e)&&getStatus(e)==='ON LEAVE').length;
+  const offSite     = employees.filter(e=>isActive(e)&&getStatus(e)==='OFF SITE').length;
   const resignCount = employees.filter(e=>isActive(e)&&e.exitDate).length;
 
   function exportEmpsCSV() {
@@ -3170,8 +3171,8 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
       </div>
 
       {/* Stats */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:18}}>
-        {[['Total Active',total,'var(--blue)','sc-blue'],['On Duty',onDuty,'var(--green)','sc-green'],['On Leave',onLeave,'var(--yellow)','sc-yellow'],['Pending Resignation',resignCount,'var(--red)','sc-red']].map(([l,n,c,cls])=>(
+      <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8,marginBottom:18}}>
+        {[['Total Active',total,'var(--blue)','sc-blue'],['On Duty',onDuty,'var(--green)','sc-green'],['On Leave',onLeave,'var(--yellow)','sc-yellow'],['Off Site',offSite,'#60a5fa','sc-offsite'],['Pending Resignation',resignCount,'var(--red)','sc-red']].map(([l,n,c,cls])=>(
           <div key={l} className={`stat-card ${cls}`} style={{padding:'8px 12px',height:60,display:'flex',flexDirection:'column',justifyContent:'center'}}>
             <div style={{fontFamily:'var(--fh)',fontSize:22,fontWeight:700,color:c,lineHeight:1}}>{n}</div>
             <div style={{fontSize:8,color:'var(--gray)',fontFamily:'var(--fm)',letterSpacing:0,marginTop:3,textTransform:'uppercase',whiteSpace:'nowrap'}}>{l}</div>
