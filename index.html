@@ -3056,8 +3056,8 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
     });
 
   const total       = employees.filter(isActive).length;
-  const onDuty      = employees.filter(e=>isActive(e)&&e.siteStatus==='ON DUTY').length;
-  const onLeave     = employees.filter(e=>isActive(e)&&e.siteStatus==='ON LEAVE').length;
+  const onDuty      = employees.filter(e=>isActive(e)&&getStatus(e)==='ON DUTY').length;
+  const onLeave     = employees.filter(e=>isActive(e)&&getStatus(e)==='ON LEAVE').length;
   const resignCount = employees.filter(e=>isActive(e)&&e.exitDate).length;
 
   function exportEmpsCSV() {
