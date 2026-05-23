@@ -184,6 +184,15 @@ const DESIGNATIONS = {
   'Senior Engineer':'Senior Manager, Engineering & Maintenance',
 };
 function sortByAssetNum(arr){return [...arr].sort((a,b)=>(parseInt(a.num)||0)-(parseInt(b.num)||0));}
+function applyStatusFromDates(emps) {
+  const today = new Date().toISOString().split('T')[0];
+  return emps.map(e => {
+    const hasActiveLeave   = e.leaveStart && e.leaveStart<=today && (!e.leaveEnd||e.leaveEnd>=today);
+    const hasActiveOffsite = e.offsiteStart && (!e.offsiteEnd||e.offsiteEnd>=today);
+    const correct = hasActiveOffsite?'OFF SITE':hasActiveLeave?'ON LEAVE':(e.siteStatus||'ON DUTY');
+    return correct!==e.siteStatus ? {...e,siteStatus:correct} : e;
+  });
+}
 
 // ─── STATUS HELPERS ─────────────────────────────────────────────────────────
 function statusCls(s) {
@@ -633,7 +642,7 @@ function App() {
         }
         if ('jobOrders' in map) { const jos=map.jobOrders||[]; setJobOrders(jos); if(jos.length){const maxN=Math.max(...jos.map(j=>parseInt((j.jobNo||'').replace(/\D/g,''))||0)); if(maxN>0) setJoCounter(maxN);} }
         if ('pm' in map) setPM(map.pm||[]);
-        if ('employees' in map) setEmployees(map.employees||[]);
+        if ('employees' in map) { const fixed=applyStatusFromDates(map.employees||[]); setEmployees(fixed); dbSave('employees',fixed); }
         if ('users' in map && map.users?.length) {
           const rawUsers = map.users;
           const needsMigration = rawUsers.some(u => u.password && !/^[0-9a-f]{64}$/.test(u.password));
@@ -966,14 +975,8 @@ function App() {
     return {added, updated};
   }
   function fixEmployeeStatusFromDates() {
-    const today = new Date().toISOString().split('T')[0];
     setEmployees(prev => {
-      const next = prev.map(e => {
-        const hasActiveLeave = e.leaveStart && e.leaveStart<=today && (!e.leaveEnd||e.leaveEnd>=today);
-        const hasActiveOffsite = e.offsiteStart && (!e.offsiteEnd||e.offsiteEnd>=today);
-        const corrected = hasActiveOffsite?'OFF SITE':hasActiveLeave?'ON LEAVE':(e.siteStatus||'ON DUTY');
-        return corrected!==e.siteStatus ? {...e,siteStatus:corrected} : e;
-      });
+      const next = applyStatusFromDates(prev);
       persistEmployees(next);
       return next;
     });
