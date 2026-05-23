@@ -935,17 +935,22 @@ function App() {
     let added = 0, updated = 0;
     newEmps.forEach(ne => { if (byId.has(ne.empId)) updated++; else added++; });
     if (!added && !updated) { addToast('CSV has no valid records.'); return {added:0,updated:0}; }
+    const today = new Date().toISOString().split('T')[0];
     setEmployees(prev => {
       const next = prev.map(e => {
         const ne = newEmps.find(n => n.empId===e.empId);
         if (!ne) return e;
+        const normCsv = ne.siteStatus==='OD'?'ON DUTY':ne.siteStatus==='OL'?'ON LEAVE':ne.siteStatus==='OS'?'OFF SITE':ne.siteStatus;
+        const hasActiveLeave = e.leaveStart && e.leaveStart<=today && (!e.leaveEnd||e.leaveEnd>=today);
+        const hasActiveOffsite = e.offsiteStart && (!e.offsiteEnd||e.offsiteEnd>=today);
+        const keepStatus = normCsv==='ON DUTY' && (hasActiveLeave||hasActiveOffsite);
         return {
           ...e,
           name: ne.name||e.name,
           designation: ne.designation||e.designation,
           section: ne.section||e.section,
           nationality: ne.nationality||e.nationality,
-          ...(ne.siteStatus?{siteStatus:ne.siteStatus}:{}),
+          ...(ne.siteStatus && !keepStatus?{siteStatus:ne.siteStatus}:{}),
           ...(ne.leaveType?{leaveType:ne.leaveType}:{}),
           ...(ne.leaveStart?{leaveStart:ne.leaveStart}:{}),
           ...(ne.leaveEnd?{leaveEnd:ne.leaveEnd}:{}),
@@ -959,6 +964,20 @@ function App() {
       return final;
     });
     return {added, updated};
+  }
+  function fixEmployeeStatusFromDates() {
+    const today = new Date().toISOString().split('T')[0];
+    setEmployees(prev => {
+      const next = prev.map(e => {
+        const hasActiveLeave = e.leaveStart && e.leaveStart<=today && (!e.leaveEnd||e.leaveEnd>=today);
+        const hasActiveOffsite = e.offsiteStart && (!e.offsiteEnd||e.offsiteEnd>=today);
+        const corrected = hasActiveOffsite?'OFF SITE':hasActiveLeave?'ON LEAVE':(e.siteStatus||'ON DUTY');
+        return corrected!==e.siteStatus ? {...e,siteStatus:corrected} : e;
+      });
+      persistEmployees(next);
+      return next;
+    });
+    addToast('Statuses recalculated from leave/off-site dates.');
   }
   function resetData() {
     clearTimeout(saveTimer.current);
@@ -1113,7 +1132,7 @@ function App() {
             {page==='assets'    && <AssetsPage assets={assets} setAssetModal={setAssetModal} setJoModal={setJoModal} onStatusChange={updateAssetStatus} onDeleteAsset={deleteAsset} customPlants={customPlants} onExportCSV={()=>exportAssetsCSV(assets)} onImportCSV={importAssetsFromCSV} currentUser={currentUser}/>}
             {page==='joborders' && <JobOrdersPage assets={assets} jobOrders={jobOrders} setJoModal={setJoModal} setJoViewModal={setJoViewModal} onStatusChange={updateJOStatus} onDeleteJO={deleteJO} onExportCSV={()=>exportJobOrdersCSV(jobOrders)} onImportCSV={importJOsFromCSV} onApproveJO={approveJO} onRevertJO={revertJO} currentUser={currentUser}/>}
             {page==='pmschedule' && <PMSchedulePage pm={pm} assets={assets} setJoModal={setJoModal} onSavePM={savePMItem} onRecordService={recordPMService} onImportPM={importPMFromCSV} onExportPM={()=>exportPMCSV(pm)} currentUser={currentUser}/>}
-            {page==='employees' && <EmployeesPage employees={employees} onSaveEmployee={saveEmployee} onUpdateStatus={updateEmployeeStatus} onImportEmployees={importEmployeesFromData} onDeleteEmployee={deleteEmployee} currentUser={currentUser}/>}
+            {page==='employees' && <EmployeesPage employees={employees} onSaveEmployee={saveEmployee} onUpdateStatus={updateEmployeeStatus} onImportEmployees={importEmployeesFromData} onDeleteEmployee={deleteEmployee} onFixStatus={fixEmployeeStatusFromDates} currentUser={currentUser}/>}
             {page==='reports'   && <ReportsPage assets={assets} jobOrders={jobOrders}/>}
             {page==='settings'  && <SettingsPage users={users} currentUser={currentUser} onSaveUser={saveUser} onDeleteUser={deleteUser} onResetData={resetData}/>}
           </div>
@@ -3014,7 +3033,7 @@ function PMSchedulePage({pm, assets, setJoModal, onSavePM, onRecordService, onIm
 }
 
 // ─── EMPLOYEES PAGE ───────────────────────────────────────────────────────────
-function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmployees, onDeleteEmployee, currentUser={}}) {
+function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmployees, onDeleteEmployee, onFixStatus, currentUser={}}) {
   const today = new Date().toISOString().split('T')[0];
   const [tab, setTab] = useState('active');
   const [q, setQ] = useState('');
@@ -3143,6 +3162,7 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
             <input type="file" accept=".csv" style={{display:'none'}} ref={importRef} onChange={e=>{if(e.target.files[0]){importEmpsFromFile(e.target.files[0]);e.target.value='';}}}/>
           </label>}
           {canAdmin&&<button className="btn btn-csv btn-sm" onClick={downloadEmpTemplate}>⬇ Template</button>}
+          {canAdmin&&<button className="btn btn-sm" style={{background:'rgba(245,158,11,.15)',color:'var(--accent)',border:'1px solid rgba(245,158,11,.3)'}} title="Recalculate siteStatus from leave/off-site dates" onClick={()=>{if(window.confirm('Recalculate all employee statuses from their leave and off-site dates?'))onFixStatus();}}>⚙ Fix Status</button>}
         </div>
       </div>
 
