@@ -931,18 +931,34 @@ function App() {
     addToast('Employee removed.');
   }
   function importEmployeesFromData(newEmps) {
-    const existingIds = new Set(employees.map(e => e.empId));
-    const toAdd = newEmps.filter(e => !existingIds.has(e.empId));
-    if (!toAdd.length) {
-      addToast('No new employees to import.');
-      return 0;
-    }
+    const byId = new Map(employees.map(e => [e.empId, e]));
+    let added = 0, updated = 0;
+    newEmps.forEach(ne => { if (byId.has(ne.empId)) updated++; else added++; });
+    if (!added && !updated) { addToast('CSV has no valid records.'); return {added:0,updated:0}; }
     setEmployees(prev => {
-      const next = [...prev, ...toAdd];
-      persistEmployees(next);
-      return next;
+      const next = prev.map(e => {
+        const ne = newEmps.find(n => n.empId===e.empId);
+        if (!ne) return e;
+        return {
+          ...e,
+          name: ne.name||e.name,
+          designation: ne.designation||e.designation,
+          section: ne.section||e.section,
+          nationality: ne.nationality||e.nationality,
+          ...(ne.siteStatus?{siteStatus:ne.siteStatus}:{}),
+          ...(ne.leaveType?{leaveType:ne.leaveType}:{}),
+          ...(ne.leaveStart?{leaveStart:ne.leaveStart}:{}),
+          ...(ne.leaveEnd?{leaveEnd:ne.leaveEnd}:{}),
+          ...(ne.exitDate?{exitDate:ne.exitDate}:{}),
+        };
+      });
+      const existingIds = new Set(prev.map(e=>e.empId));
+      const toAdd = newEmps.filter(ne=>!existingIds.has(ne.empId));
+      const final = [...next,...toAdd];
+      persistEmployees(final);
+      return final;
     });
-    return toAdd.length;
+    return {added, updated};
   }
   function resetData() {
     clearTimeout(saveTimer.current);
@@ -3071,8 +3087,8 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
   function importEmpsFromFile(file) {
     importCSVFile(file, rows=>{
       const newEmps=rows.map(r=>({empId:r[0]||'',name:r[1]||'',designation:r[2]||'',section:r[3]||'',nationality:r[4]||'',siteStatus:r[5]||'ON DUTY',leaveType:r[6]||'',leaveStart:r[7]||'',leaveEnd:r[8]||'',exitDate:r[9]||'',leaveHistory:[]})).filter(e=>e.empId&&e.name);
-      const count = onImportEmployees(newEmps);
-      if (count > 0) setImportResult({count, total: newEmps.length});
+      const result = onImportEmployees(newEmps);
+      if (result.added > 0 || result.updated > 0) setImportResult(result);
     });
   }
 
@@ -3394,12 +3410,16 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
             </div>
             <div className="modal-body" style={{paddingTop:8,paddingBottom:28}}>
               <div style={{fontSize:48,lineHeight:1,marginBottom:12}}>✅</div>
-              <div style={{fontFamily:'var(--fh)',fontSize:20,fontWeight:700,color:'var(--green)',marginBottom:6}}>Import Successful</div>
-              <div style={{fontSize:13,color:'var(--text)',marginBottom:4}}>
-                <span style={{fontFamily:'var(--fm)',fontSize:18,fontWeight:700,color:'var(--green)'}}>{importResult.count}</span> employee{importResult.count!==1?'s':''} added
-              </div>
-              {importResult.total > importResult.count&&(
-                <div style={{fontSize:11,color:'var(--gray)',fontFamily:'var(--fm)',marginTop:4}}>{importResult.total - importResult.count} duplicate(s) skipped</div>
+              <div style={{fontFamily:'var(--fh)',fontSize:20,fontWeight:700,color:'var(--green)',marginBottom:12}}>Import Successful</div>
+              {importResult.added>0&&(
+                <div style={{fontSize:13,marginBottom:6}}>
+                  <span style={{fontFamily:'var(--fm)',fontSize:18,fontWeight:700,color:'var(--green)'}}>{importResult.added}</span> new employee{importResult.added!==1?'s':''} added
+                </div>
+              )}
+              {importResult.updated>0&&(
+                <div style={{fontSize:13,marginBottom:6}}>
+                  <span style={{fontFamily:'var(--fm)',fontSize:18,fontWeight:700,color:'#60a5fa'}}>{importResult.updated}</span> existing record{importResult.updated!==1?'s':''} updated
+                </div>
               )}
               <button className="btn btn-success" style={{marginTop:20}} onClick={()=>setImportResult(null)}>Done</button>
             </div>
