@@ -3022,9 +3022,10 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
   const importRef = useRef(null);
 
   const isActive   = emp => !emp.exitDate || emp.exitDate > today;
+  const normalizeStatus = raw => raw==='OD'?'ON DUTY':raw==='OL'?'ON LEAVE':raw==='OS'?'OFF SITE':raw||'ON DUTY';
   const getStatus  = emp => {
     if (!isActive(emp)) return 'INACTIVE';
-    const s = emp.siteStatus || 'ON DUTY';
+    const s = normalizeStatus(emp.siteStatus);
     if (s==='ON LEAVE' && emp.leaveEnd && emp.leaveEnd < today) return 'ON DUTY';
     if (s==='OFF SITE' && emp.offsiteEnd && emp.offsiteEnd < today) return 'ON DUTY';
     return s;
@@ -3082,7 +3083,10 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
     if (!updateModal) return;
     let updates = {};
     let entry = {savedOn: today, remarks: updateRemarks};
-    if (updateType==='resign') {
+    if (updateType==='reset') {
+      updates = {siteStatus:'ON DUTY', leaveStart:'', leaveEnd:'', leaveType:'', offsiteStart:'', offsiteEnd:''};
+      entry = {...entry, type:'RESET'};
+    } else if (updateType==='resign') {
       if (!exitDate) { alert('Exit date required'); return; }
       updates = {exitDate, siteStatus:'ON DUTY'};
       entry = {...entry, type:'RESIGN', exitDate};
@@ -3281,10 +3285,11 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
               <button className="modal-close" onClick={()=>setUpdateModal(null)}>×</button>
             </div>
             <div className="modal-body" style={{minHeight:300}}>
-              <div style={{display:'flex',gap:8,marginBottom:16}}>
+              <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
                 <button className={`btn btn-sm ${updateType==='leave'?'btn-primary':'btn-ghost'}`} onClick={()=>setUpdateType('leave')}>Leave</button>
                 <button className={`btn btn-sm ${updateType==='offsite'?'btn-primary':'btn-ghost'}`} style={updateType==='offsite'?{background:'rgba(26,86,219,.25)',color:'#60a5fa',border:'1px solid rgba(26,86,219,.4)'}:{}} onClick={()=>setUpdateType('offsite')}>Off Site</button>
                 <button className={`btn btn-sm ${updateType==='resign'?'btn-danger':'btn-ghost'}`} onClick={()=>setUpdateType('resign')}>Resignation</button>
+                <button className={`btn btn-sm ${updateType==='reset'?'btn-warning':'btn-ghost'}`} onClick={()=>setUpdateType('reset')}>↺ Reset Status</button>
               </div>
               {/* Leave fields */}
               <div style={{display:updateType==='leave'?'block':'none'}}>
@@ -3311,6 +3316,12 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
                 </div>
                 <div style={{fontSize:11,color:'#93c5fd',fontFamily:'var(--fm)',marginTop:4}}>Leave Return Date blank to update later. Employee returns to On Duty automatically when return date passes.</div>
               </div>
+              {/* Reset Status fields */}
+              <div style={{display:updateType==='reset'?'block':'none'}}>
+                <div style={{background:'rgba(249,115,22,.08)',border:'1px solid rgba(249,115,22,.25)',borderRadius:6,padding:'10px 14px',fontSize:12,color:'#fb923c',fontFamily:'var(--fm)',marginBottom:12}}>
+                  ↺ This will clear all leave / off site data and return the employee to <strong>On Duty</strong>. A record will be added to their history.
+                </div>
+              </div>
               {/* Resign fields */}
               <div style={{display:updateType==='resign'?'block':'none'}}>
                 <div style={{background:'rgba(245,158,11,.08)',border:'1px solid rgba(245,158,11,.25)',borderRadius:6,padding:'8px 12px',fontSize:11,color:'var(--accent)',fontFamily:'var(--fm)',marginBottom:12}}>
@@ -3324,8 +3335,8 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
               </div>
               <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:12}}>
                 <button className="btn btn-ghost" onClick={()=>setUpdateModal(null)}>Cancel</button>
-                <button className={`btn ${updateType==='resign'?'btn-danger':updateType==='offsite'?'btn-primary':'btn-success'}`} onClick={doUpdate}>
-                  {updateType==='resign'?'Save Resignation':updateType==='offsite'?'Mark Off Site':'Save Leave'}
+                <button className={`btn ${updateType==='resign'?'btn-danger':updateType==='reset'?'btn-warning':updateType==='offsite'?'btn-primary':'btn-success'}`} onClick={doUpdate}>
+                  {updateType==='resign'?'Save Resignation':updateType==='reset'?'↺ Confirm Reset':updateType==='offsite'?'Mark Off Site':'Save Leave'}
                 </button>
               </div>
             </div>
@@ -3355,7 +3366,7 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
                       <tbody>
                         {[...(historyModal.leaveHistory||[])].reverse().map((h,i)=>(
                           <tr key={i}>
-                            <td><span className={`sb-base ${h.type==='RESIGN'?'sb':h.type==='OFF SITE'?'sn':h.type==='SL'?'sm':'sl'}`}>{h.type}</span></td>
+                            <td><span className={`sb-base ${h.type==='RESIGN'?'sb':h.type==='OFF SITE'?'sn':h.type==='RESET'?'si':h.type==='SL'?'sm':'sl'}`}>{h.type}</span></td>
                             <td style={{fontFamily:'var(--fm)',fontSize:12}}>{fmtD(h.start||h.exitDate)}</td>
                             <td style={{fontFamily:'var(--fm)',fontSize:12}}>{fmtD(h.end)}</td>
                             <td style={{fontSize:11,color:'var(--gray)'}}>{h.remarks||'—'}</td>
