@@ -2583,68 +2583,153 @@ function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave, em
 
 // ─── JO VIEW MODAL ────────────────────────────────────────────────────────────
 function JOViewModal({jo, onClose, onEdit, currentUser={}}) {
+  const DI = ({label,val,mono,green,accent}) => (
+    <div className="detail-item">
+      <label>{label}</label>
+      <div className="val" style={{fontSize:13,fontFamily:mono?'var(--fm)':'inherit',color:green?'var(--green)':accent?'var(--accent)':'inherit'}}>{val||'—'}</div>
+    </div>
+  );
+  const Grid3 = ({children}) => <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>{children}</div>;
+  const mpRows = (jo.manpower||[]).filter(m=>m.empId||m.name);
+  const partsRows = (jo.parts||[]).filter(p=>p.desc||p.itemCode);
   return (
     <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="modal" style={{width:860}}>
-        <div className="modal-head">
-          <div className="modal-title">{jo.jobNo} — Job Card</div>
+      <div className="modal" style={{width:900,maxHeight:'92vh',display:'flex',flexDirection:'column'}}>
+        {/* Header */}
+        <div className="modal-head" style={{flexShrink:0}}>
+          <div style={{display:'flex',alignItems:'center',gap:14}}>
+            <div style={{fontFamily:'var(--fm)',fontSize:20,fontWeight:700,color:'var(--accent)',letterSpacing:1}}>{jo.jobNo}</div>
+            <span className={`sb-base ${joStatusCls(jo.status)}`} style={{fontSize:11}}>{jo.status}</span>
+            {jo.priority&&<span className={jo.priority==='High'?'prio-high':'prio-low'} style={{fontSize:11}}>{jo.priority} Priority</span>}
+          </div>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
-        <div className="modal-body">
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:16}}>
-            {[['Job No.',<span style={{fontFamily:'var(--fm)',color:'var(--accent)'}}>{jo.jobNo}</span>],
-              ['Date',jo.date],
-              ['Status',<span className={`sb-base ${joStatusCls(jo.status)}`}>{jo.status}</span>],
-              ['Requested By',jo.requester||'—'],['Department',jo.dept||'—'],
-              ['Priority',<span className={jo.priority==='High'?'prio-high':'prio-low'}>{jo.priority}</span>],
-              ['Asset No.',<span style={{fontFamily:'var(--fm)'}}>{jo.assetNum}</span>],
-              ['Asset Description',jo.assetDesc||'—'],['Location',jo.location||'—'],
-            ].map(([l,v])=>(
-              <div key={l} className="detail-item"><label>{l}</label><div className="val">{v}</div></div>
-            ))}
-          </div>
-          <div className="jc-section"><div className="jc-section-title">Problem Details</div><p style={{fontSize:13}}>{jo.problem||'—'}</p></div>
+
+        <div className="modal-body" style={{overflowY:'auto',flex:1}}>
+
+          {/* Request Information */}
           <div className="jc-section">
-            <div className="jc-section-title">Work Done</div>
-            <p style={{fontSize:13}}>{jo.workDone||'—'}</p>
-            <div style={{display:'flex',gap:20,marginTop:8,fontSize:12,flexWrap:'wrap'}}>
-              <span>Repair Type: <strong>{jo.repairType||'—'}</strong></span>
-              <span>Work Status: <strong>{jo.workStatus||'—'}</strong></span>
-              <span>Downtime: <strong>{jo.downtime||'0'} hrs</strong></span>
-              <span>Evaluation: <strong>{jo.eval||'—'}</strong></span>
-            </div>
+            <div className="jc-section-title">Request Information</div>
+            <Grid3>
+              <DI label="Date" val={jo.date}/>
+              <DI label="Requested By" val={jo.requester}/>
+              <DI label="Department" val={jo.dept}/>
+              <DI label="Priority" val={<span className={jo.priority==='High'?'prio-high':'prio-low'}>{jo.priority||'—'}</span>}/>
+              <DI label="Type of Repair" val={jo.repairType}/>
+              <DI label="Status" val={<span className={`sb-base ${joStatusCls(jo.status)}`} style={{fontSize:11}}>{jo.status}</span>}/>
+            </Grid3>
           </div>
+
+          {/* Equipment Details */}
           <div className="jc-section">
-            <div className="jc-section-title">Manpower</div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,fontSize:13}}>
-              <div>Tech 1: <strong>{jo.tech1||'—'}</strong> ({jo.tech1h||'0'} hrs)</div>
-              <div>Tech 2: <strong>{jo.tech2||'—'}</strong> ({jo.tech2h||'0'} hrs)</div>
-              <div>Section: <strong>{jo.section||'—'}</strong></div>
-              <div>Start Date: <strong>{jo.target||'—'}</strong></div>
-              <div>Completion: <strong style={{color:'var(--green)'}}>{jo.completionDate||'—'}</strong></div>
-            </div>
+            <div className="jc-section-title">Equipment Details</div>
+            <Grid3>
+              <DI label="Asset Number" val={jo.assetNum} mono accent/>
+              <DI label="Asset Description" val={jo.assetDesc}/>
+              <DI label="Location" val={jo.location}/>
+              <DI label="Equipment Code" val={jo.eqcode} mono/>
+              <DI label="Asset Category" val={jo.assetCategory||jo.plant}/>
+            </Grid3>
           </div>
+
+          {/* Problem Details — amber tint like PDF */}
+          <div style={{background:'rgba(245,158,11,.06)',border:'1px solid rgba(245,158,11,.25)',borderRadius:6,padding:'12px 14px',marginBottom:14}}>
+            <div className="jc-section-title" style={{marginBottom:8}}>Problem Details</div>
+            <p style={{fontSize:13,lineHeight:1.7,margin:0,color:'var(--white)'}}>{jo.problem||'—'}</p>
+          </div>
+
+          {/* Work Assigned To */}
           <div className="jc-section">
-            <div className="jc-section-title">Materials / Parts</div>
+            <div className="jc-section-title">Work Assigned To</div>
+            <Grid3>
+              <DI label="Received By" val={jo.recvName}/>
+              <DI label="Section" val={jo.section}/>
+              <DI label="Start Date" val={jo.target}/>
+              <DI label="Completion Date" val={jo.completionDate} green/>
+            </Grid3>
+          </div>
+
+          {/* Manpower Utilisation */}
+          <div className="jc-section">
+            <div className="jc-section-title">Manpower Utilisation</div>
             <table className="parts-table">
-              <thead><tr><th>Item Code</th><th>Description</th><th>Qty</th><th>Unit</th></tr></thead>
+              <thead><tr>
+                <th style={{width:'12%'}}>Emp ID</th>
+                <th style={{width:'30%'}}>Name</th>
+                <th style={{width:'43%'}}>Designation</th>
+                <th style={{width:'15%',textAlign:'center'}}>Hours</th>
+              </tr></thead>
               <tbody>
-                {(jo.parts||[]).filter(p=>p.desc||p.itemCode).map((p,i)=><tr key={i}><td style={{fontFamily:'var(--fm)',fontSize:11}}>{p.itemCode||'—'}</td><td>{p.desc||'—'}</td><td>{p.qty}</td><td>{p.unit}</td></tr>)}
-                {!(jo.parts||[]).filter(p=>p.desc).length&&<tr><td colSpan={4} style={{color:'var(--gray)',fontSize:12}}>No parts recorded</td></tr>}
+                {mpRows.length>0
+                  ? mpRows.map((m,i)=><tr key={i}>
+                      <td style={{fontFamily:'var(--fm)',fontSize:11,color:'var(--accent)'}}>{m.empId||'—'}</td>
+                      <td style={{fontWeight:600}}>{m.name||'—'}</td>
+                      <td style={{fontSize:11,color:'var(--gray)'}}>{m.designation||'—'}</td>
+                      <td style={{textAlign:'center',fontFamily:'var(--fm)'}}>{m.hours||0} hrs</td>
+                    </tr>)
+                  : <tr><td colSpan={4} style={{color:'var(--gray)',textAlign:'center',padding:10,fontSize:12}}>No manpower recorded</td></tr>
+                }
+              </tbody>
+            </table>
+            {jo.downtime>0&&<div style={{marginTop:8,fontSize:12,color:'var(--gray)',fontFamily:'var(--fm)'}}>Downtime: <strong style={{color:'var(--accent)'}}>{jo.downtime} hrs</strong></div>}
+          </div>
+
+          {/* Service Report */}
+          <div className="jc-section">
+            <div className="jc-section-title">Service Report</div>
+            <Grid3>
+              <DI label="Work Status" val={jo.workStatus}/>
+              <DI label="Evaluation" val={jo.eval}/>
+              <DI label="Acceptance" val={jo.accept}/>
+            </Grid3>
+          </div>
+
+          {/* Work Done — green tint like PDF */}
+          {jo.workDone&&(
+            <div style={{background:'rgba(16,185,129,.06)',border:'1px solid rgba(16,185,129,.25)',borderRadius:6,padding:'12px 14px',marginBottom:14}}>
+              <div className="jc-section-title" style={{marginBottom:8}}>Work Done</div>
+              <p style={{fontSize:13,lineHeight:1.7,margin:0,color:'var(--white)'}}>{jo.workDone}</p>
+            </div>
+          )}
+
+          {/* Materials / Spare Parts */}
+          <div className="jc-section">
+            <div className="jc-section-title">Materials / Spare Parts</div>
+            <table className="parts-table">
+              <thead><tr>
+                <th style={{width:'14%'}}>Item Code</th>
+                <th style={{width:'52%'}}>Description</th>
+                <th style={{width:'12%',textAlign:'center'}}>Qty</th>
+                <th style={{width:'12%',textAlign:'center'}}>Unit</th>
+              </tr></thead>
+              <tbody>
+                {partsRows.length>0
+                  ? partsRows.map((p,i)=><tr key={i}>
+                      <td style={{fontFamily:'var(--fm)',fontSize:11}}>{p.itemCode||'—'}</td>
+                      <td>{p.desc||'—'}</td>
+                      <td style={{textAlign:'center'}}>{p.qty||'—'}</td>
+                      <td style={{textAlign:'center',color:'var(--gray)'}}>{p.unit||'—'}</td>
+                    </tr>)
+                  : <tr><td colSpan={4} style={{color:'var(--gray)',textAlign:'center',padding:10,fontSize:12}}>No parts recorded</td></tr>
+                }
               </tbody>
             </table>
           </div>
+
+          {/* Approval */}
           {jo.closedBy&&(
-            <div className="jc-section">
-              <div className="jc-section-title">Approval</div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,fontSize:13}}>
-                <div className="detail-item"><label>Approved By</label><div className="val">{jo.closedBy}</div></div>
-                <div className="detail-item"><label>Designation</label><div className="val" style={{fontSize:12}}>{jo.closerDesignation||'—'}</div></div>
-                <div className="detail-item"><label>Approved Date</label><div className="val">{jo.closedDate||'—'}</div></div>
-              </div>
+            <div style={{background:'rgba(16,185,129,.06)',border:'1px solid rgba(16,185,129,.25)',borderRadius:6,padding:'12px 14px',marginBottom:14}}>
+              <div className="jc-section-title" style={{marginBottom:8,color:'var(--green)'}}>Approval</div>
+              <Grid3>
+                <DI label="Closed By" val={jo.closedBy}/>
+                <DI label="Designation" val={jo.closerDesignation}/>
+                <DI label="Closed Date" val={jo.closedDate}/>
+              </Grid3>
             </div>
           )}
-          <div style={{marginTop:16,display:'flex',gap:10,justifyContent:'flex-end',flexWrap:'wrap'}}>
+
+          {/* Actions */}
+          <div style={{display:'flex',gap:10,justifyContent:'flex-end',flexWrap:'wrap',paddingTop:4}}>
             <button className="btn btn-primary" onClick={()=>printJOPDF(jo)}>↓ Download PDF</button>
             {jo.status!=='CLOSED'&&currentUser.role!=='Senior Engineer'&&<button className="btn btn-warning" onClick={()=>onEdit(jo)}>✏ Edit</button>}
             <button className="btn btn-ghost" onClick={onClose}>Close</button>
