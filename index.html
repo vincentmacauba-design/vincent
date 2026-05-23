@@ -922,6 +922,14 @@ function App() {
     });
     addToast('Employee record updated.');
   }
+  function deleteEmployee(empId) {
+    setEmployees(prev => {
+      const next = prev.filter(e => e.empId !== empId);
+      persistEmployees(next);
+      return next;
+    });
+    addToast('Employee removed.');
+  }
   function importEmployeesFromData(newEmps) {
     const existingIds = new Set(employees.map(e => e.empId));
     const toAdd = newEmps.filter(e => !existingIds.has(e.empId));
@@ -1089,7 +1097,7 @@ function App() {
             {page==='assets'    && <AssetsPage assets={assets} setAssetModal={setAssetModal} setJoModal={setJoModal} onStatusChange={updateAssetStatus} onDeleteAsset={deleteAsset} customPlants={customPlants} onExportCSV={()=>exportAssetsCSV(assets)} onImportCSV={importAssetsFromCSV} currentUser={currentUser}/>}
             {page==='joborders' && <JobOrdersPage assets={assets} jobOrders={jobOrders} setJoModal={setJoModal} setJoViewModal={setJoViewModal} onStatusChange={updateJOStatus} onDeleteJO={deleteJO} onExportCSV={()=>exportJobOrdersCSV(jobOrders)} onImportCSV={importJOsFromCSV} onApproveJO={approveJO} onRevertJO={revertJO} currentUser={currentUser}/>}
             {page==='pmschedule' && <PMSchedulePage pm={pm} assets={assets} setJoModal={setJoModal} onSavePM={savePMItem} onRecordService={recordPMService} onImportPM={importPMFromCSV} onExportPM={()=>exportPMCSV(pm)} currentUser={currentUser}/>}
-            {page==='employees' && <EmployeesPage employees={employees} onSaveEmployee={saveEmployee} onUpdateStatus={updateEmployeeStatus} onImportEmployees={importEmployeesFromData} currentUser={currentUser}/>}
+            {page==='employees' && <EmployeesPage employees={employees} onSaveEmployee={saveEmployee} onUpdateStatus={updateEmployeeStatus} onImportEmployees={importEmployeesFromData} onDeleteEmployee={deleteEmployee} currentUser={currentUser}/>}
             {page==='reports'   && <ReportsPage assets={assets} jobOrders={jobOrders}/>}
             {page==='settings'  && <SettingsPage users={users} currentUser={currentUser} onSaveUser={saveUser} onDeleteUser={deleteUser} onResetData={resetData}/>}
           </div>
@@ -2990,7 +2998,7 @@ function PMSchedulePage({pm, assets, setJoModal, onSavePM, onRecordService, onIm
 }
 
 // ─── EMPLOYEES PAGE ───────────────────────────────────────────────────────────
-function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmployees, currentUser={}}) {
+function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmployees, onDeleteEmployee, currentUser={}}) {
   const today = new Date().toISOString().split('T')[0];
   const [tab, setTab] = useState('active');
   const [q, setQ] = useState('');
@@ -3199,6 +3207,7 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
                       {canAdmin&&<button className="btn btn-warning btn-sm btn-icon" title="Edit Employee" style={{padding:'3px 6px',fontSize:12}} onClick={()=>{setEmpForm({...e});setEmpFormIsEdit(true);}}>✏</button>}
                       <button className="btn btn-primary btn-sm btn-icon" title="Update Leave / Resignation" style={{padding:'3px 6px',fontSize:12}} onClick={()=>{setUpdateModal(e);setUpdateType('leave');setLeaveType(e.leaveType||'AL');setLeaveStart(e.leaveStart||'');setLeaveEnd(e.leaveEnd||'');setExitDate(e.exitDate||'');setUpdateRemarks('');}}>📅</button>
                       <button className="btn btn-ghost btn-sm btn-icon" title="Leave History" style={{padding:'3px 6px',fontSize:12}} onClick={()=>setHistoryModal(e)}>📜</button>
+                      {canAdmin&&<button className="btn btn-danger btn-sm btn-icon" title="Delete Employee" style={{padding:'3px 6px',fontSize:12}} onClick={()=>{if(window.confirm(`Delete ${e.name} (${e.empId})?`))onDeleteEmployee(e.empId);}}>🗑</button>}
                     </div>
                   </td>}
                 </tr>
