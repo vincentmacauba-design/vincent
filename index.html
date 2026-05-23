@@ -922,6 +922,20 @@ function App() {
     });
     addToast('Employee record updated.');
   }
+  function importEmployeesFromData(newEmps) {
+    const existingIds = new Set(employees.map(e => e.empId));
+    const toAdd = newEmps.filter(e => !existingIds.has(e.empId));
+    if (!toAdd.length) {
+      addToast('No new employees to import.');
+      return 0;
+    }
+    setEmployees(prev => {
+      const next = [...prev, ...toAdd];
+      persistEmployees(next);
+      return next;
+    });
+    return toAdd.length;
+  }
   function resetData() {
     clearTimeout(saveTimer.current);
     setAssets([]);
@@ -1075,7 +1089,7 @@ function App() {
             {page==='assets'    && <AssetsPage assets={assets} setAssetModal={setAssetModal} setJoModal={setJoModal} onStatusChange={updateAssetStatus} onDeleteAsset={deleteAsset} customPlants={customPlants} onExportCSV={()=>exportAssetsCSV(assets)} onImportCSV={importAssetsFromCSV} currentUser={currentUser}/>}
             {page==='joborders' && <JobOrdersPage assets={assets} jobOrders={jobOrders} setJoModal={setJoModal} setJoViewModal={setJoViewModal} onStatusChange={updateJOStatus} onDeleteJO={deleteJO} onExportCSV={()=>exportJobOrdersCSV(jobOrders)} onImportCSV={importJOsFromCSV} onApproveJO={approveJO} onRevertJO={revertJO} currentUser={currentUser}/>}
             {page==='pmschedule' && <PMSchedulePage pm={pm} assets={assets} setJoModal={setJoModal} onSavePM={savePMItem} onRecordService={recordPMService} onImportPM={importPMFromCSV} onExportPM={()=>exportPMCSV(pm)} currentUser={currentUser}/>}
-            {page==='employees' && <EmployeesPage employees={employees} onSaveEmployee={saveEmployee} onUpdateStatus={updateEmployeeStatus} currentUser={currentUser}/>}
+            {page==='employees' && <EmployeesPage employees={employees} onSaveEmployee={saveEmployee} onUpdateStatus={updateEmployeeStatus} onImportEmployees={importEmployeesFromData} currentUser={currentUser}/>}
             {page==='reports'   && <ReportsPage assets={assets} jobOrders={jobOrders}/>}
             {page==='settings'  && <SettingsPage users={users} currentUser={currentUser} onSaveUser={saveUser} onDeleteUser={deleteUser} onResetData={resetData}/>}
           </div>
@@ -2976,14 +2990,14 @@ function PMSchedulePage({pm, assets, setJoModal, onSavePM, onRecordService, onIm
 }
 
 // ─── EMPLOYEES PAGE ───────────────────────────────────────────────────────────
-function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={}}) {
+function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmployees, currentUser={}}) {
   const today = new Date().toISOString().split('T')[0];
   const [tab, setTab] = useState('active');
   const [q, setQ] = useState('');
   const [filterSection, setFilterSection] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [sortCol, setSortCol] = useState('empId');
-  const [empForm, setEmpForm] = useState(null); // null=closed, {empId,name,...}=open
+  const [empForm, setEmpForm] = useState(null);
   const [empFormIsEdit, setEmpFormIsEdit] = useState(false);
   const [updateModal, setUpdateModal] = useState(null);
   const [updateType, setUpdateType] = useState('leave');
@@ -2994,6 +3008,7 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
   const [updateRemarks, setUpdateRemarks] = useState('');
   const [historyModal, setHistoryModal] = useState(null);
   const [showResignModal, setShowResignModal] = useState(false);
+  const [importResult, setImportResult] = useState(null);
   const importRef = useRef(null);
 
   const isActive   = emp => !emp.exitDate || emp.exitDate > today;
@@ -3044,15 +3059,8 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
   function importEmpsFromFile(file) {
     importCSVFile(file, rows=>{
       const newEmps=rows.map(r=>({empId:r[0]||'',name:r[1]||'',designation:r[2]||'',section:r[3]||'',nationality:r[4]||'',siteStatus:r[5]||'ON DUTY',leaveType:r[6]||'',leaveStart:r[7]||'',leaveEnd:r[8]||'',exitDate:r[9]||'',leaveHistory:[]})).filter(e=>e.empId&&e.name);
-      setEmployees(prev=>{
-        const existing=new Set(prev.map(e=>e.empId));
-        const toAdd=newEmps.filter(e=>!existing.has(e.empId));
-        if(!toAdd.length){addToast('No new employees to import.');return prev;}
-        const next=[...prev,...toAdd];
-        persistEmployees(next);
-        addToast(toAdd.length+' employee(s) imported.');
-        return next;
-      });
+      const count = onImportEmployees(newEmps);
+      if (count > 0) setImportResult({count, total: newEmps.length});
     });
   }
 
@@ -3345,6 +3353,28 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, currentUser={
               <div style={{marginTop:14,display:'flex',justifyContent:'flex-end'}}>
                 <button className="btn btn-ghost" onClick={()=>setHistoryModal(null)}>Close</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Success Modal */}
+      {importResult&&(
+        <div className="modal-overlay" onClick={()=>setImportResult(null)}>
+          <div className="modal" style={{width:400,textAlign:'center'}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-head" style={{justifyContent:'flex-end'}}>
+              <button className="modal-close" onClick={()=>setImportResult(null)}>×</button>
+            </div>
+            <div className="modal-body" style={{paddingTop:8,paddingBottom:28}}>
+              <div style={{fontSize:48,lineHeight:1,marginBottom:12}}>✅</div>
+              <div style={{fontFamily:'var(--fh)',fontSize:20,fontWeight:700,color:'var(--green)',marginBottom:6}}>Import Successful</div>
+              <div style={{fontSize:13,color:'var(--text)',marginBottom:4}}>
+                <span style={{fontFamily:'var(--fm)',fontSize:18,fontWeight:700,color:'var(--green)'}}>{importResult.count}</span> employee{importResult.count!==1?'s':''} added
+              </div>
+              {importResult.total > importResult.count&&(
+                <div style={{fontSize:11,color:'var(--gray)',fontFamily:'var(--fm)',marginTop:4}}>{importResult.total - importResult.count} duplicate(s) skipped</div>
+              )}
+              <button className="btn btn-success" style={{marginTop:20}} onClick={()=>setImportResult(null)}>Done</button>
             </div>
           </div>
         </div>
