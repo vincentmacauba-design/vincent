@@ -2655,8 +2655,8 @@ function JOViewModal({jo, onClose, onEdit, currentUser={}}) {
             <table className="parts-table">
               <thead><tr>
                 <th style={{width:'12%'}}>Emp ID</th>
-                <th style={{width:'30%'}}>Name</th>
-                <th style={{width:'43%'}}>Designation</th>
+                <th style={{width:'40%'}}>Name</th>
+                <th style={{width:'33%'}}>Designation</th>
                 <th style={{width:'15%',textAlign:'center'}}>Hours</th>
               </tr></thead>
               <tbody>
@@ -2721,9 +2721,9 @@ function JOViewModal({jo, onClose, onEdit, currentUser={}}) {
             <div style={{background:'rgba(16,185,129,.06)',border:'1px solid rgba(16,185,129,.25)',borderRadius:6,padding:'12px 14px',marginBottom:14}}>
               <div className="jc-section-title" style={{marginBottom:8,color:'var(--green)'}}>Approval</div>
               <Grid3>
-                <DI label="Closed By" val={jo.closedBy}/>
+                <DI label="Approved By" val={jo.closedBy}/>
                 <DI label="Designation" val={jo.closerDesignation}/>
-                <DI label="Closed Date" val={jo.closedDate}/>
+                <DI label="Approved Date" val={jo.closedDate}/>
               </Grid3>
             </div>
           )}
