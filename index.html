@@ -1499,7 +1499,7 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
   const allCats = [...new Set([...customPlants,...uniqueAssets.map(a=>(a.plant||'').toUpperCase())].filter(Boolean))].sort();
   const filtered = uniqueAssets.filter(a => {
     const hay = [a.num,(a.plant||''),(a.desc||''),(a.code||''),(a.model||''),(a.loc||''),(a.serial||'')].join(' ').toLowerCase();
-    return (!q||hay.includes(q.toLowerCase())) && (!cat||(a.plant||'').toUpperCase()===cat) && (!status||(a.status||'').toUpperCase()===status);
+    return (!q||hay.includes(q.toLowerCase())) && (!cat||(a.plant||'').toUpperCase()===cat) && (!status||(a.status||'').toUpperCase().replace('MAINT.','MAINTENANCE')===status);
   });
   const sorted = sortByAssetNum(filtered);
   const total = Math.ceil(sorted.length/PER_PAGE);
@@ -1521,7 +1521,11 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
           </select>
           <select value={status} onChange={e=>{setStatus(e.target.value);setPg(1);}}>
             <option value="">All Status</option>
-            {['OPERATIONAL','BREAKDOWN','UNDER MAINTENANCE','IDLE','TRANSFERRED'].map(s=><option key={s}>{s}</option>)}
+            <option value="OPERATIONAL">OPERATIONAL</option>
+            <option value="BREAKDOWN">BREAKDOWN</option>
+            <option value="UNDER MAINTENANCE">UNDER MAINT.</option>
+            <option value="IDLE">IDLE</option>
+            <option value="TRANSFERRED">TRANSFERRED</option>
           </select>
           {canEdit&&<button className="btn btn-accent" onClick={()=>setAssetModal({mode:'add'})}>＋ Add Asset</button>}
           <button className="btn btn-csv btn-sm" title="Export CSV" onClick={onExportCSV}>↓ Export</button>
