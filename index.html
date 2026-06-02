@@ -798,12 +798,13 @@ function App() {
 
   // ── Asset mutations
   function updateAssetStatus(num, status) {
+    const normStatus = status.toUpperCase().replace('UNDER MAINT.','UNDER MAINTENANCE');
     setAssets(prev => {
-      const next = prev.map(a => a.num===num ? {...a, status} : a);
+      const next = prev.map(a => a.num===num ? {...a, status:normStatus} : a);
       persist(next, jobOrders, joCounter);
       return next;
     });
-    addToast(`Asset ${num} → ${status}`);
+    addToast(`Asset ${num} → ${normStatus}`);
   }
 
   function saveAsset(asset, editNum) {
@@ -1559,7 +1560,7 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
                   <td className="col-hide-md" style={{fontFamily:'var(--fm)',fontSize:11}}>{a.serial||'—'}</td>
                   <td style={{fontSize:12}}>{a.loc||'—'}</td>
                   <td>
-                    <select className={`sb-base ${statusCls(a.status)}`} value={a.status||''} onChange={e=>onStatusChange(a.num,e.target.value)} disabled={!canEdit} style={{opacity:canEdit?1:.6,cursor:canEdit?'pointer':'default'}}>
+                    <select className={`sb-base ${statusCls(a.status)}`} value={(a.status||'OPERATIONAL').toUpperCase().replace('UNDER MAINT.','UNDER MAINTENANCE')} onChange={e=>onStatusChange(a.num,e.target.value)} disabled={!canEdit} style={{opacity:canEdit?1:.6,cursor:canEdit?'pointer':'default'}}>
                       {['OPERATIONAL','BREAKDOWN','UNDER MAINTENANCE','IDLE','TRANSFERRED'].map(s=><option key={s} value={s}>{s==='UNDER MAINTENANCE'?'UNDER MAINT.':s}</option>)}
                     </select>
                   </td>
