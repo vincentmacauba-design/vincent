@@ -633,14 +633,11 @@ function App() {
   // ── One-time cleanup: remove leading-zero asset numbers after DB loaded
   useEffect(() => {
     if (!dbLoaded) return;
-    setAssets(prev => {
-      const cleaned = sortByAssetNum(prev.filter(a => !/^0/.test(String(a.num))));
-      if (cleaned.length < prev.length) {
-        dbSave('assets', cleaned);
-        console.log(`Removed ${prev.length - cleaned.length} leading-zero asset(s) from Supabase`);
-      }
-      return cleaned;
-    });
+    const dirty = assets.filter(a => /^0/.test(String(a.num)));
+    if (dirty.length === 0) return;
+    const cleaned = sortByAssetNum(assets.filter(a => !/^0/.test(String(a.num))));
+    setAssets(cleaned);
+    dbSave('assets', cleaned);
   }, [dbLoaded]);
 
   // ── Load from Supabase on mount
@@ -846,6 +843,11 @@ function App() {
       return next;
     });
     addToast(`Asset ${num} deleted.`);
+  }
+  function clearAllAssets() {
+    setAssets([]);
+    persist([], jobOrders, joCounter);
+    addToast('All assets cleared. You can now import a fresh list.');
   }
 
   function deleteJO(jobNo) {
@@ -1166,7 +1168,7 @@ function App() {
 
           <div className="main">
             {page==='dashboard' && <DashboardPage assets={assets} jobOrders={jobOrders} setPage={setPage} setJoModal={setJoModal} customPlants={customPlants} employees={employees}/>}
-            {page==='assets'    && <AssetsPage assets={assets} setAssetModal={setAssetModal} setJoModal={setJoModal} onStatusChange={updateAssetStatus} onDeleteAsset={deleteAsset} customPlants={customPlants} onExportCSV={()=>exportAssetsCSV(assets)} onImportCSV={importAssetsFromCSV} currentUser={currentUser}/>}
+            {page==='assets'    && <AssetsPage assets={assets} setAssetModal={setAssetModal} setJoModal={setJoModal} onStatusChange={updateAssetStatus} onDeleteAsset={deleteAsset} onClearAssets={clearAllAssets} customPlants={customPlants} onExportCSV={()=>exportAssetsCSV(assets)} onImportCSV={importAssetsFromCSV} currentUser={currentUser}/>}
             {page==='joborders' && <JobOrdersPage assets={assets} jobOrders={jobOrders} setJoModal={setJoModal} setJoViewModal={setJoViewModal} onStatusChange={updateJOStatus} onDeleteJO={deleteJO} onExportCSV={()=>exportJobOrdersCSV(jobOrders)} onImportCSV={importJOsFromCSV} onApproveJO={approveJO} onRevertJO={revertJO} currentUser={currentUser}/>}
             {page==='pmschedule' && <PMSchedulePage pm={pm} assets={assets} setJoModal={setJoModal} onSavePM={savePMItem} onRecordService={recordPMService} onImportPM={importPMFromCSV} onExportPM={()=>exportPMCSV(pm)} currentUser={currentUser}/>}
             {page==='employees' && <EmployeesPage employees={employees} onSaveEmployee={saveEmployee} onUpdateStatus={updateEmployeeStatus} onImportEmployees={importEmployeesFromData} onDeleteEmployee={deleteEmployee} onFixStatus={fixEmployeeStatusFromDates} currentUser={currentUser}/>}
@@ -1470,7 +1472,7 @@ function DashboardPage({assets, jobOrders, setPage, setJoModal, customPlants=[],
 }
 
 // ─── ASSETS PAGE ─────────────────────────────────────────────────────────────
-function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDeleteAsset, customPlants=[], onExportCSV, onImportCSV, currentUser={}}) {
+function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDeleteAsset, onClearAssets, customPlants=[], onExportCSV, onImportCSV, currentUser={}}) {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [status, setStatus] = useState('');
@@ -1514,6 +1516,7 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
             <input type="file" accept=".csv" style={{display:'none'}} ref={importRef} onChange={e=>{if(e.target.files[0]){onImportCSV(e.target.files[0]);e.target.value='';}}}/>
           </label>}
           {canEdit&&<button className="btn btn-csv btn-sm" title="Download CSV Template" onClick={downloadAssetTemplate}>⬇ Template</button>}
+          {currentUser.role==='Admin'&&<button className="btn btn-sm" style={{background:'rgba(239,68,68,.15)',color:'var(--red)',border:'1px solid rgba(239,68,68,.3)'}} onClick={()=>{if(window.confirm(`Clear ALL ${assets.length} assets from the registry?\n\nAll other data (job orders, PM, employees) will be kept.\nYou can reimport a fresh list immediately after.`))onClearAssets();}}>🗑 Clear All Assets</button>}
         </div>
       </div>
       <div className="panel">
