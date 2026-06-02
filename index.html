@@ -630,6 +630,19 @@ function App() {
     tick(); const id = setInterval(tick, 1000); return () => clearInterval(id);
   }, []);
 
+  // ── One-time cleanup: remove leading-zero asset numbers after DB loaded
+  useEffect(() => {
+    if (!dbLoaded) return;
+    setAssets(prev => {
+      const cleaned = sortByAssetNum(prev.filter(a => !/^0/.test(String(a.num))));
+      if (cleaned.length < prev.length) {
+        dbSave('assets', cleaned);
+        console.log(`Removed ${prev.length - cleaned.length} leading-zero asset(s) from Supabase`);
+      }
+      return cleaned;
+    });
+  }, [dbLoaded]);
+
   // ── Load from Supabase on mount
   useEffect(() => {
     sb.from('app_data').select('*').then(({data, error}) => { if (error) { console.error('Supabase load error:', error); setDbLoaded(true); return; }
