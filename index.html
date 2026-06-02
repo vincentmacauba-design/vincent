@@ -198,12 +198,12 @@ function applyStatusFromDates(emps) {
 function statusCls(s) {
   if (!s) return 'si';
   switch(s.toUpperCase()) {
-    case 'OPERATIONAL': return 'so';
-    case 'BREAKDOWN': return 'sb';
+    case 'OPERATIONAL':       return 'so';
+    case 'BREAKDOWN':         return 'sb';
     case 'UNDER MAINTENANCE': return 'sm';
-    case 'NEW': return 'sn';
-    case 'IDLE': return 'sl';
-    default: return 'si';
+    case 'IDLE':              return 'sl';
+    case 'TRANSFERRED':       return 'sn';
+    default:                  return 'si';
   }
 }
 function joStatusCls(s) {
@@ -473,8 +473,8 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
 
 // ─── ASSET PDF ───────────────────────────────────────────────────────────────
 function printAssetPDF(a, rel) {
-  const sc = {OPERATIONAL:'#065f46',BREAKDOWN:'#991b1b','UNDER MAINTENANCE':'#9a3412',NEW:'#1e40af',Inactive:'#475569',idle:'#92400e'};
-  const sb = {OPERATIONAL:'#d1fae5',BREAKDOWN:'#fee2e2','UNDER MAINTENANCE':'#ffedd5',NEW:'#dbeafe',Inactive:'#f1f5f9',idle:'#fef3c7'};
+  const sc = {OPERATIONAL:'#065f46',BREAKDOWN:'#991b1b','UNDER MAINTENANCE':'#9a3412',IDLE:'#92400e',TRANSFERRED:'#1e40af'};
+  const sb = {OPERATIONAL:'#d1fae5',BREAKDOWN:'#fee2e2','UNDER MAINTENANCE':'#ffedd5',IDLE:'#fef3c7',TRANSFERRED:'#dbeafe'};
   const color = sc[a.status]||'#475569', bg = sb[a.status]||'#f1f5f9';
   const fields = [['Asset Number',a.num],['Plant',a.plant],['Description',a.desc],['Equipment Code',a.code||'—'],['Model / Make',a.model||'—'],['Capacity',a.cap||'—'],['Register No.',a.reg||'—'],['Engine No.',a.eng||'—'],['Serial / Chassis',a.serial||'—'],['Location',a.loc||'—']];
   const detailRows = fields.map(([l,v])=>`<div><div style="font-size:9px;color:#94a3b8;letter-spacing:1px;text-transform:uppercase;margin-bottom:3px">${l}</div><div style="font-size:12px;font-weight:600">${v}</div></div>`).join('');
@@ -1122,7 +1122,7 @@ function App() {
             <div className="logo-icon">CMMS</div>
             <div>
               <div className="logo-text">VHPL TIC</div>
-              <div className="logo-sub">CMMS — ENGINEERING SOLUTIONS DEPARTMENT v2</div>
+              <div className="logo-sub">CMMS — ENGINEERING SOLUTIONS DEPARTMENT</div>
             </div>
           </div>
           <div className="topbar-right">
@@ -1238,7 +1238,7 @@ function LoginPage({onLogin}) {
         <div className="login-logo-wrap">
           <div className="login-logo-icon">CMMS</div>
           <div className="login-title">VHPL TIC</div>
-          <div className="login-sub">CMMS — ENGINEERING SOLUTIONS DEPARTMENT v2</div>
+          <div className="login-sub">CMMS — ENGINEERING SOLUTIONS DEPARTMENT</div>
         </div>
         <hr className="login-divider"/>
         <form onSubmit={handleSubmit} autoComplete="on">
@@ -1507,7 +1507,7 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
           </select>
           <select value={status} onChange={e=>{setStatus(e.target.value);setPg(1);}}>
             <option value="">All Status</option>
-            {['OPERATIONAL','BREAKDOWN','UNDER MAINTENANCE','NEW','INACTIVE','IDLE'].map(s=><option key={s}>{s}</option>)}
+            {['OPERATIONAL','BREAKDOWN','UNDER MAINTENANCE','IDLE','TRANSFERRED'].map(s=><option key={s}>{s}</option>)}
           </select>
           {canEdit&&<button className="btn btn-accent" onClick={()=>setAssetModal({mode:'add'})}>＋ Add Asset</button>}
           <button className="btn btn-csv btn-sm" title="Export CSV" onClick={onExportCSV}>↓ Export</button>
@@ -1542,7 +1542,7 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
                   <td style={{fontSize:12}}>{a.loc||'—'}</td>
                   <td>
                     <select className={`sb-base ${statusCls(a.status)}`} value={a.status||''} onChange={e=>onStatusChange(a.num,e.target.value)} disabled={!canEdit} style={{opacity:canEdit?1:.6,cursor:canEdit?'pointer':'default'}}>
-                      {['OPERATIONAL','BREAKDOWN','UNDER MAINTENANCE','NEW','Inactive','idle'].map(s=><option key={s} value={s}>{s==='UNDER MAINTENANCE'?'UNDER MAINT.':s.toUpperCase()}</option>)}
+                      {['OPERATIONAL','BREAKDOWN','UNDER MAINTENANCE','IDLE','TRANSFERRED'].map(s=><option key={s} value={s}>{s==='UNDER MAINTENANCE'?'UNDER MAINT.':s}</option>)}
                     </select>
                   </td>
                   <td>
@@ -1910,7 +1910,7 @@ function openPrintWindow(title, bodyHtml) {
 function ReportsPage({assets, jobOrders}) {
   function dlAssetMasterList() {
     const rows = assets.map(a => {
-      const sc = a.status==='OPERATIONAL'?'op':a.status==='BREAKDOWN'?'br':a.status==='UNDER MAINTENANCE'?'mn':'ot';
+      const sc = a.status==='OPERATIONAL'?'op':a.status==='BREAKDOWN'?'br':a.status==='UNDER MAINTENANCE'?'mn':a.status==='TRANSFERRED'?'tr':'ot';
       return `<tr><td class="b" style="color:#f59e0b;font-family:monospace">${a.num}</td><td style="font-size:9px">${a.plant}</td><td class="b">${a.desc}</td><td style="font-family:monospace;font-size:9px">${a.code||'—'}</td><td>${a.model||'—'}</td><td>${a.cap||'—'}</td><td>${a.loc||'—'}</td><td style="font-family:monospace;font-size:9px">${a.serial||'—'}</td><td><span class="badge ${sc}">${a.status||'—'}</span></td></tr>`;
     }).join('');
     openPrintWindow('Asset Master List', `
@@ -2297,7 +2297,7 @@ function AssetFormModal({mode, asset, assets, onClose, onSave, customPlants=[], 
             <div className="form-group">
               <label>Status</label>
               <select value={f.status||'OPERATIONAL'} onChange={e=>setF({...f,status:e.target.value})}>
-                {['OPERATIONAL','BREAKDOWN','UNDER MAINTENANCE','NEW','Inactive','idle'].map(s=><option key={s}>{s}</option>)}
+                {['OPERATIONAL','BREAKDOWN','UNDER MAINTENANCE','IDLE','TRANSFERRED'].map(s=><option key={s}>{s}</option>)}
               </select>
             </div>
           </div>
