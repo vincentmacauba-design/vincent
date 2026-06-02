@@ -637,8 +637,10 @@ function App() {
         const map = {};
         data.forEach(r => { map[r.key] = r.value; });
         if ('assets' in map) {
-          const deduped = [...new Map((map.assets||[]).map(a => [a.num, {...a, plant:(a.plant||'').toUpperCase()}])).values()];
+          const raw = map.assets||[];
+          const deduped = [...new Map(raw.map(a => [a.num, {...a, plant:(a.plant||'').toUpperCase()}])).values()];
           setAssets(deduped);
+          if (deduped.length !== raw.length) dbSave('assets', deduped); // persist dedupe back to Supabase
         }
         if ('jobOrders' in map) { const jos=map.jobOrders||[]; setJobOrders(jos); if(jos.length){const maxN=Math.max(...jos.map(j=>parseInt((j.jobNo||'').replace(/\D/g,''))||0)); if(maxN>0) setJoCounter(maxN);} }
         if ('pm' in map) setPM(map.pm||[]);
@@ -1037,14 +1039,30 @@ function App() {
   function importAssetsFromCSV(file) {
     importCSVFile(file, rows => {
       const newAssets = rows.map(v=>({num:v[0]||'',plant:(v[1]||'').toUpperCase(),desc:v[2]||'',code:v[3]||'',model:v[4]||'',cap:v[5]||'',reg:v[6]||'',eng:v[7]||'',serial:v[8]||'',loc:v[9]||'',status:v[10]||'OPERATIONAL'})).filter(a=>a.num&&a.desc);
+      // content signature (everything except asset number)
+      const sig = a => [a.plant,a.desc,a.code,a.model,a.cap,a.reg,a.eng,a.serial,a.loc,a.status].join('|');
+      const byNum = new Map(assets.map(a=>[a.num,a]));
+      let added=0, updated=0, skipped=0;
+      newAssets.forEach(na => {
+        const ex = byNum.get(na.num);
+        if (!ex) added++;
+        else if (sig(ex)!==sig(na)) updated++;
+        else skipped++;
+      });
+      if (!added && !updated) { addToast(`All ${skipped} asset(s) already up to date — nothing changed.`); return; }
       setAssets(prev => {
-        const existing = new Set(prev.map(a=>a.num));
-        const toAdd = newAssets.filter(a=>!existing.has(a.num));
-        const next = sortByAssetNum([...prev, ...toAdd]);
+        const map = new Map(prev.map(a=>[a.num,a]));
+        newAssets.forEach(na => {
+          const ex = map.get(na.num);
+          if (!ex) map.set(na.num, na);                    // new → add
+          else if (sig(ex)!==sig(na)) map.set(na.num, {...ex,...na}); // different → overwrite
+          // same content → skip (do nothing)
+        });
+        const next = sortByAssetNum([...map.values()]);
         persist(next, jobOrders, joCounter);
-        addToast(`Imported ${toAdd.length} assets (${newAssets.length-toAdd.length} skipped).`);
         return next;
       });
+      addToast(`Assets: ${added} added, ${updated} updated, ${skipped} unchanged.`);
     });
   }
   function importJOsFromCSV(file) {
