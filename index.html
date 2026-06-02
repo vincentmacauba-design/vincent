@@ -1406,7 +1406,7 @@ function AssetDoughnutChart({assets}) {
 
 function DashboardPage({assets, jobOrders, setPage, setJoModal, customPlants=[], employees=[]}) {
   const today = new Date().toISOString().split('T')[0];
-  const allCats = [...new Set([...customPlants,...assets.map(a=>(a.plant||'').toUpperCase())].filter(Boolean))].sort();
+  const allCats = [...new Set(assets.map(a=>(a.plant||'').toUpperCase()).filter(Boolean))].sort();
   const catStats = allCats.map(cat => {
     const ca = assets.filter(a=>a.plant===cat);
     return {
@@ -1496,8 +1496,8 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
 
   // Deduplicate assets by num before any display
   const uniqueAssets = [...new Map(assets.map(a=>[a.num,a])).values()];
-  // All categories: normalize to uppercase to avoid case-duplicate entries
-  const allCats = [...new Set([...customPlants,...uniqueAssets.map(a=>(a.plant||'').toUpperCase())].filter(Boolean))].sort();
+  // Only show categories that have actual assets
+  const allCats = [...new Set(uniqueAssets.map(a=>(a.plant||'').toUpperCase()).filter(Boolean))].sort();
   const filtered = uniqueAssets.filter(a => {
     const hay = [a.num,(a.plant||''),(a.desc||''),(a.code||''),(a.model||''),(a.loc||''),(a.serial||'')].join(' ').toLowerCase();
     return (!q||hay.includes(q.toLowerCase())) && (!cat||(a.plant||'').toUpperCase()===cat) && (!status||(a.status||'').toUpperCase().replace('MAINT.','MAINTENANCE')===status);
