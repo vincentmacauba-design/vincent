@@ -566,21 +566,21 @@ function exportAssetsCSV(assets) {
   dlCSV([hdr.join(','),...rows].join('\n'),'assets_export.csv');
 }
 function exportJobOrdersCSV(jobOrders) {
-  // Find max number of technicians across all JOs for individual columns
-  const maxTechs = Math.max(1, ...jobOrders.map(j=>(j.manpower||[]).filter(m=>m.empId||m.name).length));
-  const techHdrs = [];
-  for (let i=1; i<=maxTechs; i++) {
-    techHdrs.push(`Tech ${i} Emp ID`, `Tech ${i} Name`, `Tech ${i} Designation`, `Tech ${i} Hours`);
-  }
-  const hdr=['Job No.','Date','Asset No.','Asset Desc.','Asset Category','Location','Eq. Code','Dept','Requested By','Priority','Repair Type','Problem','Status','Start Date','Section','Received By',...techHdrs,'Downtime (hrs)','Work Done','Work Status','Evaluation','Acceptance','Completion Date','Approved By'];
-  const rows=jobOrders.map(j=>{
+  const hdr=['Job No.','Date','Asset No.','Asset Desc.','Asset Category','Location','Eq. Code','Dept','Requested By','Priority','Repair Type','Problem','Status','Start Date','Section','Received By','Downtime (hrs)','Work Done','Work Status','Evaluation','Acceptance','Completion Date','Approved By','Technician','Designation','Hrs Attended'];
+  const rows=[];
+  jobOrders.forEach(j=>{
     const mp=(j.manpower||[]).filter(m=>m.empId||m.name);
-    const techCols=[];
-    for (let i=0;i<maxTechs;i++){
-      const m=mp[i]||{};
-      techCols.push(m.empId||'',m.name||'',m.designation||'',m.hours||'');
+    const joBase=[j.jobNo,j.date,j.assetNum,j.assetDesc,j.assetCategory||j.plant||'',j.location,j.eqcode,j.dept,j.requester,j.priority,j.repairType,j.problem,j.status,j.target,j.section,j.recvName,j.downtime,j.workDone,j.workStatus,j.eval,j.accept,j.completionDate,j.closedBy||j.approved];
+    const blank=joBase.map(()=>'');
+    if(!mp.length){
+      rows.push([...joBase,'','',''].map(csvCell).join(','));
+    } else {
+      mp.forEach((m,i)=>{
+        const base=i===0?joBase:blank;
+        const techName=`${m.name||''}${m.empId?` (${m.empId})`:''}`.trim();
+        rows.push([...base,techName,m.designation||'',m.hours||''].map(csvCell).join(','));
+      });
     }
-    return [j.jobNo,j.date,j.assetNum,j.assetDesc,j.assetCategory||j.plant||'',j.location,j.eqcode,j.dept,j.requester,j.priority,j.repairType,j.problem,j.status,j.target,j.section,j.recvName,...techCols,j.downtime,j.workDone,j.workStatus,j.eval,j.accept,j.completionDate,j.closedBy||j.approved].map(csvCell).join(',');
   });
   dlCSV([hdr.join(','),...rows].join('\n'),'joborders_export.csv');
 }
