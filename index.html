@@ -638,10 +638,12 @@ function App() {
         data.forEach(r => { map[r.key] = r.value; });
         if ('assets' in map) {
           const raw = map.assets||[];
-          const noLeadZero = raw.filter(a => !/^0/.test(a.num)); // drop leading-zero duplicates
-          const deduped = [...new Map(noLeadZero.map(a => [a.num, {...a, plant:(a.plant||'').toUpperCase()}])).values()];
-          setAssets(deduped);
-          if (deduped.length !== raw.length) dbSave('assets', deduped);
+          const cleaned = sortByAssetNum([...new Map(
+            raw.filter(a => !/^0/.test(String(a.num)))
+               .map(a => [a.num, {...a, plant:(a.plant||'').toUpperCase()}])
+          ).values()]);
+          setAssets(cleaned);
+          if (cleaned.length < raw.length) dbSave('assets', cleaned); // persist removal back to Supabase
         }
         if ('jobOrders' in map) { const jos=map.jobOrders||[]; setJobOrders(jos); if(jos.length){const maxN=Math.max(...jos.map(j=>parseInt((j.jobNo||'').replace(/\D/g,''))||0)); if(maxN>0) setJoCounter(maxN);} }
         if ('pm' in map) setPM(map.pm||[]);
@@ -683,7 +685,7 @@ function App() {
   useEffect(() => {
     const ch = sb.channel('cmms_sync')
       .on('postgres_changes', {event:'*', schema:'public', table:'app_data'}, ({new:row}) => {
-        if (row.key==='assets')        setAssets(row.value);
+        if (row.key==='assets')        setAssets(sortByAssetNum([...new Map((row.value||[]).filter(a=>!/^0/.test(String(a.num))).map(a=>[a.num,a])).values()]));
         else if (row.key==='jobOrders')    setJobOrders(row.value);
         else if (row.key==='pm')           setPM(row.value);
         else if (row.key==='employees')    setEmployees(row.value);
