@@ -5,11 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CMMS - VHPL TIC</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><rect width='32' height='32' rx='6' fill='url(%23g)'/><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23f59e0b'/><stop offset='1' stop-color='%231a56db'/></linearGradient></defs><text x='4' y='22' font-family='Arial Black,sans-serif' font-weight='900' font-size='13' fill='%230a1628'>CMM</text></svg>"/>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+<!-- CDN versions are pinned — update intentionally, never use floating tags -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.js"></script>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.29.7/babel.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+<!-- Global error handler (plain JS, runs before Babel so it catches CDN/compile failures) -->
+<script>
+window.onerror = function(msg, src, line, col, err) {
+  var root = document.getElementById('root');
+  if (root && !root.hasChildNodes()) {
+    root.innerHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a1628;flex-direction:column;gap:16px;padding:32px;font-family:sans-serif"><div style="font-size:20px;color:#f59e0b;font-weight:700">CMMS — Application Error</div><div style="font-size:12px;color:#ef4444;max-width:540px;text-align:center;word-break:break-word">'+String(msg)+'</div><div style="font-size:12px;color:#94a3b8">Please refresh. If the problem persists, contact your administrator.</div><button onclick="location.reload()" style="margin-top:8px;padding:8px 20px;background:#f59e0b;color:#0a1628;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:14px">Reload Page</button></div>';
+  }
+};
+window.onunhandledrejection = function(e) { console.error('Unhandled rejection:', e.reason); };
+</script>
 </head>
 <body>
 <div id="root"></div>
@@ -164,7 +175,11 @@ const SUPABASE_URL = 'https://adqifblwxzkbdetkqnxw.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkcWlmYmx3eHprYmRldGtxbnh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NTc1OTcsImV4cCI6MjA5NTAzMzU5N30.dDOdSAY0h3NZcrCHzki9aObmMqHeXR3yexkYUK57QrE';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 async function dbSave(key, value) {
-  try { await sb.from('app_data').upsert({key, value, updated_at: new Date().toISOString()}); } catch(e) { console.warn('dbSave failed', e); }
+  try {
+    const {error} = await sb.from('app_data').upsert({key, value, updated_at: new Date().toISOString()});
+    if (error) { console.warn('dbSave error', key, error); return error; }
+    return null;
+  } catch(e) { console.warn('dbSave failed', key, e); return e; }
 }
 async function hashPwd(pw) {
   if (!pw) return '';
@@ -613,6 +628,30 @@ function importCSVFile(file, onRows) {
   reader.readAsText(file);
 }
 
+// ─── ERROR BOUNDARY ──────────────────────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = {error: null}; }
+  static getDerivedStateFromError(err) { return {error: err}; }
+  componentDidCatch(err, info) { console.error('CMMS render error:', err, info); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#0a1628',flexDirection:'column',gap:16,padding:32,fontFamily:'sans-serif'}}>
+          <div style={{fontSize:22,color:'#f59e0b',fontWeight:700,letterSpacing:1}}>CMMS — Application Error</div>
+          <div style={{fontSize:12,color:'#ef4444',maxWidth:560,textAlign:'center',wordBreak:'break-word',background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.3)',borderRadius:6,padding:'10px 16px'}}>
+            {String(this.state.error)}
+          </div>
+          <div style={{fontSize:12,color:'#94a3b8',textAlign:'center'}}>Please refresh the page. If the problem persists, contact your administrator.</div>
+          <button onClick={()=>window.location.reload()} style={{marginTop:8,padding:'9px 22px',background:'#f59e0b',color:'#0a1628',border:'none',borderRadius:6,fontWeight:700,cursor:'pointer',fontSize:14}}>
+            ↺ Reload Page
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
 function App() {
   const [page, setPage] = useState('dashboard');
@@ -625,6 +664,7 @@ function App() {
   const [dbLoaded, setDbLoaded] = useState(false);
   const saveTimer = useRef(null);
   const isLoaded = useRef(false);
+  const isResetting = useRef(false);
 
   // auth & users
   const [currentUser, setCurrentUser] = useState(() => {
@@ -709,6 +749,7 @@ function App() {
   useEffect(() => {
     const ch = sb.channel('cmms_sync')
       .on('postgres_changes', {event:'*', schema:'public', table:'app_data'}, ({new:row}) => {
+        if (isResetting.current) return; // block stale broadcasts during/after reset
         if (row.key==='assets')        setAssets(sortByAssetNum([...new Map((row.value||[]).filter(a=>!/^0/.test(String(a.num))).map(a=>[a.num,a])).values()]));
         else if (row.key==='jobOrders')    setJobOrders(row.value);
         else if (row.key==='pm')           setPM(row.value);
@@ -725,19 +766,26 @@ function App() {
     if (!isLoaded.current) return;
     clearTimeout(saveTimer.current);
     setSyncStatus('saving');
-    saveTimer.current = setTimeout(() => {
+    saveTimer.current = setTimeout(async () => {
+      let localOk = true;
       try {
         localStorage.setItem(STORE_KEY, JSON.stringify({
           assets: newAssets, jobOrders: newJOs, joCounter: newCounter
         }));
-        setSyncStatus('ok');
-        addToast('✓ Saved');
       } catch(e) {
-        setSyncStatus('ok');
+        localOk = false;
         addToast('⚠ Could not save locally', true);
       }
-      dbSave('assets', newAssets);
-      dbSave('jobOrders', newJOs);
+      const [e1, e2] = await Promise.all([
+        dbSave('assets', newAssets),
+        dbSave('jobOrders', newJOs),
+      ]);
+      setSyncStatus('ok');
+      if (e1 || e2) {
+        addToast('⚠ Cloud sync failed — changes saved locally only', true);
+      } else if (localOk) {
+        addToast('✓ Saved');
+      }
     }, 800);
   }, []);
 
@@ -1018,6 +1066,7 @@ function App() {
     addToast('Statuses recalculated from leave/off-site dates.');
   }
   function resetData() {
+    isResetting.current = true; // block realtime broadcasts during reset
     clearTimeout(saveTimer.current);
     setAssets([]);
     setJobOrders([]);
@@ -1029,13 +1078,19 @@ function App() {
     try { localStorage.setItem(PM_KEY, JSON.stringify([])); } catch(e) {}
     try { localStorage.setItem(EMPLOYEES_KEY, JSON.stringify([])); } catch(e) {}
     try { localStorage.setItem(CUSTOM_PLANTS_KEY, JSON.stringify([])); } catch(e) {}
-    dbSave('assets', []);
-    dbSave('jobOrders', []);
-    dbSave('pm', []);
-    dbSave('employees', []);
-    dbSave('customPlants', []);
-    dbSave('users', DEFAULT_USERS);
-    try { localStorage.removeItem(USERS_KEY); } catch(e) {}
+    // Hash default user passwords before writing to Supabase
+    Promise.all(DEFAULT_USERS.map(async u => ({...u, password: await hashPwd(u.password)})))
+      .then(hashed => {
+        dbSave('assets', []);
+        dbSave('jobOrders', []);
+        dbSave('pm', []);
+        dbSave('employees', []);
+        dbSave('customPlants', []);
+        dbSave('users', hashed);
+        try { localStorage.removeItem(USERS_KEY); } catch(e) {}
+        // Re-enable realtime after writes propagate
+        setTimeout(() => { isResetting.current = false; }, 3000);
+      });
     addToast('All data has been reset.');
   }
 
@@ -1922,7 +1977,12 @@ function openPrintWindow(title, bodyHtml) {
     <div class="footer"><span>VHPL TIC · CMMS</span><span>${title} · ${now}</span></div>
   </body></html>`);
   win.document.close();
-  setTimeout(() => win.print(), 400);
+  // Use onload to ensure fonts/layout are ready before printing
+  if (win.document.readyState === 'complete') {
+    win.print();
+  } else {
+    win.onload = () => win.print();
+  }
 }
 
 // ─── REPORTS PAGE ─────────────────────────────────────────────────────────────
@@ -3629,7 +3689,9 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <ErrorBoundary><App /></ErrorBoundary>
+);
 </script>
 </body>
 </html>
