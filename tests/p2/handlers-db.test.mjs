@@ -48,7 +48,7 @@ const fakeAuth = {
   async verifyPassword(email, pw) { return [...gotrue.values()].some(u => u.email === email && u.password === pw && !u.banned); },
 };
 const deps = {
-  config: { signInDomain: DOMAIN, appUrl: 'https://app.example.invalid/', verifyTtlMinutes: 60, recoveryMinMs: 5 },
+  config: { signInDomain: DOMAIN, appUrl: 'https://app.example.invalid/', verifyTtlMinutes: 60, recoveryMinMs: 5, departmentUsersEnabled: true },
   now: () => new Date(), sleep: ms => new Promise(r => setTimeout(r, ms)), randomUint32: n => crypto.getRandomValues(new Uint32Array(n)),
   randomToken: () => crypto.randomBytes(32).toString('base64url'), hash: async s => crypto.createHmac('sha256', 'pepper').update(s).digest('hex'),
   auth: fakeAuth, mail: { send: async m => { mails.push(m); } }, log: () => {},
@@ -78,7 +78,7 @@ const legacyUsers = [{ id: 1, username: 'p_admin', fullName: 'Prov Admin', role:
 const mapping = [{ legacyId: 1, employeeId: 'pa001', recoveryEmail: 'admin@example.invalid' }, { legacyId: 4, employeeId: 'PD004' }, { legacyId: 7, employeeId: 'PJ007' }];
 const plan = buildAccountPlan({ users: legacyUsers, jobOrders: [{ jobNo: 'JO-1', requesterId: 4, approvalHistory: [{ byId: 1 }] }], mapping, signInDomain: 'example.invalid.sign' });
 t('PROVISION plan: three accounts, no errors, no password data in the plan', plan.errors.length === 0 && plan.accounts.length === 3 && !JSON.stringify(plan).includes('a'.repeat(64)), plan.errors);
-const prov = await provisionAccounts(plan, deps);
+const prov = await provisionAccounts(plan, deps, { activateDepartmentUsers: true });   // staging rehearsal: DU scoping under test
 const created = prov.results.filter(r => r.status === 'created');
 t('PROVISION creates every account: exact legacy ids, Employee IDs, a temporary password each, forced change on', prov.ok && created.map(r => r.legacyId).join() === '1,4,7'
   && created.every(r => typeof r.temporaryPassword === 'string' && r.temporaryPassword.length >= 12) && Number((await one('select count(*) c from public.profiles where must_change_password')).c) === 3);
@@ -91,6 +91,14 @@ const brk = { ...deps, db: { ...deps.db, insertProfile: async () => { throw new 
 const before = gotrue.size;
 const comp = await provisionAccounts({ accounts: [...plan.accounts.slice(0, 1), { ...plan.accounts[1], legacy_id: 30, employee_id: 'ZZ030' }], errors: [] }, brk);
 t('PROVISION a failed profile write removes the Auth account again (no orphan)', comp.results.find(r => r.legacyId === 30).status === 'error' && gotrue.size === before);
+{ const inact = await provisionAccounts({ accounts: [plan.accounts[0], { ...plan.accounts[2], legacy_id: 2, employee_id: 'ZZ002', username: 'p_inactive', active: false }], errors: [] }, deps);
+  const pz = await deps.db.profileByLegacyId(2), gz = pz && gotrue.get(pz.user_id);
+  t('PROVISION an account inactive in the old data is created inactive AND blocked in Auth (cannot sign in)', inact.ok && !!pz && pz.active === false && !!gz && !!gz.banned
+    && !(await deps.auth.verifyPassword('zz002@' + DOMAIN, inact.results.find(r => r.legacyId === 2).temporaryPassword)), { ok: inact.ok, res: inact.results.map(r => r.legacyId + ':' + r.status + ':' + (r.error || '')), active: pz && pz.active, banned: gz && gz.banned }); }
+{ const dflt = await provisionAccounts({ accounts: [plan.accounts[0], { ...plan.accounts[1], legacy_id: 3, employee_id: 'ZZ003', username: 'p_du_default' }], errors: [] }, deps);
+  const pd = await deps.db.profileByLegacyId(3), gd = pd && gotrue.get(pd.user_id);
+  t('PROVISION by default a Department User account is created INACTIVE and blocked (enabled only after its server scoping is verified)',
+    dflt.ok && !!pd && pd.role === 'Department User' && pd.active === false && !!gd && gd.banned && dflt.results.find(r => r.legacyId === 3).active === false, dflt.results.map(r => r.legacyId + ':' + r.status)); }
 t('PROVISION temporary passwords may only be written OUTSIDE the repository', safeOutputPath(path.join(ROOT, 'x.json'), ROOT, path) === null && safeOutputPath(ROOT, ROOT, path) === null
   && !!safeOutputPath(path.join(ROOT, '..', 'outside', 'pw.json'), ROOT, path));
 
@@ -130,6 +138,21 @@ t('ADMIN update scope: department changed; unknown category refused', up.status 
   && (await H.adminUsers({ caller: adminId, body: { action: 'update', userId: duId, assignedCategories: ['NOPE'] } })).status === 400);
 const da = await H.adminUsers({ caller: adminId, body: { action: 'set_active', userId: newId, active: false } });
 t('ADMIN deactivate: profile inactive, Auth user banned, sessions revoked', da.status === 200 && (await deps.db.profileByUser(newId)).active === false && gotrue.get(newId).banned && signOuts.includes(newId));
+
+// ---- Department User accounts switched OFF (the production default until their scoping is verified) -----------------
+{ const Hoff = createHandlers({ ...deps, config: { ...deps.config, departmentUsersEnabled: undefined } });   // setting missing
+  const du = { fullName: 'Off DU', role: 'Department User', department: 'Cement Plant', assignedCategories: ['PUMP'] };
+  const c1 = await Hoff.adminUsers({ caller: adminId, body: { action: 'create', employeeId: 'OF001', ...du } });
+  const c2 = await Hoff.adminUsers({ caller: adminId, body: { action: 'create', employeeId: 'OF002', ...du, active: false } });
+  const offId = c2.status === 200 ? c2.body.userId : null;
+  const act = offId && await Hoff.adminUsers({ caller: adminId, body: { action: 'set_active', userId: offId, active: true } });
+  const conv = await Hoff.adminUsers({ caller: adminId, body: { action: 'update', userId: jceId, role: 'Department User', department: 'Cement Plant', assignedCategories: ['PUMP'] } });
+  t('DU-OFF with the setting missing: an ACTIVE Department User cannot be created, activated or made from an active account (409); an inactive one can be prepared',
+    c1.status === 409 && !(await deps.db.profileByEmployeeId('OF001')) && c2.status === 200 && (await deps.db.profileByUser(offId)).active === false && gotrue.get(offId).banned
+    && act.status === 409 && (await deps.db.profileByUser(offId)).active === false && conv.status === 409 && (await deps.db.profileByUser(jceId)).role === 'Job Card Editor',
+    { c1: c1.status, c2: c2.status, act: act && act.status, conv: conv.status });
+  const on = await H.adminUsers({ caller: adminId, body: { action: 'set_active', userId: offId, active: true } });
+  t('DU-OFF once enabled ("enabled"), the prepared Department User can be activated', on.status === 200 && (await deps.db.profileByUser(offId)).active === true && !gotrue.get(offId).banned); }
 
 // ---- recovery ----------------------------------------------------------------------------------------------------------
 const tok = mails[0].text.match(/verify-email=([A-Za-z0-9_-]+)/)[1];

@@ -195,7 +195,7 @@ class BackendMock {
     const one = async (sql, params) => (await svc(sql, params))[0] || null;
     const cols = row => { const k = Object.keys(row); return { k, v: k.map(x => row[x]) }; };
     return {
-      config: { signInDomain: SIGN_IN_DOMAIN, get appUrl() { return self.appUrl; }, verifyTtlMinutes: 60, recoveryMinMs: 5 },
+      config: { signInDomain: SIGN_IN_DOMAIN, get appUrl() { return self.appUrl; }, verifyTtlMinutes: 60, recoveryMinMs: 5, departmentUsersEnabled: true },   // the browser tests exercise Department Users (a staging-like setup)
       now: () => new Date(), sleep: ms => new Promise(r => setTimeout(r, ms)), randomUint32: n => crypto.getRandomValues(new Uint32Array(n)),
       randomToken: () => crypto.randomBytes(32).toString('base64url'), hash: async s => crypto.createHmac('sha256', self.secret).update(s).digest('hex'),
       mail: { send: async m => { self.mails.push(m); } }, log: () => {},

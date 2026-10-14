@@ -19,7 +19,9 @@ export function buildDeps() {
   const pepper = new TextEncoder().encode(env('CMMS_HASH_PEPPER'));
   const one = async (q: any) => { const { data, error } = await q; if (error) throw error; return data; };
   return {
-    config: { signInDomain: env('CMMS_SIGN_IN_DOMAIN'), appUrl: env('CMMS_APP_URL'), verifyTtlMinutes: 1440, recoveryMinMs: 600 },
+    config: { signInDomain: env('CMMS_SIGN_IN_DOMAIN'), appUrl: env('CMMS_APP_URL'), verifyTtlMinutes: 1440, recoveryMinMs: 600,
+      // optional; anything but exactly "enabled" (including missing) keeps Department User access OFF (fail closed)
+      departmentUsersEnabled: Deno.env.get('CMMS_DEPARTMENT_USERS') === 'enabled' },
     now: () => new Date(),
     sleep: (ms: number) => new Promise(r => setTimeout(r, ms)),
     randomUint32: (n: number) => crypto.getRandomValues(new Uint32Array(n)),
@@ -35,7 +37,9 @@ export function buildDeps() {
       deleteUser: async (id: string) => { await one(admin.auth.admin.deleteUser(id)); },
       // Revokes the user's refresh tokens (all sessions). Exact admin API to confirm on staging (P2A_MIGRATION §6.3 R-SESS).
       signOutAll: async (id: string) => { await one(admin.rpc('revoke_user_sessions', { p_user_id: id })); },
-      generateRecoveryLink: async (email: string) => (await one(admin.auth.admin.generateLink({ type: 'recovery', email }))).properties.action_link,
+      // The link returns to the app (CMMS_APP_URL, which must also be in Auth → URL Configuration → Redirect URLs); never
+      // to whatever the project's Site URL happens to be. Exact fragment shape after the redirect: staging check R-LINK.
+      generateRecoveryLink: async (email: string) => (await one(admin.auth.admin.generateLink({ type: 'recovery', email, options: { redirectTo: env('CMMS_APP_URL') } }))).properties.action_link,
       verifyPassword: async (email: string, password: string) => {
         const c = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
         const { data, error } = await c.auth.signInWithPassword({ email, password });

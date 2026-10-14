@@ -139,6 +139,13 @@ const allFiles = [...files, ...walk(path.join(ROOT, 'tests', 'p2'))];
 const txt = allFiles.map(f => [f, read(f)]);
 t('no JWT-like value, no secret key value, no connection string in any draft or test', txt.every(([, s]) => !/eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}/.test(s) && !/sb_secret_[A-Za-z0-9]{8,}/.test(s) && !/postgres(ql)?:\/\/[^\s'"]*:[^\s'"]*@/.test(s)),
   txt.filter(([, s]) => /eyJ[A-Za-z0-9_-]{20,}\./.test(s)).map(([f]) => f));
+{ const dn = read(path.join(P2, 'functions', '_shared', 'deno.ts'));
+  t('Edge Function wiring: every setting is required (a missing one stops the function: fail closed); recovery links return to CMMS_APP_URL; CORS allows only CMMS_APP_ORIGIN',
+    /const env = \(k: string\) => \{ const v = Deno\.env\.get\(k\); if \(!v\) throw new Error/.test(dn) && /generateLink\(\{ type: 'recovery', email, options: \{ redirectTo: env\('CMMS_APP_URL'\) \} \}\)/.test(dn)
+    && /'Access-Control-Allow-Origin': env\('CMMS_APP_ORIGIN'\)/.test(dn) && !/Deno\.env\.get\([^)]*\)\s*(\|\||\?\?)/.test(dn)); }
+{ const sqlAll = fs.readdirSync(path.join(P2, 'sql')).filter(f => f.endsWith('.sql')).map(f => read(path.join(P2, 'sql', f))).join('\n');
+  t('notification retention is NOT automatic until the owner approves a period (N-D4): no scheduled job; the purge needs >= 30 days and is never called by the app',
+    !/cron|pg_cron|schedule\s*\(/i.test(sqlAll) && /p_days < 30/.test(sqlAll) && !/notification_purge/.test(read(path.join(ROOT, 'index.html')))); }
 t('the service role key is read from the environment only, and only in server code (functions/_shared/deno.ts)',
   txt.filter(([, s]) => /SUPABASE_SERVICE_ROLE_KEY/.test(s)).every(([f, s]) => (f.endsWith('deno.ts') && /env\('SUPABASE_SERVICE_ROLE_KEY'\)/.test(s)) || f.endsWith('.test.mjs') || f.endsWith('README.md')));
 const emails = txt.flatMap(([f, s]) => [...s.matchAll(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g)].map(m => [f, m[0]]));

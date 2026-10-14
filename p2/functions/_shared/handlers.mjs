@@ -3,7 +3,7 @@
 // mocked Node tests (tests/p2/mocked.test.mjs). Nothing here holds or reads a secret.
 //
 // deps = {
-//   config: { signInDomain, appUrl, verifyTtlMinutes, recoveryMinMs },
+//   config: { signInDomain, appUrl, verifyTtlMinutes, recoveryMinMs, departmentUsersEnabled },
 //   now(): Date,  sleep(ms): Promise,  randomUint32(n): Uint32Array (CSPRNG),  randomToken(): string (>= 32 random bytes),
 //   hash(s): Promise<64-hex>          HMAC-SHA-256 with a server-side pepper (rate-limit subjects, verification tokens)
 //   auth: { createUser({email, password, email_confirm}) -> {id},  updateUser(id, {password?, ban_duration?}),
@@ -31,6 +31,9 @@ const NO_STORE = { 'Cache-Control': 'no-store', 'Content-Type': 'application/jso
 const res = (status, body) => ({ status, body, headers: NO_STORE });
 const deny = () => res(403, { error: NOT_ALLOWED });
 const tooMany = () => res(429, { error: 'Too many requests. Try again later.' });
+// Department User access stays OFF until its server-side scoping is deployed and verified (DEPLOYMENT.md step 9):
+// config.departmentUsersEnabled must be exactly true (secret CMMS_DEPARTMENT_USERS=enabled). Missing = off (fail closed).
+const DU_OFF = 'Department User accounts are not enabled yet: their access scoping must be verified on the server first. Create the account as inactive.';
 
 export function createHandlers(deps) {
   const { config, db, auth, mail } = deps;
@@ -61,6 +64,7 @@ export function createHandlers(deps) {
       if (!employeeId) return res(400, { error: 'The Employee ID must be exactly 5 letters or digits.' });
       const fieldErr = validateAccountFields(b, await db.knownCategories());
       if (fieldErr) return res(400, { error: fieldErr });
+      if (b.role === 'Department User' && b.active !== false && config.departmentUsersEnabled !== true) return res(409, { error: DU_OFF });
       const email = b.recoveryEmail == null || b.recoveryEmail === '' ? null : normalizeEmail(b.recoveryEmail);
       if (b.recoveryEmail && (!email || !isUsableRecoveryEmail(email, config.signInDomain))) return res(400, { error: 'Enter a real, deliverable recovery email address.' });
       if (await db.profileByEmployeeId(employeeId)) return res(409, { error: 'This Employee ID is already used.' });
@@ -110,6 +114,7 @@ export function createHandlers(deps) {
 
     if (action === 'set_active') {
       const active = b.active === true;
+      if (active && target.role === 'Department User' && config.departmentUsersEnabled !== true) return res(409, { error: DU_OFF });
       if (!active && target.role === 'Admin' && target.active && (await db.activeAdminCount()) <= 1) return res(409, { error: 'The last active Admin cannot be deactivated.' });
       await db.updateProfile(target.user_id, { active });
       await auth.updateUser(target.user_id, { ban_duration: active ? 'none' : '876000h' });
@@ -130,6 +135,7 @@ export function createHandlers(deps) {
     const fieldErr = validateAccountFields(merged, await db.knownCategories());
     if (fieldErr) return res(400, { error: fieldErr });
     if (target.role === 'Admin' && merged.role !== 'Admin' && target.active && (await db.activeAdminCount()) <= 1) return res(409, { error: 'The last active Admin cannot be demoted.' });
+    if (merged.role === 'Department User' && target.role !== 'Department User' && target.active && config.departmentUsersEnabled !== true) return res(409, { error: DU_OFF });
     const patch = { role: merged.role, full_name: merged.fullName.trim(), department: merged.department,
                     assigned_categories: merged.assignedCategories ? merged.assignedCategories.map(c => String(c).toUpperCase()) : null, section: merged.section };
     let newEmail = null;
