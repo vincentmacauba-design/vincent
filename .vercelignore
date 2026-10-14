@@ -1,0 +1,9 @@
+# Deploy ONLY what the production app needs. Allowlist: everything at the
+# repository root is excluded unless re-included below with "!".
+# Internal files (CLAUDE.md, docs/, staging/, .claude/, dotfiles, local
+# staging-config.js, future notes/scripts) are never uploaded or served.
+# If the app ever needs a new static file, add an explicit "!" line for it.
+# See docs/FEATURE_PLAN.md §13.11.
+/*
+!index.html
+!vercel.json
