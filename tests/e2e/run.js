@@ -1,10 +1,17 @@
 // E2E regression + F1/F2 browser tests (FEATURE_PLAN §12.4 T5, T6, T7, T9; §12.6-§12.7) on synthetic data via the local rig.
 'use strict';
-const { buildSite, writeStagingConfig, seed, seed2, Mock, startSite, launch, sleep, PASS, FAKE_HOST, SITE_PORT } = require('./rig');
+const { pgliteEntry, buildSite, writeStagingConfig, seed, seed2, Mock, startSite, launch, sleep, PASS, EMP, FAKE_HOST, SITE_PORT, SIGN_IN_DOMAIN } = require('./rig');
+// The local backend runs the real P2 SQL on PGlite; without it the browser suite cannot run (reported as SKIP, exit 2).
+if (!pgliteEntry()) { console.log('E2E SKIPPED: set CMMS_PGLITE_DIR (PGlite runs the P2 SQL for the browser tests).'); process.exit(2); }
+// Sign-in is by Employee ID: a test account name is typed as its synthetic Employee ID; any other text is typed as given.
+const idOf = u => EMP[u] || u;
+const acct = u => u && JSON.stringify({ id: u.id, username: u.username, fullName: u.fullName, role: u.role, active: u.active !== false, department: u.department,
+  assignedCategories: u.assignedCategories, section: u.section, password: u.password });
+const sameAccounts = (stored, seedUsers) => stored.length === seedUsers.length && seedUsers.every(s => acct(stored.find(u => u.id === s.id)) === acct(s));
 let pass = 0, fail = 0; const fails = [];
 const t = (n, c, info) => { c ? pass++ : (fail++, fails.push(n)); console.log((c ? 'PASS ' : 'FAIL ') + n + (info !== undefined && (!c || process.env.V) ? '  -> ' + (typeof info === 'string' ? info : JSON.stringify(info)) : '')); };
 
-const HELPERS = `(() => { if (window.T) return; const T = window.T = {};
+const HELPERS = `(() => { if (window.T) return; const T = window.T = {}; T.EMP = ${JSON.stringify(EMP)};
   T.txt = el => ((el && el.textContent) || '').replace(/\\s+/g, ' ').trim();
   T.all = (sel, root) => [...(root || document).querySelectorAll(sel)];
   T.find = (text, sel, root) => { const c = T.all(sel || 'button,label,div,span,a,td,th', root).filter(e => T.txt(e).includes(text)); c.sort((a, b) => T.txt(a).length - T.txt(b).length); return c[0] || null; };
@@ -12,7 +19,8 @@ const HELPERS = `(() => { if (window.T) return; const T = window.T = {};
   T.byTitle = (title, root) => T.all('[title="' + title + '"]', root);
   T.setVal = (el, v) => { if (!el) return false; const P = el.tagName === 'SELECT' ? HTMLSelectElement.prototype : el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     Object.getOwnPropertyDescriptor(P, 'value').set.call(el, v); el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true })); };
-  T.row = text => T.all('tr').find(tr => T.txt(tr).includes(text)) || null;
+  // (P2) the users table shows the Employee ID, not the username: a test account name finds its row by its synthetic Employee ID
+  T.row = text => { const k = (T.EMP || {})[text] || text; return T.all('tr').find(tr => T.txt(tr).includes(k)) || null; };
   T.prop = name => { for (const el of T.all('*')) { const k = Object.keys(el).find(k => k.startsWith('__reactFiber$')); if (!k) continue; let f = el[k];
       while (f) { const p = f.memoizedProps; if (p && typeof p[name] === 'function') return p[name]; f = f.return; } } return null; };
   T.body = () => (document.body ? document.body.innerText : '');
@@ -49,13 +57,10 @@ async function main() {
     if (!ok) { mock.requests = []; await B.send('Page.navigate', { url: URL0 }); ok = await waitFor(`!!document.querySelector('input[type=password]')`, 20000); }
     if (!ok) throw new Error('login form not shown: ' + (await ev(`JSON.stringify({ body: T.body().slice(0,200), session: !!localStorage.getItem('cmms_vg_session'), root: (document.getElementById('root')||{}).innerHTML.slice(0,300) })`)) +
       ' | mock requests: ' + mock.requests.map(r => r.m + ' ' + r.u.slice(0, 50)).join(', '));
-    for (let i = 0; i < 100 && !mock.requests.some(r => r.m === 'GET' && /select=(\*|%2A)/.test(r.u)); i++) await sleep(100);
-    if (!mock.requests.some(r => r.m === 'GET' && /select=(\*|%2A)/.test(r.u))) {
-      await B.send('Page.reload', { ignoreCache: true });
-      for (let i = 0; i < 150 && !mock.requests.some(r => r.m === 'GET' && /select=(\*|%2A)/.test(r.u)); i++) await sleep(100);
-    }
-    await sleep(500);      // let the load response be applied to state
-    await ev(`(()=>{ const [u,p]=T.all('form input'); T.setVal(u, ${JSON.stringify(user)}); T.setVal(p, ${JSON.stringify(opt.password || PASS[user])}); document.querySelector('form button[type=submit]').click(); return true; })()`);
+    // Nothing is read before sign-in; the staging marker check (environment_marker) precedes the login form.
+    for (let i = 0; i < 100 && !mock.requests.some(r => r.u.includes('/rpc/environment_marker')); i++) await sleep(100);
+    await sleep(300);
+    await ev(`(()=>{ const [u,p]=T.all('form input'); T.setVal(u, ${JSON.stringify(idOf(user))}); T.setVal(p, ${JSON.stringify(opt.password || PASS[user])}); document.querySelector('form button[type=submit]').click(); return true; })()`);
     const in_ = await waitFor(`!!document.querySelector('.sidebar') && !T.body().includes('Loading')`, 20000);
     if (!in_ && opt.expectFail) return false;
     if (in_ && opt.expectFail) return true;
@@ -77,7 +82,7 @@ async function main() {
     if (!(await waitFor(`!!document.querySelector('.login-card input[type=password]')`, 20000))) throw new Error('login form not shown after reload');
     await sleep(1500);
     for (let i = 0; i < (opt.expectFail ? 1 : 5); i++) {
-      await ev(`(()=>{ T.setVal(document.getElementById('login-username'), ${JSON.stringify(user)}); T.setVal(document.getElementById('login-password'), ${JSON.stringify(opt.password || PASS[user])}); document.querySelector('form button[type=submit]').click(); return true; })()`);
+      await ev(`(()=>{ T.setVal(document.getElementById('login-username'), ${JSON.stringify(idOf(user))}); T.setVal(document.getElementById('login-password'), ${JSON.stringify(opt.password || PASS[user])}); document.querySelector('form button[type=submit]').click(); return true; })()`);
       if (await waitFor(`!!document.querySelector('.sidebar') && !T.body().includes('Loading')`, opt.expectFail ? 3000 : 4000)) { await sleep(800); return true; }
       if (opt.expectFail) return false;
       await sleep(1000);
@@ -89,7 +94,7 @@ async function main() {
   console.log('--- 0. boot & isolation');
   const loadW = await fresh('t_admin');
   t('I5 staging banner shown; app started behind marker gate', await ev(`T.body().includes('STAGING · SYNTHETIC DATA · NOT PRODUCTION')`));
-  t('I5b only one marker read before the full load', mock.requests.filter(r => r.u.includes('key=eq.__environment')).length >= 1);
+  t('I5b only one marker read before the full load', mock.requests.filter(r => r.u.includes('/rpc/environment_marker')).length >= 1);
   t('I7 (N1) nothing is written while loading and signing in when no stored employee status is out of date', mock.writes.length === 0, mock.writes.map(w => w.key));
   void loadW;
 
@@ -251,9 +256,12 @@ async function main() {
   await denied('t_ae', 'Settings', 'onDeleteUser', [1], 'deleteUser');
   await denied('t_ae', 'Settings', 'onSaveUser', [{ username: 'x', fullName: 'X', role: 'Admin' }, null], 'add user');
   await denied('t_ae', 'Settings', 'onSaveUser', [{ ...SEED.users[0], role: 'Admin' }, 1], 'edit another user');
-  // unknown role: since F2 no page renders at all, so no mutation is reachable from the UI (guard logic: permissions.test.js T6g)
-  await fresh('t_odd');
-  t('T6 t_odd unknown role "admin": no page, no reachable mutation (onDeleteAsset/onSaveJO/onSaveUser/onResetData)', await ev(`['onDeleteAsset','onDeleteJO','onSaveUser','onResetData','onStatusChange'].every(p => T.prop(p) === null)`));
+  // unknown role: the SERVER refuses such an account (P2 profiles role check), so it cannot exist or sign in. The client-side
+  // guard for a malformed role is still tested in permissions.test.js T6g.
+  { const ODD = JSON.parse(JSON.stringify(SEED)); ODD.users.push({ id: 4, username: 't_odd', employeeId: 'TO004', fullName: 'Test Odd', role: 'admin', active: true, plainPassword: 'Synthetic-Odd-1' });
+    await mock.reset(ODD);
+    t('T6 unknown role "admin": the server refuses the account (no profile is created)', !mock.store.users.some(u => u.id === 4) && mock.store.users.length === SEED.users.length);
+    t('T6 unknown role "admin": the refused account cannot sign in', (await fresh('TO004', ODD, { keep: true, expectFail: true, password: 'Synthetic-Odd-1' })) === false); }
   // allowed counterpart: own profile edit still works for AE (S4 unchanged in F1)
   await fresh('t_ae'); await nav('Settings'); n = mock.writes.length;
   await ev(`T.prop('onSaveUser')({...${JSON.stringify({ ...SEED.users[1], password: '' })}, fullName:'Test AE Renamed'}, 2); true`); await settle();
@@ -264,7 +272,7 @@ async function main() {
   await fresh('t_ae'); await nav('Settings');
   await ev(`T.prop('onSaveUser')({...${JSON.stringify({ ...SEED.users[1], password: '' })}, fullName:'AE Self Edit', email:'ae2@example.invalid', role:'Admin', active:false, username:'hijack'}, 2); true`); await settle();
   let me = mock.store.users.find(u => u.id === 2);
-  t('S4 AE self-edit: name/email saved; role, status and username NOT changed', me.fullName === 'AE Self Edit' && me.email === 'ae2@example.invalid' && me.role === 'Assistant Engineer' && me.active === true && me.username === 't_ae', me && [me.role, me.active, me.username]);
+  t('S4 AE self-edit: name saved; role, status, username and recovery email NOT changed (P2: name only)', me.fullName === 'AE Self Edit' && !me.recoveryEmail && me.role === 'Assistant Engineer' && me.active === true && me.username === 't_ae', me && [me.role, me.active, me.username]);
   t('S4 AE self-edit: password hash unchanged when left blank', me.password === SEED.users[1].password);
   await fresh('t_admin'); await nav('Settings');
   await ev(`T.prop('onSaveUser')({...${JSON.stringify({ ...SEED.users[2], password: '' })}, role:'Assistant Engineer'}, 3); true`); await settle();
@@ -273,42 +281,43 @@ async function main() {
   await fresh('t_se'); await nav('Settings');
   await ev(`(T.all('.settings-tab').find(e=>T.txt(e).includes('Profile'))||{click(){}}).click(); true`); await sleep(250);
   await ev(`T.click('Edit My Profile','button'); true`); await sleep(300);
-  const sf = await ev(`(()=>{ const nm=T.field('Full Name'), un=T.field('Username'), em=T.field('Email Address');
-    return { nameEditable: !nm.disabled && !nm.readOnly, userLocked: un.disabled || un.readOnly, noPassword: T.all('.modal input[type=password]').length === 0,
-             emailEditable: !em.disabled, roleLocked: T.field('Role').disabled, statusLocked: T.field('Account Status').disabled }; })()`);
-  t('UI self-profile (SE): name and email editable; NO password field (Change Password only); username, role, status read-only',
-    sf.nameEditable && sf.noPassword && sf.emailEditable && sf.userLocked && sf.roleLocked && sf.statusLocked, sf);
+  const sf = await ev(`(()=>{ const nm=T.field('Full Name'), un=T.field('Employee ID');
+    return { nameEditable: !nm.disabled && !nm.readOnly, idLocked: !!un && (un.disabled || un.readOnly), noPassword: T.all('.modal input[type=password]').length === 0,
+             noRecoveryEmail: !T.field('Recovery email (for password reset)'), roleLocked: T.field('Role').disabled, statusLocked: T.field('Account Status').disabled }; })()`);
+  t('UI self-profile (SE): only the name is editable; NO password field (Change Password only); Employee ID, role, status read-only; no recovery email field',
+    sf.nameEditable && sf.noPassword && sf.noRecoveryEmail && sf.idLocked && sf.roleLocked && sf.statusLocked, sf);
   n = mock.writes.length;
-  await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(T.field('Full Name'),'SE Via Form'); T.setVal(T.field('Email Address'),'se-form@example.invalid'); T.click('Update User','button',m); return true; })()`); await settle();
+  await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(T.field('Full Name'),'SE Via Form'); T.click('Update User','button',m); return true; })()`); await settle();
   me = mock.store.users.find(u => u.id === 3);
-  t('UI self-profile save via the form: name/email stored; role/status/username/password unchanged',
-    me.fullName === 'SE Via Form' && me.email === 'se-form@example.invalid' && me.role === 'Senior Engineer' && me.active === true && me.username === 't_se' && me.password === SEED.users[2].password, me && [me.fullName, me.role]);
+  t('UI self-profile save via the form: name stored; role/status/username/password unchanged',
+    me.fullName === 'SE Via Form' && me.role === 'Senior Engineer' && me.active === true && me.username === 't_se' && me.password === SEED.users[2].password, me && [me.fullName, me.role]);
   t('UI self-profile save wrote only the users key, all users kept', writesSince(n).every(x => x.key === 'users' && x.len === SEED.users.length) && writesSince(n).length >= 1);
   await fresh('t_admin'); await nav('Settings');
   await ev(`T.all('button').filter(b=>T.txt(b).includes('Edit')).find(b=>T.row('t_ae') && T.row('t_ae').contains(b)).click(); true`); await sleep(300);
-  const af = await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m), sels=T.all('select',m); return { user: !ins[1].disabled, role: !sels[0].disabled, status: !sels[1].disabled }; })()`);
-  t('UI Admin editing another user: username, role and status editable (unchanged)', af.user && af.role && af.status, af);
+  const af = await ev(`(()=>{ const m=T.all('.modal')[0]; const id=T.field('Employee ID'); return { idLocked: !!id && id.disabled, recovery: !!T.field('Recovery email (for password reset)'), role: !T.field('Role').disabled, status: !T.field('Account Status').disabled }; })()`);
+  t('UI Admin editing another user: role, status and recovery email editable; the Employee ID (sign-in identifier) is fixed after creation', af.idLocked && af.recovery && af.role && af.status, af);
   await ev(`T.all('.modal-close')[0].click(); true`); await sleep(200);
   await ev(`(T.all('.settings-tab').find(e=>T.txt(e).includes('Profile'))||{click(){}}).click(); true`); await sleep(250);
   await ev(`T.click('Edit My Profile','button'); true`); await sleep(300);
-  const ao = await ev(`(()=>{ const m=T.all('.modal')[0]; const sels=T.all('select',m); return { role: !sels[0].disabled, status: !sels[1].disabled }; })()`);
-  t('UI Admin own profile: role/status still editable (Admin unchanged)', ao.role && ao.status, ao);
+  const ao = await ev(`(()=>{ return { roleLocked: T.field('Role').disabled, statusLocked: T.field('Account Status').disabled, banner: T.txt(document.querySelector('.edit-mode-banner')) }; })()`);
+  t('UI Admin own profile (P2): role and status read-only (only another Admin may change them; the server refuses self-changes), and the form says so',
+    ao.roleLocked && ao.statusLocked && ao.banner.includes('another Admin'), ao);
   await ev(`T.all('.modal-close')[0].click(); true`); await sleep(200);
 
   // Phase 2B-1: no browser session; a reload signs out; the role always comes from the stored record
   await fresh('t_ae'); await nav('Asset Registry');
   t('SESSION baseline: AE sees Add Asset', await ev(`!!T.find('Add Asset','button')`));
-  mock.store.users = mock.store.users.map(u => u.id === 2 ? { ...u, role: 'Senior Engineer' } : u);
+  await mock.updateAccount(2, { role: 'Senior Engineer' });
   await B.send('Page.reload', {});
   t('SESSION a reload signs out: no session is restored from browser storage', await waitFor(`!!document.querySelector('.login-card input[type=password]') && !document.querySelector('.sidebar')`, 20000));
   await relogin('t_ae'); await nav('Asset Registry');
   t('SESSION role read from the stored record at sign-in: AE demoted to SE loses Add Asset', await ev(`!T.find('Add Asset','button')`));
   t('SESSION nothing about the sign-in is written to browser storage', await ev(`localStorage.getItem('cmms_vg_session') === null`));
-  mock.store.users = mock.store.users.map(u => u.id === 2 ? { ...u, active: false } : u);
+  await mock.updateAccount(2, { active: false });
   await B.send('Page.reload', {});
-  const out = !(await relogin('t_ae', { expectFail: true })) && (await ev(`T.txt(document.querySelector('.login-error')) === '⚠ Invalid username or password. Please try again.' && !document.querySelector('.sidebar')`));
+  const out = !(await relogin('t_ae', { expectFail: true })) && (await ev(`T.txt(document.querySelector('.login-error')) === 'Invalid Employee ID or password. Please try again.' && !document.querySelector('.sidebar')`));
   t('SESSION deactivated account cannot sign in', out);
-  mock.store.users = mock.store.users.filter(u => u.id !== 2).concat([{ ...SEED.users[1] }]);   // restore for later tests
+  await mock.updateAccount(2, { role: 'Assistant Engineer', active: true });   // restore for later tests
 
   // ============ F2: Job Card Editor, Department User, SE + editor bundle (extended seed) ============
   console.log('--- F2. new roles: UI, scope, form modes, guards');
@@ -419,18 +428,18 @@ async function main() {
   d = await denyCall('.main', 'onStatusChange', ['JO-9006', 'IN PROGRESS']); t('DU direct start JO: denied, no write', isDenied(d), d);
   await nav('Settings');
   t('DU Settings: own profile only', await ev(`!T.all('.settings-tab').some(e=>['Users','Reset Data'].includes(T.txt(e)))`));
-  d = await denyCall('.main', 'onSaveUser', [{ ...SEED2.users[5], role: 'Admin' }, 1]); t('DU direct edit of another user: denied, no write', isDenied(d), d);
+  d = await denyCall('.main', 'onSaveUser', [{ ...SEED2.users.find(u => u.id === 6), role: 'Admin' }, 1]); t('DU direct edit of another user: denied, no write', isDenied(d), d);
   n2 = mock.writes.length;
-  await ev(`T.prop('onSaveUser')({...${JSON.stringify({ ...SEED2.users[5], password: '' })}, role:'Admin', department:'HR', assignedCategories:['01 FUEL FARM'], extraBundles:['JOB_CARD_EDITOR']}, 6); true`); await settle();
+  await ev(`T.prop('onSaveUser')({...${JSON.stringify({ ...SEED2.users.find(u => u.id === 6), password: '' })}, role:'Admin', department:'HR', assignedCategories:['01 FUEL FARM'], extraBundles:['JOB_CARD_EDITOR']}, 6); true`); await settle();
   s2 = mock.store.users.find(u => u.id === 6);
-  t('DU own-profile save cannot change role, department, categories or bundles', s2.role === 'Department User' && s2.department === 'Cement Plant' && JSON.stringify(s2.assignedCategories) === JSON.stringify(SEED2.users[5].assignedCategories) && !s2.extraBundles, s2 && [s2.role, s2.department]);
+  t('DU own-profile save cannot change role, department, categories or bundles', s2.role === 'Department User' && s2.department === 'Cement Plant' && JSON.stringify(s2.assignedCategories) === JSON.stringify(SEED2.users.find(u => u.id === 6).assignedCategories) && !s2.extraBundles, s2 && [s2.role, s2.department]);
   for (const p of ['Dashboard', 'Reports']) { await nav(p); t(`DU ${p} renders (scoped)`, await ev(`T.body().length > 100 && !T.body().includes('Something went wrong') && !T.body().includes('JO-9001') && (${JSON.stringify(p)} !== 'Reports' || !!document.querySelector('.report-grid'))`)); }
 
   // ---- Admin: user form (department, categories, bundle, validation) ----
   console.log('--- F2. admin user form');
   await fresh('t_admin', SEED2); await nav('Settings');
   await ev(`T.click('Add User','button'); true`); await sleep(300);
-  await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'New DU Person'); T.setVal(ins[1],'t_newdu'); T.setVal(ins[2],'Synthetic-New-1'); T.setVal(T.all('select',m)[0],'Department User'); return true; })()`); await sleep(250);
+  await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'New DU Person'); T.setVal(T.field('Employee ID *'),'TN001'); T.setVal(T.all('select',m)[0],'Department User'); return true; })()`); await sleep(250);
   const uf = await ev(`({ dept: !!T.field('Department'), cats: T.all('.modal input[type=checkbox]').length, bundle: T.body().includes('Job Card Editor capability') })`);
   t('Admin form: choosing Department User shows Department + category checkboxes, hides the editor bundle', uf.dept && uf.cats === plants.length && !uf.bundle, uf);
   const cp = await ev("(()=>{ const l=document.querySelector('.modal .cat-picker-list'); const cs=getComputedStyle(l); return { maxH: cs.maxHeight, oy: cs.overflowY, search: !!document.querySelector('.modal .cat-search'), count: T.txt(document.querySelector('.modal .cat-count')) }; })()");
@@ -445,31 +454,34 @@ async function main() {
   await ev(`(()=>{ window.__alerts=[]; T.click('Add User','.modal button'); return true; })()`); await settle();
   t('Admin form: DU without department/category is rejected before saving (alert, no write)', (await ev('window.__alerts.join("|")')).includes('department') && writesSince(n2).length === 0);
   await ev(`(()=>{ T.setVal(T.field('Department'),'Cement Plant'); T.all('.modal input[type=checkbox]')[1].click(); window.__alerts=[]; T.click('Add User','.modal button'); return true; })()`); await settle();
-  const ndu = mock.store.users.find(u => u.username === 't_newdu');
-  t('Admin form: valid DU saved with department, one category, hashed password; existing users untouched',
-    !!ndu && ndu.role === 'Department User' && ndu.department === 'Cement Plant' && JSON.stringify(ndu.assignedCategories) === JSON.stringify([[...plants].sort()[1]]) && /^[0-9a-f]{64}$/.test(ndu.password) && SEED2.users.every(s => JSON.stringify(mock.store.users.find(u => u.id === s.id)) === JSON.stringify(s)), ndu && [ndu.department, ndu.assignedCategories]);
+  const ndu = mock.store.users.find(u => u.employeeId === 'TN001');
+  t('Admin form: after creation the temporary password is shown once (notice)', await ev("!!document.querySelector('.temp-pw-notice input.temp-pw') && document.querySelector('.temp-pw-notice input.temp-pw').value.length >= 12"));
+  await ev("(()=>{ const d = T.find('Done','.temp-pw-notice button'); if (d) d.click(); return true; })()"); await sleep(300);
+  t('Admin form: valid DU created on the server with department, one category, forced password change; existing users untouched',
+    !!ndu && ndu.role === 'Department User' && ndu.department === 'Cement Plant' && JSON.stringify(ndu.assignedCategories) === JSON.stringify([[...plants].sort()[1]]) && ndu.must_change_password === true && SEED2.users.every(s => acct(mock.store.users.find(u => u.id === s.id)) === acct(s)), ndu && [ndu.department, ndu.assignedCategories]);
   await ev("T.all('button').filter(b=>T.txt(b).includes('Edit')).find(b=>T.row('t_se') && T.row('t_se').contains(b)).click(); true"); await sleep(300);
   t('Admin form: six roles offered (five + Viewer, Phase 2B-3), no capability/bundle checkbox (SE edit)', await ev("JSON.stringify(T.all('.modal select')[0].options ? [...T.all('.modal select')[0].options].map(o=>o.value) : []) === JSON.stringify(['Admin','Assistant Engineer','Senior Engineer','Job Card Editor','Department User','Viewer']) && !T.modalText().includes('capability') && T.all('.modal input[type=checkbox]').length === 0"));
   await ev("T.all('.modal-close')[0].click(); true"); await sleep(200);
   await ev("T.click('Add User','button'); true"); await sleep(300);
-  await ev("(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'New Editor'); T.setVal(ins[1],'t_newjce'); T.setVal(ins[2],'Synthetic-New-2'); T.setVal(T.all('select',m)[0],'Job Card Editor'); return true; })()"); await sleep(250);
+  await ev("(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'New Editor'); T.setVal(T.field('Employee ID *'),'TN002'); T.setVal(T.all('select',m)[0],'Job Card Editor'); return true; })()"); await sleep(250);
   n2 = mock.writes.length;
   await ev("(()=>{ window.__alerts=[]; T.click('Add User','.modal button'); return true; })()"); await settle();
   t('Admin form: Job Card Editor without a section is rejected (alert, no write)', (await ev('window.__alerts.join("|")')).includes('section') && writesSince(n2).length === 0);
   t('Admin form: Section is a dropdown of exactly Electrical, Mechanical, Maintenance', await ev("(()=>{ const f=T.field('Section (copied to job orders when work is assigned) *'); return !!f && f.tagName === 'SELECT' && JSON.stringify([...f.options].map(o=>o.value)) === JSON.stringify(['','Electrical','Mechanical','Maintenance']); })()"));
   await ev("(()=>{ T.setVal(T.field('Section (copied to job orders when work is assigned) *'), 'Electrical'); window.__alerts=[]; T.click('Add User','.modal button'); return true; })()"); await settle();
-  const njce = mock.store.users.find(u => u.username === 't_newjce');
+  const njce = mock.store.users.find(u => u.employeeId === 'TN002');
+  await ev("(()=>{ const d = T.find('Done','.temp-pw-notice button'); if (d) d.click(); return true; })()"); await sleep(300);
   t('Admin form: Job Card Editor saved with its section and no bundle', !!njce && njce.role === 'Job Card Editor' && njce.section === 'Electrical' && !('extraBundles' in njce), njce && [njce.role, njce.section]);
   await ev(`T.all('button').filter(b=>T.txt(b).includes('Edit')).find(b=>T.row('t_du') && T.row('t_du').contains(b)).click(); true`); await sleep(300);
   await ev(`(()=>{ T.setVal(T.all('.modal select')[0],'Assistant Engineer'); T.click('Update User','.modal button'); return true; })()`); await settle();
   s2 = mock.store.users.find(u => u.id === 6);
-  t('Admin form: DU changed to AE drops department/categories, keeps id/username/password', s2.role === 'Assistant Engineer' && !('department' in s2) && !('assignedCategories' in s2) && s2.username === 't_du' && s2.password === SEED2.users[5].password);
+  t('Admin form: DU changed to AE drops department/categories, keeps id/username/password (server update)', s2.role === 'Assistant Engineer' && !('department' in s2) && !('assignedCategories' in s2) && s2.username === 't_du' && s2.password === SEED2.users.find(u => u.id === 6).password);
   n2 = mock.writes.length;
-  d = await (async () => { await ev(`T.prop('onSaveUser')({ username:'bad', fullName:'Bad', role:'Department User', department:'Cement Plant', assignedCategories:['${plants[1]}'], extraBundles:['JOB_CARD_EDITOR'], password:'x' }, null); true`); await settle(); return { toast: await ev(`T.body().includes('Additional capabilities are not supported')`), writes: writesSince(n2).length }; })();
+  d = await (async () => { await ev(`T.prop('onSaveUser')({ employeeId:'BD001', fullName:'Bad', role:'Department User', department:'Cement Plant', assignedCategories:['${plants[1]}'], extraBundles:['JOB_CARD_EDITOR'] }, null); true`); await settle(); return { toast: await ev(`T.body().includes('Additional capabilities are not supported')`), writes: writesSince(n2).length }; })();
   t('saveUser (mutation layer) rejects any capability bundle even without the form: toast, no write', d.toast && d.writes === 0, d);
   n2 = mock.writes.length;
-  await ev(`T.prop('onSaveUser')({ username:'bad2', fullName:'Bad', role:'Department User', department:'Nowhere', assignedCategories:['${plants[1]}'], password:'x' }, null); true`); await settle();
-  t('saveUser rejects a department outside the fixed list: no write', writesSince(n2).length === 0 && !mock.store.users.some(u => u.username === 'bad2'));
+  await ev(`T.prop('onSaveUser')({ employeeId:'BD002', fullName:'Bad', role:'Department User', department:'Nowhere', assignedCategories:['${plants[1]}'] }, null); true`); await settle();
+  t('saveUser rejects a department outside the fixed list: no write', writesSince(n2).length === 0 && !mock.store.users.some(u => u.employeeId === 'BD002'));
 
   // ---- Category rename propagation (§7 gate 8) ----
   console.log('--- F2. category rename propagation');
@@ -484,7 +496,7 @@ async function main() {
   t('RENAME: JOs of that category moved; unknown fields kept; others untouched', ['JO-9006', 'JO-9007', 'JO-9008'].every(no => jo2(no).assetCategory === NEW && jo2(no).legacyField === 'keep-' + no) && ['JO-9001', 'JO-9002', 'JO-9003', 'JO-9004'].every(no => JSON.stringify(jo2(no)) === JSON.stringify(SEED2.jobOrders.find(j => j.jobNo === no))),
     { moved: ['JO-9006', 'JO-9007', 'JO-9008'].map(no => jo2(no) && jo2(no).assetCategory), others: ['JO-9001', 'JO-9002', 'JO-9003', 'JO-9004'].filter(no => JSON.stringify(jo2(no)) !== JSON.stringify(SEED2.jobOrders.find(j => j.jobNo === no))),
       jobWrites: writesSince(n2).filter(w => w.key === 'jobOrders').map(w => w.len) });
-  t('RENAME: the DU\'s assigned category follows; other users untouched', JSON.stringify(st.users.find(u => u.id === 6).assignedCategories) === JSON.stringify([NEW]) && st.users.filter(u => u.id !== 6).every(u => JSON.stringify(u) === JSON.stringify(SEED2.users.find(s => s.id === u.id))));
+  t('RENAME: the DU\'s assigned category follows; other users untouched', JSON.stringify(st.users.find(u => u.id === 6).assignedCategories) === JSON.stringify([NEW]) && st.users.filter(u => u.id !== 6).every(u => acct(u) === acct(SEED2.users.find(s => s.id === u.id))));
   n2 = mock.writes.length;
   await ev(`T.propFrom('.modal','onRenameCategory')(${JSON.stringify(plants[0])}, ${JSON.stringify(plants[2].toLowerCase())}); true`); await settle();
   t('RENAME to an existing name (case-insensitive): refused with a toast, nothing written', writesSince(n2).length === 0 && (await ev(`T.body().includes('already exists — rename cancelled')`)) && mock.store.customPlants.includes(plants[0]));
@@ -495,7 +507,7 @@ async function main() {
   t('RENAME of an unknown category: refused, nothing written', writesSince(n2).length === 0 && (await ev(`T.body().includes('not found — rename cancelled')`)));
   mock.failKeys.add('customPlants'); n2 = mock.writes.length;
   await ev(`T.propFrom('.modal','onRenameCategory')(${JSON.stringify(plants[3])}, ${JSON.stringify(plants[3] + ' X')}); true`); await settle();
-  t('RENAME save failure (mock 500 on categories): user warned "Cloud sync failed"; failed write not stored', (await ev(`T.body().includes('Cloud sync failed for categories')`)) && !mock.store.customPlants.includes(plants[3] + ' X') && writesSince(n2).some(w => w.failed));
+  t('RENAME save failure (server error): user warned "Not saved" naming categories; nothing stored (one server transaction)', (await ev(`T.body().includes('Not saved:') && T.body().includes('categories')`)) && !mock.store.customPlants.includes(plants[3] + ' X') && writesSince(n2).some(w => w.failed));
   mock.failKeys.clear();
   await ev(`T.all('.modal-close')[0].click(); true`); await sleep(200);
 
@@ -664,7 +676,7 @@ async function main() {
     t('PASSWORD ' + u + ': wrong current password refused (toast, no write)', (await ev("T.body().includes('The current password is incorrect.')")) && mock.writes.length === w0);
     await pwSet(PASS[u], 'NewSecret-123', 'NewSecret-123'); await settle();
     const after = mock.store.users.find(x => x.id === id), before = SEED2.users.find(x => x.id === id);
-    t('PASSWORD ' + u + ': changed — only the password hash differs; all users kept', after.password === shaHex('NewSecret-123') && JSON.stringify({ ...after, password: '' }) === JSON.stringify({ ...before, password: '' }) && mock.store.users.length === SEED2.users.length);
+    t('PASSWORD ' + u + ': changed — only the password hash differs; all users kept', after.password === shaHex('NewSecret-123') && acct({ ...after, password: '' }) === acct({ ...before, password: '' }) && mock.store.users.length === SEED2.users.length);
     t('PASSWORD ' + u + ': old password no longer signs in', (await fresh(u, SEED2, { keep: true, expectFail: true })) === false);
     t('PASSWORD ' + u + ': new password signs in', (await fresh(u, SEED2, { keep: true, password: 'NewSecret-123', expectFail: true })) === true);
   }
@@ -710,9 +722,9 @@ async function main() {
   t('ASSIGN JCE start: Assigned To / Received By = the JCE, Section = their section', jo2('JO-9007').assignedTo === 'Test JCE' && jo2('JO-9007').assignedToId === 5 && jo2('JO-9007').recvName === 'Test JCE' && jo2('JO-9007').section === 'Mechanical');
   { const w = mock.writes.length; await ev("T.prop('onStatusChange')('JO-9007', 'IN PROGRESS', {assigneeId: 8}); true"); await settle();
     t('ASSIGN JCE cannot re-start an IN PROGRESS JO (not a valid step), no write', (await ev("T.body().includes('is not a valid step')")) && mock.writes.length === w); }
-  await fresh('t_jce_ns', SEED2); await nav('Job Orders');
-  { const w = mock.writes.length; await ev("T.click('OPEN ›','button',T.row('JO-9001')); true"); await sleep(300); await ev("T.click('Move to In Progress','button'); true"); await settle();
-    t('ASSIGN JCE without a section cannot start work (explained, no write)', (await ev("T.body().includes('needs an active status and a section')")) && mock.writes.length === w && jo2('JO-9001').status === 'OPEN'); }
+  { const NS = JSON.parse(JSON.stringify(SEED2)); NS.users.push({ id: 8, username: 't_jce_ns', employeeId: 'TJ008', fullName: 'Test JCE NoSection', role: 'Job Card Editor', active: true, plainPassword: 'Synthetic-JCE-NS-1' });
+    await mock.reset(NS);
+    t('ASSIGN a Job Card Editor without a section cannot exist (the server refuses the account)', !mock.store.users.some(u => u.id === 8)); }
   await fresh('t_se', SEED2); await nav('Job Orders');
   t('ASSIGN Senior Engineer workflow unchanged: no start action, no assignment dialog', await ev("!T.find('OPEN ›','button',T.row('JO-9001'))"));
 
@@ -760,24 +772,24 @@ async function main() {
   {
     const cats8 = [...plants].sort().slice(0, 8);
     const sdA = JSON.parse(JSON.stringify(SEED2)); sdA.users.find(u => u.id === 6).assignedCategories = cats8;
-    sdA.users.push({ id: 10, username: 't_du_one', fullName: 'Test DU One', role: 'Department User', email: 'du1@example.invalid', active: true, password: SEED2.users[5].password, department: 'Fuel Plant', assignedCategories: [plants[1]] },
-      { id: 11, username: 't_du_mix', fullName: 'Test DU Mixed', role: 'Department User', email: 'du2@example.invalid', active: true, password: SEED2.users[5].password, department: 'HR', assignedCategories: ['GENERATORS', plants[3]] });
+    sdA.users.push({ id: 10, username: 't_du_one', employeeId: 'TD010', plainPassword: PASS.t_du, fullName: 'Test DU One', role: 'Department User', email: 'du1@example.invalid', active: true, password: SEED2.users.find(u => u.id === 6).password, department: 'Fuel Plant', assignedCategories: [plants[1]] },
+      { id: 11, username: 't_du_mix', employeeId: 'TD011', plainPassword: PASS.t_du, fullName: 'Test DU Mixed', role: 'Department User', email: 'du2@example.invalid', active: true, password: SEED2.users.find(u => u.id === 6).password, department: 'HR', assignedCategories: ['GENERATORS', plants[3]] });
     await fresh('t_admin', sdA); await nav('Settings');
     const w0 = mock.writes.length;
-    const a = await ev(`(()=>{ const c = r => r.querySelector('.assign-cell'), du = c(T.row('t_du')), je = c(T.row('t_jce')), ns = c(T.row('Test JCE NoSection')), ad = c(T.row('t_admin')), one = c(T.row('t_du_one')), mix = c(T.row('t_du_mix'));
+    const a = await ev(`(()=>{ const c = r => r.querySelector('.assign-cell'), du = c(T.row('t_du')), je = c(T.row('t_jce')), ad = c(T.row('t_admin')), one = c(T.row('TD010')), mix = c(T.row('TD011'));
       const eye = cell => { const b = cell && cell.querySelector('button.assign-btn'); return b ? { title: b.title, aria: b.getAttribute('aria-label'), svg: !!b.querySelector('svg'), text: T.txt(b), w: Math.round(b.getBoundingClientRect().width) } : null; };
       const mid = e => { const r = e.getBoundingClientRect(); return r.top + r.height / 2; };
       return { badges: T.all('.assign-badge', du).map(T.txt), deptTip: du.querySelector('.assign-badge.abbr').title, duText: T.txt(du), one: T.all('.assign-badge', one).map(T.txt), mix: T.all('.assign-badge', mix).map(T.txt),
-        eyeDu: eye(du), eyeJe: eye(je), eyeNs: eye(ns), eyeAd: eye(ad), badgeFont: getComputedStyle(du.querySelector('.assign-badge')).fontSize,
+        eyeDu: eye(du), eyeJe: eye(je), eyeAd: eye(ad), badgeFont: getComputedStyle(du.querySelector('.assign-badge')).fontSize,
         alignDiff: Math.abs(mid(du.querySelector('.assign-badge')) - mid(T.row('t_du').querySelector('td:nth-child(3)'))),
         duH: Math.round(T.row('t_du').getBoundingClientRect().height), adminRowH: Math.round(T.row('t_admin').getBoundingClientRect().height), duW: Math.round(du.getBoundingClientRect().width),
         listsCats: ${JSON.stringify(cats8.map(c => c.replace(/^\d+\s+/, '')))}.some(x => T.txt(du).includes(x)),
-        je: T.all('.assign-badge', je).map(T.txt), jeTip: je.querySelector('.assign-badge').title, ns: T.all('.assign-badge', ns).map(T.txt), ad: T.txt(ad) }; })()`);
+        je: T.all('.assign-badge', je).map(T.txt), jeTip: je.querySelector('.assign-badge').title, ad: T.txt(ad) }; })()`);
     t('R6 assignment: Department User row = dept abbreviation + "Cat: 01, 02 +6" (codes only, no names)', JSON.stringify(a.badges) === JSON.stringify(['CEM', 'Cat: 01, 02 +6']) && a.deptTip === 'Cement Plant' && !a.listsCats && !a.duText.includes('View') && !a.duText.includes('cats'), a);
     t('R6 assignment: one category shows "Cat: 02"; a custom category without a stored code is only counted ("Cat: 04 +1"), never given an invented code', JSON.stringify(a.one) === JSON.stringify(['FUEL', 'Cat: 02']) && JSON.stringify(a.mix) === JSON.stringify(['HR', 'Cat: 04 +1']), { one: a.one, mix: a.mix });
-    t('R6 assignment: eye icon button (no "View" text), tooltip "View assignments", per-user aria-label; DU and Job Card Editors only', !!a.eyeDu && a.eyeDu.svg && a.eyeDu.text === '' && a.eyeDu.title === 'View assignments' && a.eyeDu.aria === 'View assignments for Test DU Cement' && a.eyeDu.w <= 22 && !!a.eyeJe && !!a.eyeNs && a.eyeAd === null, { du: a.eyeDu, je: a.eyeJe, ad: a.eyeAd });
+    t('R6 assignment: eye icon button (no "View" text), tooltip "View assignments", per-user aria-label; DU and Job Card Editors only', !!a.eyeDu && a.eyeDu.svg && a.eyeDu.text === '' && a.eyeDu.title === 'View assignments' && a.eyeDu.aria === 'View assignments for Test DU Cement' && a.eyeDu.w <= 22 && !!a.eyeJe && a.eyeAd === null, { du: a.eyeDu, je: a.eyeJe, ad: a.eyeAd });
     t('R6 assignment: compact badges (10px), vertically aligned with the row (≤ 2px), row no taller than an Admin row, column narrower than the previous design (237px)', a.badgeFont === '10px' && a.alignDiff <= 2 && a.duH <= a.adminRowH && a.duW < 237, { font: a.badgeFont, align: a.alignDiff, h: [a.duH, a.adminRowH], w: a.duW });
-    t('R6 assignment: Job Card Editor shows MEC (tooltip with full section); no section shown as such; Admin "—"', JSON.stringify(a.je) === JSON.stringify(['MEC']) && a.jeTip === 'Section: Mechanical' && JSON.stringify(a.ns) === JSON.stringify(['No section']) && a.ad === '—', a);
+    t('R6 assignment: Job Card Editor shows MEC (tooltip with full section); Admin "—"', JSON.stringify(a.je) === JSON.stringify(['MEC']) && a.jeTip === 'Section: Mechanical' && a.ad === '—', a);
     const dlg = `(()=>{ const m = document.querySelector('.modal.assign-detail'); if (!m) return null; const rows = sel => T.all(sel + ' li', m).map(li => T.all('span', li).map(T.txt));
       return { title: T.txt(m.querySelector('.modal-title')), heads: T.all('h4', m).map(T.txt), depts: rows('.dept-list'), cats: rows('.cat-list'), secs: rows('.sec-list'), inputs: m.querySelectorAll('input,select,textarea').length }; })()`;
     await ev("T.row('t_du').querySelector('.assign-cell button.assign-btn').click(); true"); await sleep(300);
@@ -785,7 +797,7 @@ async function main() {
     t('R6 details (DU): department abbreviation + full name; all 8 categories as code + name; read-only; no Section', !!d && d.title.includes('Test DU Cement') && JSON.stringify(d.heads) === JSON.stringify(['Department (1)', 'Asset Categories (8)'])
       && JSON.stringify(d.depts) === JSON.stringify([['CEM', 'Cement Plant']]) && JSON.stringify(d.cats) === JSON.stringify(cats8.map(c => [c.slice(0, 2), c.slice(3)])) && d.secs.length === 0 && d.inputs === 0, d);
     await ev("T.click('Close','.modal.assign-detail button'); true"); await sleep(300);
-    await ev("T.row('t_du_mix').querySelector('.assign-cell button.assign-btn').click(); true"); await sleep(300);
+    await ev("T.row('TD011').querySelector('.assign-cell button.assign-btn').click(); true"); await sleep(300);
     const dm = await ev(dlg);
     t('R6 details: a category without a stored code is listed with "—" and its full name (no invented code); list sorted by stored name', !!dm && JSON.stringify(dm.cats) === JSON.stringify([[plants[3].slice(0, 2), plants[3].slice(3)], ['—', 'GENERATORS']]), dm && dm.cats);
     await ev("T.click('Close','.modal.assign-detail button'); true"); await sleep(300);
@@ -795,7 +807,7 @@ async function main() {
     await ev("T.click('Close','.modal.assign-detail button'); true"); await sleep(300);
     await settle();
     t('R4 assignment: viewing details closes cleanly and writes nothing; stored users unchanged', !(await ev("!!document.querySelector('.modal.assign-detail')")) && mock.writes.length === w0
-      && JSON.stringify(mock.store.users) === JSON.stringify(sdA.users), { writes: mock.writes.length - w0 });
+      && sameAccounts(mock.store.users, sdA.users), { writes: mock.writes.length - w0 });
   }
 
   console.log('--- R3. My Profile + Change Password for every role');
@@ -810,7 +822,7 @@ async function main() {
   await ev("T.click('Change Password','button'); true"); await sleep(300);
   await ev("(()=>{ const ins=T.all('.modal input[type=password]'); T.setVal(ins[0],'Synthetic-AE-1'); T.setVal(ins[1],'AE-NewSecret-9'); T.setVal(ins[2],'AE-NewSecret-9'); T.click('Change Password','.modal button'); return true; })()"); await settle();
   { const a = mock.store.users.find(x => x.id === 2), b = SEED2.users.find(x => x.id === 2);
-    t('R3 AE changes own password through Change Password: only the hash changes', a.password === shaHex('AE-NewSecret-9') && JSON.stringify({ ...a, password: '' }) === JSON.stringify({ ...b, password: '' })); }
+    t('R3 AE changes own password through Change Password: only the hash changes', a.password === shaHex('AE-NewSecret-9') && acct({ ...a, password: '' }) === acct({ ...b, password: '' })); }
 
   console.log('--- R3. Close dialog');
   await fresh('t_ae'); await nav('Job Orders'); await ev("T.click('Completed','button'); true"); await sleep(300);
@@ -927,12 +939,10 @@ async function main() {
   await toggle();
   t('U1 Department User collapsed: still only its permitted pages (5 items)', await ev("T.all('.nav-item').length === 5 && !T.all('.nav-item').some(e => ['PM Schedule','Employees'].includes(e.title))"));
 
-  // unknown-role user (Q-D): no capabilities at all (no pages, no actions)
-  await fresh('t_odd');
-  t('Q-D user with role "admin" (lowercase): no pages and no actions', await ev(`!T.navLabels().includes('Asset Registry') && !T.navLabels().includes('Job Orders') && !T.find('Add Asset','button') && !T.find('Clear All Assets','button')`));
+  // unknown-role user (Q-D): cannot exist on the server (see T6 above); client guard: permissions.test.js T6g
 
-  // ============ THEME (release 2026-10-14): light/dark mode; the ORIGINAL login page (dark in both themes) ============
-  console.log('--- THEME. light/dark mode + original login page');
+  // ============ U3 (2026-10-12): light/dark theme + login page redesign ============
+  console.log('--- U3. theme toggle + login page');
   {
   const CONTRAST = `window.__contrast = el => {
       const parse = c => { const m = /rgba?\\(([^)]+)\\)/.exec(c || ''); if (!m) return null; const p = m[1].split(/[\\s,\\/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
@@ -951,51 +961,64 @@ async function main() {
     mock.requests = [];
     await B.send('Page.navigate', { url: URL0 });
     await waitFor(`!!document.querySelector('.login-card input[type=password]')`, 20000);
-    for (let i = 0; i < 100 && !mock.requests.some(r => r.m === 'GET' && /select=(\*|%2A)/.test(r.u)); i++) await sleep(100);
-    await sleep(500);
+    await sleep(300);
   };
-  const login = async (user, pw) => { await ev(`(()=>{ T.setVal(document.getElementById('login-username'), ${JSON.stringify(user)}); T.setVal(document.getElementById('login-password'), ${JSON.stringify(pw)}); document.querySelector('form button[type=submit]').click(); return true; })()`); };
+  const login = async (user, pw) => { await ev(`(()=>{ T.setVal(document.getElementById('login-username'), ${JSON.stringify(idOf(user))}); T.setVal(document.getElementById('login-password'), ${JSON.stringify(pw)}); document.querySelector('form button[type=submit]').click(); return true; })()`); };
   const themeState = () => ev(`({ attr: document.documentElement.getAttribute('data-theme'), stored: (()=>{ try { return localStorage.getItem('cmms_vg_theme'); } catch(e) { return 'ERR'; } })(),
       bodyBg: getComputedStyle(document.body).backgroundColor, toggle: (()=>{ const b = document.querySelector('.theme-toggle'); return b ? { label: b.getAttribute('aria-label'), title: b.title, svg: !!b.querySelector('svg') } : null; })() })`);
 
   await toLogin();
   let th = await themeState();
-  const loginView = () => ev(`(()=>{ const c = document.querySelector('.login-card'), lp = document.querySelector('.login-page');
-      return { cardBg: getComputedStyle(c).backgroundColor, pageBg: getComputedStyle(lp).backgroundColor, title: T.txt(document.querySelector('.login-title')), sub: T.txt(document.querySelector('.login-sub')),
-        labels: [...document.querySelectorAll('.login-field label')].map(T.txt), btn: T.txt(document.querySelector('form button[type=submit]')), divider: !!document.querySelector('hr.login-divider'),
-        redesign: !!document.querySelector('.login-intro, .login-visual, .login-theme, .theme-toggle, .pw-toggle, .login-features'), forgot: T.body().includes('Forgot password'),
-        footer: T.txt(document.querySelector('.login-footer')), overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 }; })()`);
-  const lv0 = await loginView();
-  t('THEME dark is the default (no stored preference)', th.attr === 'dark' && th.stored === null, th);
-  t('LOGIN original page: centred dark card with the CMMS logo, VHPL TIC title, Username / Password, "→  Sign In", footer; no redesign elements (no intro panel, art, theme toggle, show-password, forgot-password)',
-    lv0.cardBg === 'rgba(15, 32, 68, 0.93)' && lv0.title === 'VHPL TIC' && lv0.sub === 'CMMS — ENGINEERING SOLUTIONS DEPARTMENT' && JSON.stringify(lv0.labels) === '["Username","Password"]'
-    && lv0.btn.replace(/s+/g, ' ') === '→ Sign In' && lv0.divider && !lv0.redesign && !lv0.forgot && lv0.footer.includes('COMPUTERIZED MAINTENANCE MANAGEMENT SYSTEM') && !lv0.overflow, lv0);
+  t('U3 login: dark is the default (no stored preference), toggle offers light mode', th.attr === 'dark' && th.stored === null && th.bodyBg === 'rgb(10, 22, 40)' && !!th.toggle && th.toggle.label === 'Switch to light mode' && th.toggle.svg, th);
+  const lay3 = await ev(`(()=>{ const r = e => e.getBoundingClientRect(), tg = r(document.querySelector('.login-theme')), intro = document.querySelector('.login-intro'), card = document.querySelector('.login-card');
+      return { tgTopRight: tg.top <= 24 && innerWidth - tg.right <= 24, w: Math.round(tg.width), split: r(intro).right <= r(card).left && Math.abs(r(intro).top - 0) < 1, introW: Math.round(r(intro).width), cardW: Math.round(r(card).width),
+        feats: [...document.querySelectorAll('.login-features strong')].map(T.txt), welcome: T.txt(document.querySelector('.login-welcome')), instr: T.txt(document.querySelector('.login-instr')),
+        brand: T.txt(document.querySelector('.login-intro')).includes('ENGINEERING SOLUTIONS DEPARTMENT'), desc: T.txt(document.querySelector('.login-desc')).length > 40, visual: !!document.querySelector('.login-page > svg.login-visual[aria-hidden=true]') && !document.querySelector('.login-intro svg.login-visual'),
+        visualBehind: getComputedStyle(document.querySelector('.login-visual')).pointerEvents === 'none' && getComputedStyle(document.querySelector('.login-visual')).zIndex === '0' && getComputedStyle(document.querySelector('.login-intro')).zIndex === '2' && getComputedStyle(document.querySelector('.login-main')).zIndex === '1' && getComputedStyle(document.querySelector('.login-visual.lc-anim')).zIndex === '2' && document.querySelector('.login-visual.lc-anim').compareDocumentPosition(document.querySelector('.login-intro')) === Node.DOCUMENT_POSITION_FOLLOWING,
+        labels: [...document.querySelectorAll('.login-field label')].map(l => l.htmlFor), overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 }; })()`);
+  t('U3 login desktop: split screen (intro left, card right), toggle compact in the top-right corner, no overflow', lay3.tgTopRight && lay3.w <= 34 && lay3.split && lay3.introW > 500 && lay3.cardW <= 420 && !lay3.overflow, lay3);
+  t('U3 login intro: branding, ESD context, description, the three feature highlights, decorative visual behind the content', lay3.brand && lay3.desc && JSON.stringify(lay3.feats) === JSON.stringify(['Job Card Management', 'Asset Management', 'Maintenance Tracking']) && lay3.visual && lay3.visualBehind, lay3);
+  t('U3 login card: welcome heading, short instruction, labelled username/password fields', lay3.welcome === 'Welcome back' && lay3.instr.length > 10 && JSON.stringify(lay3.labels) === JSON.stringify(['login-username', 'login-password']), lay3);
   await ev(CONTRAST);
-  const cDark = await ev(`window.__minContrast(['.login-title','.login-sub','.login-field label','.login-btn'])`);
-  t('LOGIN dark: title, labels and button readable (≥ 4.5:1)', Object.keys(cDark).length === 4 && Object.values(cDark).every(v => v >= 4.5), cDark);
-  // the theme preference is applied before render; the original login keeps its dark look in light mode
-  await ev(`localStorage.setItem('cmms_vg_theme', 'light'); true`);
-  await B.send('Page.reload', {}); await waitFor(`!!document.querySelector('.login-card')`, 20000); await sleep(800);
-  th = await themeState(); const lv1 = await loginView();
+  const cDark = await ev(`window.__minContrast(['.login-welcome','.login-instr','.login-field label','.login-field input','.login-btn','.login-footer','.login-title','.login-desc','.login-features strong','.login-features span'])`);
+  // switch to light on the login page: live, no reload
+  await ev(`window.__noReload = 1; document.querySelector('.login-theme').click(); true`); await sleep(300);
+  th = await themeState();
+  t('U3 login: toggle switches to light live (no reload), stores only "light", label flips to dark mode', th.attr === 'light' && th.stored === 'light' && th.bodyBg === 'rgb(238, 242, 247)' && th.toggle.label === 'Switch to dark mode' && (await ev('window.__noReload === 1')), th);
   await ev(CONTRAST);
-  const cLight = await ev(`window.__minContrast(['.login-title','.login-sub','.login-field label','.login-btn'])`);
-  t('LOGIN with light mode stored: the page is in light mode, the original login card and page stay dark and readable (≥ 4.5:1)',
-    th.attr === 'light' && th.stored === 'light' && lv1.cardBg === 'rgba(15, 32, 68, 0.93)' && lv1.pageBg === 'rgb(10, 22, 40)' && Object.values(cLight).every(v => v >= 4.5) && Object.keys(cLight).length === 4, { th, lv1, cLight });
-  // original messages and states
+  const cLight = await ev(`window.__minContrast(['.login-welcome','.login-instr','.login-field label','.login-field input','.login-btn','.login-footer','.login-title','.login-desc','.login-features strong','.login-features span'])`);
+  const cardBg = await ev(`getComputedStyle(document.querySelector('.login-card')).backgroundColor`);
+  t('U3 login light: light translucent card (R8 glass), readable text (every login text ≥ 4.5:1, footer ≥ 3:1)', /^rgba\(255, 255, 255, 0\.[5-8]/.test(cardBg) && Object.entries(cLight).every(([k, v]) => v >= (k === '.login-footer' ? 3 : 4.5)) && Object.keys(cLight).length >= 9, cLight);
+  t('U3 login dark: readable text (every login text ≥ 4.5:1, footer ≥ 3:1)', Object.entries(cDark).every(([k, v]) => v >= (k === '.login-footer' ? 3 : 4.5)) && Object.keys(cDark).length >= 9, cDark);
+  await B.send('Page.reload', {}); await waitFor(`!!document.querySelector('.login-card')`, 20000); await sleep(300);
+  th = await themeState();
+  t('U3 login: light preference persists across a reload (applied before render)', th.attr === 'light' && th.stored === 'light' && th.bodyBg === 'rgb(238, 242, 247)', th);
+  // show / hide password
+  await ev(`T.setVal(document.getElementById('login-password'), 'Synthetic-Typed-1'); true`);
+  const pw0 = await ev(`(()=>{ const i = document.getElementById('login-password'), b = document.querySelector('.pw-toggle'); return { type: i.type, label: b.getAttribute('aria-label'), pressed: b.getAttribute('aria-pressed'), submitFirst: document.querySelector('form button[type=submit]') !== document.querySelector('form button') }; })()`);
+  await ev(`document.querySelector('.pw-toggle').click(); true`); await sleep(150);
+  const pw1 = await ev(`(()=>{ const i = document.getElementById('login-password'), b = document.querySelector('.pw-toggle'); return { type: i.type, value: i.value, label: b.getAttribute('aria-label'), pressed: b.getAttribute('aria-pressed') }; })()`);
+  await ev(`document.querySelector('.pw-toggle').click(); true`); await sleep(150);
+  const pw2 = await ev(`document.getElementById('login-password').type`);
+  t('U3 login: show/hide password toggles the field (value kept), with accessible label and pressed state; it never submits', pw0.type === 'password' && pw0.label === 'Show password' && pw0.pressed === 'false' && pw0.submitFirst && pw1.type === 'text' && pw1.value === 'Synthetic-Typed-1' && pw1.label === 'Hide password' && pw1.pressed === 'true' && pw2 === 'password' && !(await ev(`!!document.querySelector('.sidebar')`)), { pw0, pw1, pw2 });
+  // failure: loading feedback, then a readable error; no session stored
   await login('t_admin', 'Wrong-Password-1');
-  const busy = await ev(`(()=>{ const b = document.querySelector('form button[type=submit]'); return { disabled: b.disabled, text: T.txt(b) }; })()`);
+  const busy = await ev(`(()=>{ const b = document.querySelector('form button[type=submit]'); return { disabled: b.disabled, busy: b.getAttribute('aria-busy'), text: T.txt(b), spinner: !!b.querySelector('.login-spinner') }; })()`);
   await waitFor(`!!document.querySelector('.login-error')`, 5000);
-  const fail1 = await ev(`({ text: T.txt(document.querySelector('.login-error')), btn: T.txt(document.querySelector('form button[type=submit]')), session: localStorage.getItem('cmms_vg_session') })`);
-  t('LOGIN original busy state ("Authenticating...", disabled) and failure message; nothing stored about the sign-in', busy.disabled && busy.text === 'Authenticating...' && fail1.text === '⚠ Invalid username or password. Please try again.' && fail1.btn.replace(/s+/g, ' ') === '→ Sign In' && fail1.session === null, { busy, fail1 });
+  await ev(CONTRAST);
+  const fail1 = await ev(`(()=>{ const e = document.querySelector('.login-error'), b = document.querySelector('form button[type=submit]'); return { role: e.getAttribute('role'), text: T.txt(e), btn: !b.disabled && T.txt(b) === 'Sign In', session: localStorage.getItem('cmms_vg_session'), contrast: window.__contrast(e) }; })()`);
+  t('U3 login: loading feedback while signing in (disabled, aria-busy, spinner, "Signing in…")', busy.disabled && busy.busy === 'true' && busy.spinner && busy.text === 'Signing in…', busy);
+  t('U3 login failure: readable error (role=alert, unchanged message, ≥ 4.5:1), button re-enabled, no session stored', fail1.role === 'alert' && fail1.text === 'Invalid Employee ID or password. Please try again.' && fail1.btn && fail1.session === null && fail1.contrast >= 4.5, fail1);
   await login('', '');
-  t('LOGIN original empty-field message', await ev(`T.txt(document.querySelector('.login-error')) === '⚠ Please enter your username and password.'`));
-  // success: the stored theme is carried into the app
+  t('U3 login: empty fields show the validation message (Employee ID wording)', await ev(`T.txt(document.querySelector('.login-error')) === 'Please enter your Employee ID and password.'`));
+  // success in light mode
   await login('t_admin', PASS.t_admin);
   await waitFor(`!!document.querySelector('.sidebar') && !T.body().includes('Loading')`, 20000); await sleep(800);
   th = await themeState();
+  const sess = await ev(`T.txt(document.querySelector('.sidebar-user-role'))`);   // signed-in profile (no browser session since Phase 2B-1)
   const stored = await ev(`({ keys: Object.keys(localStorage).sort(), theme: localStorage.getItem('cmms_vg_theme'), pwAnywhere: Object.values(localStorage).some(v => v.includes(${JSON.stringify(PASS.t_admin)})) })`);
-  t('THEME sign-in carries the light preference into the app; the top bar has the theme switch', th.attr === 'light' && (await ev(`!!document.querySelector('.topbar .theme-toggle')`)) && (await ev(`T.txt(document.querySelector('.sidebar-user-role'))`)) === 'Admin', th);
-  t('THEME storage: the theme key holds only "light"/"dark"; no credentials or sign-in data in browser storage', stored.keys.includes('cmms_vg_theme') && stored.theme === 'light' && !stored.pwAnywhere && !stored.keys.includes('cmms_vg_session'), stored);
+  t('U3 login success (unchanged flow): admin signed in, light theme carried into the app, top bar toggle present', sess === 'Admin' && (await ev(`localStorage.getItem('cmms_vg_session') === null`)) && th.attr === 'light' && th.toggle && th.toggle.label === 'Switch to dark mode' && (await ev(`!!document.querySelector('.topbar .theme-toggle')`)), { sess, th });
+  t('U3 storage: the theme key holds only "light"/"dark" (no credentials); the typed password is stored nowhere', stored.keys.includes('cmms_vg_theme') && stored.theme === 'light' && !stored.pwAnywhere, stored);
   // pages in both themes: readable text, themed surfaces, dialogs and forms
   const SELS = ['.page-title', '.page-sub', 'th', 'td', '.nav-item', '.panel-title', '.btn-accent', '.btn-ghost', '.btn-logout', '.badge', '.sb-base', '.user-role-badge', '.stat-label', '.stat-num', '.logo-text', '.sidebar-user-name', '.settings-tab', '.stat-card div', '.main button', '.main input', '.main select'];
   const results = {};
@@ -1027,13 +1050,97 @@ async function main() {
   t('U3 app: top bar toggle switches theme live — same session, same page, no reload; chart text follows the theme', after.attr === 'light' && after.sameSession && after.noReload && after.active === 'Dashboard' && after.legend === '#0f2044', after);
   await ev(`document.querySelector('.topbar .theme-toggle').click(); true`); await sleep(500);
   t('U3 app: back to dark — chart legend uses the dark text colour again', (await ev(`(()=>{ const ch = Chart.getChart(document.querySelector('canvas')); return ch && ch.options.plugins.legend.labels.color; })()`)) === '#f8fafc');
-  // phone width: the original login fits, the app keeps its theme switch
+  // mobile and reduced motion
   await toLogin();
   await B.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true }); await sleep(400);
-  const mob = await ev(`(()=>{ const card = document.querySelector('.login-card').getBoundingClientRect(), btn = document.querySelector('form button[type=submit]').getBoundingClientRect();
-      return { cardW: Math.round(card.width), inside: card.left >= 0 && card.right <= innerWidth, formVisible: btn.bottom <= innerHeight, overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 }; })()`);
-  t('LOGIN 390px: the original card fits the screen, Sign In visible without scrolling, no overflow', mob.inside && mob.formVisible && !mob.overflow, mob);
+  const mob = await ev(`(()=>{ const r = e => e.getBoundingClientRect(), card = r(document.querySelector('.login-card')), intro = r(document.querySelector('.login-intro')), btn = r(document.querySelector('form button[type=submit]')), tg = r(document.querySelector('.login-theme'));
+      return { stacked: intro.bottom <= card.top + 1, cardW: Math.round(card.width), formVisible: btn.bottom <= innerHeight, features: getComputedStyle(document.querySelector('.login-features')).display, overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+        tgOverlap: !(tg.right <= r(document.querySelector('.login-title')).left || tg.left >= r(document.querySelector('.login-title')).right || tg.bottom <= r(document.querySelector('.login-title')).top || tg.top >= r(document.querySelector('.login-title')).bottom) }; })()`);
+  t('U3 login 390px: stacked (brand above the card), form and Sign In fully visible without scrolling, features hidden, toggle not over the title, no overflow', mob.stacked && mob.formVisible && mob.features === 'none' && !mob.overflow && !mob.tgOverlap && mob.cardW <= 358, mob);
+  await B.send('Emulation.setDeviceMetricsOverride', { width: 820, height: 1000, deviceScaleFactor: 1, mobile: false }); await sleep(300);
+  t('U3 login 820px (tablet): stacked, no overflow', await ev(`(()=>{ const r = e => e.getBoundingClientRect(); return r(document.querySelector('.login-intro')).bottom <= r(document.querySelector('.login-card')).top + 1 && document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1; })()`));
   await B.send('Emulation.clearDeviceMetricsOverride', {}); await sleep(300);
+  const anim = () => ev(`(()=>{ const of = c => document.getAnimations().filter(a => a.effect && a.effect.target && a.effect.target.classList.contains(c)).length; return { signal: of('lc-signal'), glow: of('lc-glow') }; })()`);
+  // 2026-10-14: circuit board converging on the card (replaces the R8-R12 gears and line art). Same layout checks as before.
+  for (const [w, h, mobile] of [[1440, 900, false], [1920, 1080, false], [1280, 720, false], [1024, 768, false], [820, 1000, false], [390, 844, true]]) {
+    await B.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile }); await sleep(700);
+    const g = await ev(`(()=>{ const page = document.querySelector('.login-page'), pr = page.getBoundingClientRect(), svg = document.querySelector('.login-visual'), sr = svg.getBoundingClientRect();
+    const vis = e => getComputedStyle(e).display !== 'none' && e.getClientRects().length > 0;
+    const card = document.querySelector('.login-card').getBoundingClientRect();
+    const scr = (el, p) => { const m = el.getScreenCTM(); return { x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f }; };
+    const traces = [...document.querySelectorAll('.lc-traces path')];
+    const crosses = traces.filter(el => { const L = el.getTotalLength(); for (let k = 0; k <= 80; k++) { const p = scr(el, el.getPointAtLength(L * k / 80)); if (p.x > card.left + 1 && p.x < card.right - 1 && p.y > card.top + 1 && p.y < card.bottom - 1) return true; } return false; }).length;
+    const ends = traces.map(el => scr(el, el.getPointAtLength(el.getTotalLength())));
+    const gap = p => Math.hypot(Math.max(card.left - p.x, 0, p.x - card.right), Math.max(card.top - p.y, 0, p.y - card.bottom));
+    const starts = traces.map(el => scr(el, el.getPointAtLength(0)));
+    const side = p => Math.abs(p.x - pr.left) < 2 ? 'left' : Math.abs(p.x - pr.right) < 2 ? 'right' : Math.abs(p.y - pr.top) < 2 ? 'top' : Math.abs(p.y - pr.bottom) < 2 ? 'bottom' : 'none';
+    const boxes = [...document.querySelectorAll('.login-brand, .login-headline, .login-desc, .login-features li, .login-card, .login-theme')].filter(vis).map(e => e.getBoundingClientRect()).filter(b => b.width && b.height);
+    const parts = [...document.querySelectorAll('.lc-parts g')].map(e => e.getBoundingClientRect());
+    const hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    return { traces: traces.length, crosses, endsOnSocket: ends.every(p => gap(p) >= 12 && gap(p) <= 20), sides: [...new Set(starts.map(side))].sort(), fromEdge: starts.every(p => side(p) !== 'none'),
+      partsOnText: parts.filter(p => boxes.some(b => hit(p, b))).length, signals: document.querySelectorAll('.lc-signal').length,
+      timings: new Set([...document.querySelectorAll('.lc-signal')].map(e => getComputedStyle(e).animationDuration)).size,
+      covers: Math.abs(sr.left - pr.left) < 1 && Math.abs(sr.top - pr.top) < 1 && Math.abs(sr.width - pr.width) < 1 && Math.abs(sr.height - pr.height) < 1 && pr.height >= innerHeight - 1 && pr.width >= innerWidth - 1,
+      mainBg: getComputedStyle(document.querySelector('.login-main')).backgroundImage, introBorder: getComputedStyle(document.querySelector('.login-intro')).borderRightWidth,
+      overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+      rs: (()=>{ const m = document.querySelector('.login-main'), c = getComputedStyle(m, '::before'), card = getComputedStyle(document.querySelector('.login-card')), mr = m.getBoundingClientRect(), ir = document.querySelector('.login-intro').getBoundingClientRect();
+        const alphas = (c.backgroundImage.match(/rgba\\([^)]*\\)/g) || []).map(x => parseFloat(x.split(',')[3]));
+        return { img: c.backgroundImage, mask: c.maskImage || c.webkitMaskImage || 'none', z: c.zIndex, left: c.left, edge: c.borderLeftWidth, shade: c.boxShadow, introShare: ir.width / innerWidth, mainW: mr.width, cardW: document.querySelector('.login-card').getBoundingClientRect().width,
+          cardCentred: (()=>{ const cr = document.querySelector('.login-card').getBoundingClientRect(); return Math.abs((cr.left + cr.right) / 2 - (mr.left + mr.right) / 2) < 2; })(), opaque: alphas.length ? Math.max(...alphas) : 0, panelFromDivide: Math.abs(mr.left - ir.right) < 1,
+          cardShadow: card.boxShadow, cardBorder: card.borderTopWidth, cardBlur: /blur/.test(card.backdropFilter || card.webkitBackdropFilter || '') }; })() }; })()`);
+    t('LOGIN2 circuit ' + w + 'x' + h + ': board covers the whole page; every trace starts at a page edge and ends on a pad 12-20px from the card; no trace crosses the card; no component over text; no overflow',
+      g.covers && g.traces >= (mobile ? 4 : 8) && g.fromEdge && g.endsOnSocket && g.crosses === 0 && g.partsOnText === 0 && !g.overflow && g.signals === g.traces, g);
+    if (w >= 1024) t('LOGIN2 circuit ' + w + 'x' + h + ': traces converge on the card from at least three sides (incl. across the divide from the left); no blurred blotches, no hard divider', g.sides.length >= 3 && g.sides.includes('left') && g.mainBg === 'none' && g.introBorder === '0px', g.sides);
+    if (w >= 1024) t('R11 login ' + w + 'x' + h + ': distinct right colour zone (65-90% opaque since R12) blended into the left over a 160px fade at the divide (no edge line, no dividing shadow); glass card floats (shadow, border, blur)', /linear-gradient/.test(g.rs.img) && g.rs.opaque >= 0.65 && g.rs.opaque <= 0.9 && /transparent|rgba\(0, 0, 0, 0\)/.test(g.rs.mask) && /160px/.test(g.rs.mask) && g.rs.left === '-80px' && g.rs.edge === '0px' && g.rs.shade === 'none' && g.rs.z === '-1' && g.rs.panelFromDivide && g.rs.cardShadow !== 'none' && (g.rs.cardShadow.match(/rgba/g) || []).length >= 2 && g.rs.cardBorder === '1px' && g.rs.cardBlur, g.rs);
+    if (w >= 1024) t('R11 login ' + w + 'x' + h + ': left introduction dominant (54% where it fits; right panel ≥ 500px), card keeps its 392px width (R12) and is centred in the right panel', (w >= 1100 ? Math.abs(g.rs.introShare - 0.54) < 0.01 : g.rs.mainW >= 499 && g.rs.introShare > 0.5) && Math.round(g.rs.cardW) === 392 && g.rs.cardCentred, { share: g.rs.introShare, mainW: g.rs.mainW, cardW: g.rs.cardW, centred: g.rs.cardCentred });
+    if (w === 1440) t('LOGIN2 circuit 1440: at least 12 traces, every one with a signal', g.traces >= 12 && g.signals === g.traces, g);
+    // light flow (2026-10-14): in on the left, hidden behind the card, out on the right along the same pad row
+    const fl = await ev(`(()=>{ const card = document.querySelector('.login-card').getBoundingClientRect();
+      const sig = [...document.querySelectorAll('.lc-signal')], rights = sig.filter(e => e.dataset.side === 'right');
+      const scr = (el, p) => { const m = el.getScreenCTM(); return { x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f }; };
+      const lit = el => { const d = parseFloat(getComputedStyle(el).strokeDashoffset), L = el.getTotalLength(), a = Math.max(0, -d), b = Math.min(L, 26 - d); const out = [];
+        if (b - a > 0.5) for (let k = 0; k <= 6; k++) out.push(scr(el, el.getPointAtLength(a + (b - a) * k / 6))); return out; };
+      const inCard = p => p.x > card.left && p.x < card.right && p.y > card.top && p.y < card.bottom;
+      let pairs = 0, aligned = 0, beyond = 0, ordered = 0, overCard = 0, running = 0;
+      for (const r of rights) {
+        const l = sig.find(e => e.dataset.side === 'left' && e.dataset.row === r.dataset.row); if (!l) continue; pairs++;
+        const la = l.getAnimations()[0], ra = r.getAnimations()[0]; if (!la || !ra) continue; running++;
+        const lp = scr(l, l.getPointAtLength(l.getTotalLength())), rp = scr(r, r.getPointAtLength(r.getTotalLength()));
+        if (Math.abs(lp.y - rp.y) < 1 && lp.x < card.left && rp.x > card.right) aligned++;
+        const T = la.effect.getComputedTiming().duration; let firstL = null, firstR = null, far = false;
+        [la, ra].forEach(a => a.pause());
+        for (let k = 0; k < 160; k++) { const t = T * k / 160 + la.effect.getTiming().delay + T; la.currentTime = t; ra.currentTime = t;   /* currentTime must be >= 0: one cycle later = the same position k/160 of the cycle */
+          const pl = lit(l), pr = lit(r);
+          if (pl.length && firstL === null) firstL = k; if (pr.length && firstR === null) firstR = k;
+          if (pr.some(p => p.x > card.right + 40)) far = true;
+          if ([...pl, ...pr].some(inCard)) overCard++; }
+        [la, ra].forEach(a => a.play());
+        if (far) beyond++; if (firstL !== null && firstR !== null && firstL < firstR) ordered++;
+      }
+      return { rights: rights.length, pairs, running, aligned, beyond, ordered, overCard }; })()`);
+    if (g.sides.includes('right')) t('LOGIN2 flow ' + w + 'x' + h + ': every right trace continues a left trace on the same pad row; the light reaches the right side beyond the card after the left part, and is never lit over the card',
+      fl.rights > 0 && fl.pairs === fl.rights && fl.running === fl.pairs && fl.aligned === fl.pairs && fl.beyond === fl.pairs && fl.ordered === fl.pairs && fl.overCard === 0, fl);
+    else t('LOGIN2 flow ' + w + 'x' + h + ': no room beside the card, so no right-side trail; signals still run (bottom traces)', fl.rights === 0 && (await ev(`document.getAnimations().some(a => a.effect && a.effect.target && a.effect.target.classList.contains('lc-signal'))`)), fl);
+  }
+  await B.send('Emulation.clearDeviceMetricsOverride', {}); await sleep(300);
+  for (const theme of ['dark', 'light']) {
+    if ((await ev("document.documentElement.getAttribute('data-theme')")) !== theme) { await ev("document.querySelector('.login-theme').click(); true"); await sleep(300); }
+    await ev(CONTRAST);
+    const gl = await ev(`(()=>{ const c = getComputedStyle(document.querySelector('.login-card')), a = /rgba\\([^)]*,\\s*([0-9.]+)\\)/.exec(c.backgroundColor);
+      return { blur: /blur\\((\\d+)/.exec(c.backdropFilter || c.webkitBackdropFilter || '') ? +/blur\\((\\d+)/.exec(c.backdropFilter || c.webkitBackdropFilter)[1] : 0, alpha: a ? +a[1] : 1, border: c.borderTopWidth,
+        c: window.__minContrast(['.login-welcome', '.login-instr', '.login-field label', '.login-btn', '.login-footer']), pw: !!document.querySelector('.pw-toggle'), submit: !!document.querySelector('form button[type=submit]') }; })()`);
+    t('R8/R12 ' + theme + ' card: glossy glass (translucent 40-80%, 10-20px backdrop blur, subtle border); card text stays readable (≥ 4.5:1, footer ≥ 3:1); controls present',
+      gl.alpha >= 0.4 && gl.alpha < 0.8 && gl.blur >= 10 && gl.blur <= 20 && gl.border === '1px' && Object.entries(gl.c).every(([k, v]) => v >= (k === '.login-footer' ? 3 : 4.5)) && gl.pw && gl.submit, gl);
+  }
+  await ev("document.querySelector('.login-theme').click(); true"); await sleep(300);   // back to dark
+  const a0 = await anim();
+  await B.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] }); await sleep(300);
+  const a1 = await anim();
+  const rmPackets = await ev("[...document.querySelectorAll('.lc-signal')].every(e => getComputedStyle(e).display === 'none') && [...document.querySelectorAll('.login-visual *')].every(e => getComputedStyle(e).animationName === 'none')");
+  await B.send('Emulation.setEmulatedMedia', { features: [] }); await sleep(400);
+  const a2 = await anim();
+  t('U3/LOGIN2 login visuals animate normally (signals and pad glows) and stop entirely with prefers-reduced-motion (no animation at all, signals hidden, static board kept); motion resumes when the preference is cleared',
+    a0.signal >= 8 && a0.glow === a0.signal && a1.signal === 0 && a1.glow === 0 && rmPackets && a2.signal === a0.signal, { a0, a1, a2, rmPackets });
   await ev(`try { localStorage.removeItem('cmms_vg_theme'); } catch(e) {} true`);
 
   }
@@ -1042,18 +1149,19 @@ async function main() {
   {
     const shaV = s => require('crypto').createHash('sha256').update(s).digest('hex');
     const SEEDV = JSON.parse(JSON.stringify(SEED2));
-    SEEDV.users.push({ id: 20, username: 't_viewer', fullName: 'Test Viewer', role: 'Viewer', email: 'viewer@example.invalid', active: true, password: shaV(PASS.t_viewer) });
+    SEEDV.users.push({ id: 20, username: 't_viewer', employeeId: 'VW001', fullName: 'Test Viewer', role: 'Viewer', email: 'viewer@example.invalid', active: true, password: shaV(PASS.t_viewer) });
 
     // account management: an Admin creates and edits a Viewer account
     await fresh('t_admin', SEEDV); await nav('Settings');
     await ev(`T.click('Add User','button'); true`); await sleep(300);
     t('VIEWER role offered in the account form', await ev(`[...T.all('.modal select')[0].options].map(o => o.value).includes('Viewer')`));
-    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'New Viewer'); T.setVal(ins[1],'t_newviewer'); T.setVal(ins[2],'Viewer-Pass1!'); T.setVal(T.all('select',m)[0],'Viewer'); window.__alerts=[]; T.click('Add User','.modal button'); return true; })()`); await settle();
-    const nv = mock.store.users.find(u => u.username === 't_newviewer');
-    t('VIEWER account created by Admin: role Viewer, hashed password, no department/categories/section', !!nv && nv.role === 'Viewer' && /^[0-9a-f]{64}$/.test(nv.password) && !('department' in nv) && !('assignedCategories' in nv) && !('section' in nv), nv && nv.role);
+    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'New Viewer'); T.setVal(T.field('Employee ID *'),'VW002'); T.setVal(T.all('select',m)[0],'Viewer'); window.__alerts=[]; T.click('Add User','.modal button'); return true; })()`); await settle();
+    const nv = mock.store.users.find(u => u.employeeId === 'VW002');
+    await ev("(()=>{ const d = T.find('Done','.temp-pw-notice button'); if (d) d.click(); return true; })()"); await sleep(300);
+    t('VIEWER account created by Admin: role Viewer, Employee ID, no department/categories/section', !!nv && nv.role === 'Viewer' && nv.employeeId === 'VW002' && !('department' in nv) && !('assignedCategories' in nv) && !('section' in nv), nv && nv.role);
     await ev(`T.prop('onSaveUser')({...${JSON.stringify({ ...SEEDV.users.find(u => u.id === 20), password: '' })}, fullName: 'Test Viewer Renamed'}, 20); true`); await settle();
     const ev20 = mock.store.users.find(u => u.id === 20);
-    t('VIEWER account edited by Admin: name changed; id, role and password kept', ev20.fullName === 'Test Viewer Renamed' && ev20.role === 'Viewer' && ev20.id === 20 && ev20.password === shaV(PASS.t_viewer));
+    t('VIEWER account edited by Admin: name changed; id, role, Employee ID and password kept', ev20.fullName === 'Test Viewer Renamed' && ev20.role === 'Viewer' && ev20.employeeId === 'VW001' && ev20.password === shaV(PASS.t_viewer));
     t('VIEWER role badge shown in the users table', await ev(`!!T.row('t_viewer') && !!T.row('t_viewer').querySelector('.role-viewer')`));
 
     // the Viewer: every intended page, read-only
@@ -1137,9 +1245,9 @@ async function main() {
       ['import employees', `T.prop('onImportEmployees')([{ empId: 'E998', name: 'Y' }])`], ['delete employee', `T.prop('onDeleteEmployee')('E901')`], ['fix statuses', `T.prop('onFixStatus')()`],
     ]);
     await refuse('Settings', [
-      ['create user', `T.prop('onSaveUser')({ username: 'v_hack', fullName: 'X', role: 'Admin', password: 'Valid-Pass1!' }, null)`],
+      ['create user', `T.prop('onSaveUser')({ username: 'v_hack', fullName: 'X', role: 'Admin', employeeId: 'VH001', password: 'Valid-Pass1!' }, null)`],
       ['edit own role', `T.prop('onSaveUser')({ ...${JSON.stringify({ ...SEEDV.users.find(u => u.id === 20), password: '' })}, role: 'Admin' }, 20)`],
-      ['delete user', `T.prop('onDeleteUser')(1)`], ['reset all data', `T.prop('onResetData')()`],
+      ['delete user', `T.prop('onDeleteUser')(1)`], ['reset all data', `T.prop('onResetData')()`], ["reset another user's password", `T.prop('onResetPassword')(1)`],
     ]);
     // global download/export functions called with the Viewer's own record
     const meV = JSON.stringify(SEEDV.users.find(u => u.id === 20));
@@ -1152,38 +1260,98 @@ async function main() {
     t('VIEWER: after all attempts, no database write, no file download and no print window', mock.writes.length === w0 && (await ev('window.__downloads.length')) === d0 && (await ev('window.__prints.length')) === p0,
       { writes: mock.writes.length - w0 });
     t('VIEWER: stored data unchanged', JSON.stringify(mock.store.assets) === JSON.stringify(SEEDV.assets) && JSON.stringify(mock.store.jobOrders) === JSON.stringify(SEEDV.jobOrders)
-      && JSON.stringify(mock.store.pm) === JSON.stringify(SEEDV.pm) && JSON.stringify(mock.store.users) === JSON.stringify(SEEDV.users));
+      && JSON.stringify(mock.store.pm) === JSON.stringify(SEEDV.pm) && sameAccounts(mock.store.users, SEEDV.users));
   }
 
-  // ============ ACCT (release 2026-10-14): account management as before (no temporary passwords, no forced change, no Employee ID) ============
-  console.log('--- ACCT. account management');
+  // ============ ACCT (Phase 2B-2): local account management, password policy, forced first-login change ============
+  console.log('--- ACCT. account management, password policy, forced change');
   {
+    const loginNow = (id, pw) => ev(`(()=>{ T.setVal(document.getElementById('login-username'), ${JSON.stringify(idOf(id))}); T.setVal(document.getElementById('login-password'), ${JSON.stringify(pw)}); document.querySelector('form button[type=submit]').click(); return true; })()`);
     const storeUser = id => mock.store.users.find(u => u.id === id);
+    const plainNowhere = async pw => !JSON.stringify(mock.store).includes(pw) && (await ev(`!Object.values(localStorage).some(v => v.includes(${JSON.stringify(pw)}))`));
+    const meetsPolicy = p => typeof p === 'string' && p.length >= 8 && /[A-Z]/.test(p) && /[a-z]/.test(p) && /[0-9]/.test(p) && /[^A-Za-z0-9\s]/.test(p);
+    const fc = async (cur, nw, cf) => { await ev(`(()=>{ T.setVal(document.getElementById('fc-current'), ${JSON.stringify(cur)}); T.setVal(document.getElementById('fc-new'), ${JSON.stringify(nw)}); T.setVal(document.getElementById('fc-confirm'), ${JSON.stringify(cf === undefined ? nw : cf)}); document.querySelector('.force-change button[type=submit]').click(); return true; })()`); await sleep(1500); };
+    const fcErr = () => ev(`T.txt(document.querySelector('.force-change .login-error'))`);
+
     await fresh('t_admin', SEED2); await nav('Settings');
+    // (P2) nobody types a password for another account: the server generates the temporary password and shows it once
+    const base = { fullName: 'Policy Test', role: 'Assistant Engineer', active: true, employeeId: 'PT001' };
     let w0 = mock.writes.length;
-    await ev(`T.prop('onSaveUser')({ username: 't_new', fullName: 'Acct Test', role: 'Assistant Engineer', active: true, email: 'new@example.invalid', password: '' }, null); true`); await settle();
-    t('ACCT a new account needs a password (refused, no write)', (await ev(`T.body().includes('A password is required for new accounts.')`)) && mock.writes.length === w0);
-    await ev(`T.prop('onSaveUser')({ username: 't_se', fullName: 'Dup', role: 'Admin', active: true, password: 'Some-Pass-1' }, null); true`); await settle();
-    t('ACCT a duplicate username is refused (sign-in needs exactly one match), no write', (await ev(`T.body().includes('This username is already used by another account.')`)) && mock.writes.length === w0);
-    await ev(`T.click('Add User','button'); true`); await sleep(300);
-    const form = await ev(`({ empId: T.modalText().includes('employee id'), temp: T.modalText().includes('temporary password'), hint: !!document.querySelector('.modal .pw-hint') })`);
-    t('ACCT the account form has no Employee ID field, no temporary-password generator and no password-policy hint', !form.empId && !form.temp && !form.hint, form);
-    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'Acct New'); T.setVal(ins[1],'t_acct'); T.setVal(ins[2],'simplepw8'); T.setVal(T.all('select',m)[0],'Viewer'); window.__alerts=[]; T.click('Add User','.modal button'); return true; })()`); await settle();
-    const nu = mock.store.users.find(u => u.username === 't_acct');
-    t('ACCT the Admin creates an account as before: hashed password (plain SHA-256), no forced-change flag; existing accounts unchanged',
-      !!nu && nu.password === require('crypto').createHash('sha256').update('simplepw8').digest('hex') && !('must_change_password' in nu) && SEED2.users.every(x => JSON.stringify(storeUser(x.id)) === JSON.stringify(x)), nu && { role: nu.role });
-    t('ACCT no password-reset button on user rows', await ev(`!T.find('Reset','button',T.row('t_jce'))`));
-    await ev(`document.querySelector('.btn-logout').click(); true`); await sleep(500);
-    await relogin('t_acct', { password: 'simplepw8' });
-    t('ACCT the new account signs in straight away (no forced password change)', await ev(`!!document.querySelector('.sidebar') && T.txt(document.querySelector('.sidebar-user-role')) === 'Viewer'`));
-    await nav('Settings');
+    // profile Change Password: the policy applies there
     await ev(`(T.all('.settings-tab').find(e=>T.txt(e).includes('Profile'))||{click(){}}).click(); true`); await sleep(250);
     await ev(`T.click('Change Password','button'); true`); await sleep(250);
+    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0], ${JSON.stringify(PASS.t_admin)}); T.setVal(ins[1],'Abcdefg1'); T.setVal(ins[2],'Abcdefg1'); window.__alerts=[]; T.click('Change Password','.modal button'); return true; })()`); await sleep(500);
+    t('ACCT Change Password (profile) refuses a password without a special character (no write)', (await ev(`window.__alerts.join('|').includes('a special character')`)) && mock.writes.length === w0);
+    await ev(`T.all('.modal-close')[0].click(); true`); await sleep(200);
+    await ev(`(T.all('.settings-tab').find(e=>T.txt(e).includes('Users'))||{click(){}}).click(); true`); await sleep(250);
+
+    // UI: new account with an Employee ID; the server creates it and returns a temporary password once
+    await ev(`T.click('Add User','button'); true`); await sleep(300);
+    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'Acct Test JCE'); T.setVal(T.field('Employee ID *'),'ac123'); T.setVal(T.all('select',m)[0],'Job Card Editor'); return true; })()`); await sleep(250);
+    await ev(`T.setVal(T.field('Section (copied to job orders when work is assigned) *'),'Electrical'); true`); await sleep(150);
+    t('ACCT the account form has no password field and no password generator (the server generates the temporary password)',
+      await ev(`T.all('.modal input[type=password]').length === 0 && !T.find('Generate temporary password','.modal button') && !T.all('.modal input').some(x => x.autocomplete === 'new-password')`));
     w0 = mock.writes.length;
-    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'simplepw8'); T.setVal(ins[1],'short'); T.setVal(ins[2],'short'); window.__alerts=[]; T.click('Change Password','.modal button'); return true; })()`); await sleep(500);
-    t('ACCT own password change: fewer than 8 characters refused (no write)', (await ev(`window.__alerts.join('|').includes('at least 8 characters')`)) && mock.writes.length === w0);
-    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[1],'newpass88'); T.setVal(ins[2],'newpass88'); T.click('Change Password','.modal button'); return true; })()`); await settle();
-    t('ACCT own password change (Viewer) saved as plain SHA-256', (mock.store.users.find(u => u.username === 't_acct') || {}).password === require('crypto').createHash('sha256').update('newpass88').digest('hex'));
+    await ev(`(()=>{ window.__alerts=[]; T.click('Add User','.modal button'); return true; })()`); await settle();
+    const gen = await ev(`(()=>{ const m = document.querySelector('.temp-pw-notice'); return m ? { value: m.querySelector('input.temp-pw').value, once: T.txt(m).includes('Shown only once') } : { value: null }; })()`);
+    const nu = mock.store.users.find(u => u.employeeId === 'AC123');
+    t('ACCT new account created by the server: Employee ID upper-cased, forced change set, section kept; existing accounts unchanged',
+      !!nu && nu.must_change_password === true && nu.section === 'Electrical' && SEED2.users.every(s => acct(storeUser(s.id)) === acct(s)), nu && { id: nu.id, emp: nu.employeeId, flag: nu.must_change_password });
+    t('ACCT the temporary password is shown once, satisfies the policy, and is the account\'s password', !!gen.value && gen.once && meetsPolicy(gen.value) && nu.password === shaHex(gen.value));
+    t('ACCT the temporary password is stored nowhere in plaintext (server data, browser storage)', await plainNowhere(gen.value));
+    await ev(`T.click('Done','.temp-pw-notice button'); true`); await sleep(300);
+    t('ACCT after closing, the temporary password is gone from the page', await ev(`!document.querySelector('.temp-pw-notice') && !document.body.innerHTML.includes(${JSON.stringify(gen.value)})`));
+    // uniqueness: the form refuses it, and so does the server when the form is bypassed
+    w0 = mock.writes.length;
+    await ev(`T.prop('onSaveUser')({...${JSON.stringify(base)}, employeeId: 'ac123'}, null); true`); await settle();
+    t('ACCT duplicate Employee ID (case-insensitive) refused (no write)', (await ev(`T.body().includes('This Employee ID is already used by another account.')`)) && mock.writes.length === w0);
+    const dup = await ev(`(async () => { const r = await serverFunction('admin-users', { action: 'create', employeeId: 'AC123', fullName: 'Dup', role: 'Assistant Engineer', active: true }); return r.status; })()`);
+    t('ACCT (API) the server refuses a duplicate Employee ID too (409), no account created', dup === 409 && mock.store.users.filter(u => u.employeeId === 'AC123').length === 1, dup);
+
+    // first sign-in with the temporary password: everything is blocked until a valid change succeeds
+    await ev(`document.querySelector('.btn-logout').click(); true`); await sleep(500);
+    await loginNow('AC123', gen.value);
+    const gate = await waitFor(`!!document.getElementById('fc-new')`, 15000);
+    t('ACCT first sign-in with the temporary password shows only the forced change (no navigation, no pages, no top bar)',
+      gate && (await ev(`!document.querySelector('.sidebar') && !document.querySelector('.nav-item') && !document.querySelector('.main') && !document.querySelector('.topbar')`)));
+    w0 = mock.writes.length;
+    await fc(gen.value, 'abcdefg1');
+    t('ACCT forced change: weak new password refused; still blocked; flag kept; no write', (await fcErr()).includes('uppercase') && (await ev(`!document.querySelector('.sidebar')`)) && storeUser(nu.id).must_change_password === true && mock.writes.length === w0);
+    await fc(gen.value, 'Acct-New-Pass1', 'Acct-New-Pass2');
+    t('ACCT forced change: mismatched confirmation refused', (await fcErr()).includes('do not match') && mock.writes.length === w0);
+    await fc('Wrong-Temp-1', 'Acct-New-Pass1');
+    t('ACCT forced change: wrong temporary password refused; flag kept', (await fcErr()).length > 0 && (await ev(`!document.querySelector('.sidebar')`)) && storeUser(nu.id).must_change_password === true);
+    await fc(gen.value, gen.value);
+    t('ACCT forced change: reusing the temporary password refused', (await fcErr()).includes('differ') && storeUser(nu.id).must_change_password === true);
+    const beforeU = JSON.parse(JSON.stringify(storeUser(nu.id)));
+    await fc(gen.value, 'Acct-New-Pass1'); await settle();
+    const afterU = storeUser(nu.id);
+    t('ACCT forced change succeeds: flag removed, hash changed, role/section/Employee ID kept; the application opens',
+      afterU.must_change_password === false && afterU.password !== beforeU.password && afterU.role === 'Job Card Editor' && afterU.section === 'Electrical' && afterU.employeeId === 'AC123'
+      && (await waitFor(`!!document.querySelector('.sidebar')`, 10000)));
+
+    // admin reset (local development tool): Job Card Editor t_jce (Mechanical)
+    await fresh('t_admin', SEED2); await nav('Settings');
+    const josBefore = JSON.stringify(mock.store.jobOrders), u5 = JSON.parse(JSON.stringify(storeUser(5)));
+    await ev(`(()=>{ T.click('Reset','button',T.row('t_jce')); return true; })()`); await settle();
+    const shown = await ev(`(()=>{ const m = document.querySelector('.temp-pw-notice'); return m ? { pw: m.querySelector('input.temp-pw').value, local: T.txt(m).includes('Shown only once') } : null; })()`);
+    const r5 = storeUser(5);
+    t('ACCT admin reset shows a policy-compliant temporary password once ("Shown only once")', !!shown && shown.local && meetsPolicy(shown.pw));
+    t('ACCT admin reset changes only the password hash and sets must_change_password (role, section, status, email kept)',
+      r5.must_change_password === true && r5.password !== u5.password && JSON.stringify({ ...r5, password: '', must_change_password: undefined }) === JSON.stringify({ ...u5, password: '', must_change_password: undefined }));
+    t('ACCT admin reset leaves all job orders (and their user references) untouched', JSON.stringify(mock.store.jobOrders) === josBefore);
+    t('ACCT the reset temporary password is stored nowhere in plaintext', await plainNowhere(shown.pw));
+    await ev(`T.click('Done','.temp-pw-notice button'); true`); await sleep(300);
+    t('ACCT after closing, the temporary password is gone from the page', await ev(`!document.querySelector('.temp-pw-notice') && !document.body.innerHTML.includes(${JSON.stringify(shown.pw)})`));
+    const ws = mock.writes.length; await ev(`T.prop('onResetPassword')(1); true`); await settle();
+    t('ACCT no reset button on the admin\'s own row, and the handler refuses a self-reset (no write)', (await ev(`!T.find('Reset','button',T.row('t_admin'))`)) && mock.writes.length === ws);
+    await ev(`document.querySelector('.btn-logout').click(); true`); await sleep(500);
+    await loginNow('t_jce', shown.pw);
+    t('ACCT the reset account must change the password at the next sign-in', (await waitFor(`!!document.getElementById('fc-new')`, 15000)) && (await ev(`!document.querySelector('.sidebar')`)));
+    await fc(shown.pw, 'Jce-New-Pass9'); await settle();
+    t('ACCT after the change the Job Card Editor gets the normal application with the same role', (await waitFor(`!!document.querySelector('.sidebar')`, 10000)) && (await ev(`T.txt(document.querySelector('.sidebar-user-role')) === 'Job Card Editor'`)));
+    await nav('Settings'); const wj = mock.writes.length; await ev(`T.prop('onResetPassword')(6); true`); await settle();
+    t('ACCT a non-admin cannot reset passwords (refused, no write)', mock.writes.length === wj && (await ev(`T.body().includes('You do not have permission')`)));
   }
 
   // ============ N1 (P2 preparation): safe initialization, per-dataset saves, no browser copies, print escaping ============
@@ -1201,40 +1369,42 @@ async function main() {
     };
     const expectErr = start => B.events.slice(start).forEach(e => { if (e.method === 'Runtime.consoleAPICalled' && e.params.type === 'error' && JSON.stringify(e.params.args || []).includes('Supabase load error')) e.__expected = true; });
     const failScreen = () => ev(`!!document.querySelector('.data-unavailable') && !document.querySelector('.login-card') && !document.querySelector('.sidebar')`);
+    const signInLoad = async (user = 't_admin') => {
+      await relogin(user, { expectFail: true });
+      await waitFor(`!!document.querySelector('.data-unavailable') || (!!document.querySelector('.sidebar') && !T.body().includes('Loading'))`, 15000);
+      await sleep(2500);   // any (wrong) write after the load would happen within this time
+    };
     const without = (d, ...keys) => { const c = JSON.parse(JSON.stringify(d)); keys.forEach(k => delete c[k]); return c; };
     const writtenKeys = n => [...new Set(writesSince(n).map(w => w.key))].sort().join(',');
 
     // 1. failed read: failure screen, no seeding, no write of any kind
     let ev0 = B.events.length;
-    await open(SEED, { failLoad: true }); expectErr(ev0);
-    t('N1 failed read: the failure screen is shown (no login page, no application) and NOTHING is written (no seeding)', (await failScreen()) && mock.writes.length === 0, mock.writes.map(w => w.key));
+    await open(SEED, { failLoad: true });
+    t('N1 (P2) nothing is read before sign-in: the only request before the login form is the staging marker',
+      mock.requests.filter(r => r.m !== 'OPTIONS').every(r => r.u.includes('/rpc/environment_marker')), mock.requests.map(r => r.m + ' ' + r.u.slice(0, 40)));
+    await signInLoad(); expectErr(ev0);
+    t('N1 failed read after sign-in: the failure screen is shown (no login page, no application) and NOTHING is written (no seeding)', (await failScreen()) && mock.writes.length === 0, mock.writes.map(w => w.key));
     t('N1 failed read: the screen says nothing was changed and offers a reload', await ev(`T.txt(document.querySelector('.data-unavailable')).includes('Nothing has been changed') && !!T.find('Reload','button')`));
     mock.failLoad = false;
 
     // 2. empty read (only the staging marker) WITHOUT the explicit seed opt-in: failure screen, nothing written
-    await open({ __environment: { env: 'staging' } });
-    t('N1 empty read without the seed opt-in: failure screen "returned no CMMS data", nothing written, nothing created',
-      (await failScreen()) && (await ev(`T.txt(document.querySelector('.data-unavailable')).includes('returned no CMMS data')`)) && mock.writes.length === 0 && Object.keys(mock.store).join() === '__environment');
+    await open({ __environment: { env: 'staging' }, users: SEED.users }); await signInLoad();
+    t('N1 empty read: failure screen "returned no CMMS data", nothing written, nothing created',
+      (await failScreen()) && (await ev(`T.txt(document.querySelector('.data-unavailable')).includes('returned no CMMS data')`)) && mock.writes.length === 0 && Object.keys(mock.store).sort().join() === '__environment,users');
 
-    // 3. the local mock's intended initialization path: empty database + explicit opt-in → seeded, without any account
+    // 3. (P2) the client never initializes a database: the old local-mock seed opt-in has no effect (no seed code exists)
     writeStagingConfig({ seedEmptyDatabase: true });
     try {
-      await open({ __environment: { env: 'staging' } });
-      const st = mock.store;
-      t('N1 local mock + explicit opt-in: an empty database is initialized (all six datasets written once)', writtenKeys(0) === 'assets,customPlants,employees,jobOrders,pm,users' && mock.writes.length === 6, mock.writes.map(w => w.key));
-      t('N1 seeding creates NO accounts (users empty: no built-in or default credentials) and empty JO/PM/employee lists',
-        Array.isArray(st.users) && st.users.length === 0 && st.jobOrders.length === 0 && st.pm.length === 0 && st.employees.length === 0 && st.assets.length > 0 && st.customPlants.length > 0);
-      await ev(`(()=>{ T.setVal(document.getElementById('login-username'), 'admin'); T.setVal(document.getElementById('login-password'), 'x'); document.querySelector('form button[type=submit]').click(); return true; })()`); await sleep(1500);
-      t('N1 after seeding nobody can sign in (no accounts exist)', await ev(`!document.querySelector('.sidebar') && !!document.querySelector('.login-card')`));
-      // the opt-in never seeds over existing data
-      const w0 = mock.writes.length;
-      await open(SEED);
-      t('N1 opt-in present but the database has data: loads normally, writes nothing', mock.writes.length === 0 && (await ev(`!!document.querySelector('.login-card')`)), mock.writes.map(w => w.key)); void w0;
+      await open({ __environment: { env: 'staging' }, users: SEED.users }); await signInLoad();
+      t('N1 (P2) the old seed opt-in has no effect: empty database → failure screen, NOTHING written, no dataset created',
+        (await failScreen()) && mock.writes.length === 0 && Object.keys(mock.store).sort().join() === '__environment,users', mock.writes.map(w => w.key));
+      await open(SEED); await signInLoad();
+      t('N1 (P2) with data present the old opt-in changes nothing: loads normally, writes nothing', mock.writes.length === 0 && (await ev(`!!document.querySelector('.sidebar')`)), mock.writes.map(w => w.key));
     } finally { writeStagingConfig(); }
 
     // 4. partial read: missing datasets stay read-only; the rest works and saves only what changed
-    await open(without(SEED, 'pm', 'customPlants'));
-    t('N1 partial read: sign-in still works (users were read)', !!(await relogin('t_admin')));
+    await open(without(SEED, 'pm', 'customPlants')); await signInLoad();
+    t('N1 partial read: sign-in works and the application opens', await ev(`!!document.querySelector('.sidebar')`));
     t('N1 partial read: a banner names the datasets that could not be loaded', await ev(`(()=>{ const b = document.querySelector('.load-issue'); return !!b && T.txt(b).includes('PM schedule') && T.txt(b).includes('categories') && !T.txt(b).includes('assets'); })()`));
     let n = mock.writes.length;
     await nav('PM Schedule');
@@ -1246,7 +1416,7 @@ async function main() {
 
     // 5. malformed dataset: shown empty, never overwritten; never replaced by built-in data
     const MAL = JSON.parse(JSON.stringify(SEED)); MAL.assets = null;
-    await open(MAL); await relogin('t_admin'); await nav('Asset Registry');
+    await open(MAL); await signInLoad(); await nav('Asset Registry');
     t('N1 malformed assets row: assets shown EMPTY (no built-in asset list), banner shown', await ev(`!T.body().includes('5001') && !T.row('7001') && !!document.querySelector('.load-issue')`));
     await ev(`T.prop('setAssetModal')({ mode: 'add' }); true`); await sleep(300);
     n = mock.writes.length;
@@ -1277,9 +1447,10 @@ async function main() {
       mock.failKeys.add('assets'); n = mock.writes.length;
       await ev(`T.propFrom('.modal','onRenameCategory')(${JSON.stringify(SEED.customPlants[0])}, 'N1 RENAMED'); true`); await settle();
       await ev(`(document.querySelector('.modal-close')||{click(){}}).click(); true`); await sleep(200);
-      t('N1 category rename (deliberately two datasets) with the assets save failing: job orders stored, assets reported as NOT saved (partial failure named)',
-        writtenKeys(n).includes('assets') && writtenKeys(n).includes('jobOrders') && mock.store.jobOrders.some(j => j.assetCategory === 'N1 RENAMED') && !mock.store.assets.some(a => a.plant === 'N1 RENAMED')
-        && (await ev(`T.body().includes('Not saved: assets') && !T.body().includes('Not saved: assets, job orders')`)));
+      // (P2) the rename is ONE server transaction (category_rename): a failure stores nothing at all, so there is no partial state
+      t('N1 category rename failing on the server: NOTHING renamed in categories, assets or job orders, and the user is told it was not saved',
+        !writesSince(n).some(w => !w.failed && !w.rejected) && !mock.store.jobOrders.some(j => j.assetCategory === 'N1 RENAMED') && !mock.store.assets.some(a => a.plant === 'N1 RENAMED')
+        && !mock.store.customPlants.includes('N1 RENAMED') && (await ev(`T.body().includes('Not saved:') && T.body().includes('categories')`)), writesSince(n).map(w => w.key + (w.failed ? ':failed' : '')));
       mock.failKeys.clear();
     } else t('N1 category rename handler reachable for the partial-failure check', false);
 
@@ -1287,10 +1458,9 @@ async function main() {
     const OLD = { cmms_vg_state: JSON.stringify({ assets: [{ num: '8888', plant: 'X', desc: 'N1 OLD COPY', status: 'OPERATIONAL' }], jobOrders: [{ jobNo: 'JO-77777', status: 'OPEN' }], joCounter: 99999 }),
                   cmms_vg_pm: JSON.stringify([{ id: 'pm-999', assetDesc: 'N1 OLD PM' }]), cmms_vg_employees: JSON.stringify([{ empId: 'E-OLD', name: 'N1 OLD PERSON' }]),
                   cmms_vg_plants: JSON.stringify(['N1 OLD CATEGORY']), cmms_vg_users: JSON.stringify([{ id: 1, username: 't_admin' }]), cmms_vg_theme: 'light', cmms_vg_sidebar: '1' };
-    await open(SEED, { storage: OLD });
+    await open(SEED, { storage: OLD }); await signInLoad();
     t('N1 every old dataset copy is deleted on load; theme and sidebar preferences are kept',
       await ev(`['cmms_vg_state','cmms_vg_pm','cmms_vg_employees','cmms_vg_plants','cmms_vg_users'].every(k => localStorage.getItem(k) === null) && localStorage.getItem('cmms_vg_theme') === 'light' && localStorage.getItem('cmms_vg_sidebar') === '1'`));
-    await relogin('t_admin');
     const seen = [];
     for (const p of ['Asset Registry', 'Job Orders', 'PM Schedule', 'Employees', 'Settings']) { await nav(p); seen.push(await ev(`['N1 OLD COPY','8888','JO-77777','N1 OLD PM','N1 OLD PERSON','N1 OLD CATEGORY'].some(x => T.body().includes(x))`)); }
     t('N1 old copies are never read back (no page shows them)', seen.every(x => !x));
@@ -1326,14 +1496,14 @@ async function main() {
 
     // ================= N2: no writes before sign-in, no default accounts, save queue on sign-out =================
     console.log('--- N2. no writes before sign-in; no default accounts; sign-out and the save queue');
-    const loginTry = async (id, pw) => { await ev(`(()=>{ T.setVal(document.getElementById('login-username'), ${JSON.stringify(id)}); T.setVal(document.getElementById('login-password'), ${JSON.stringify(pw)}); document.querySelector('form button[type=submit]').click(); return true; })()`); await sleep(1200); };
+    const loginTry = async (id, pw) => { await ev(`(()=>{ T.setVal(document.getElementById('login-username'), ${JSON.stringify(idOf(id))}); T.setVal(document.getElementById('login-password'), ${JSON.stringify(pw)}); document.querySelector('form button[type=submit]').click(); return true; })()`); await sleep(1200); };
     const signedOut = () => ev(`!!document.querySelector('.login-card') && !document.querySelector('.sidebar')`);
     const logoutNow = async () => { await ev(`document.querySelector('.btn-logout').click(); true`); await sleep(600); };
 
     // A. startup, the login page and failed sign-ins write nothing, even with a correction waiting
     const EMP = JSON.parse(JSON.stringify(SEED)); EMP.employees[0] = { ...EMP.employees[0], leaveStart: '2000-01-01', leaveEnd: '2999-12-31', siteStatus: 'ON DUTY' };
     await open(EMP);
-    t('N2 startup + login page with an out-of-date employee status: NOTHING written (no anonymous correction)', mock.writes.length === 0 && mock.store.employees[0].siteStatus === 'ON DUTY', mock.writes.map(w => w.key));
+    t('N2 startup + login page with an out-of-date employee status: NOTHING read or written (no anonymous correction)', mock.writes.length === 0 && mock.store.employees[0].siteStatus === 'ON DUTY', mock.writes.map(w => w.key));
     await loginTry('t_admin', 'Wrong-Password-1'); await loginTry('nobody', 'Whatever-1'); await loginTry('t_admin', EMP.users[0].password); await sleep(1500);
     t('N2 failed sign-ins (wrong password, unknown user, stored hash typed as password) write nothing', mock.writes.length === 0 && (await signedOut()), mock.writes.map(w => w.key));
 
@@ -1352,16 +1522,28 @@ async function main() {
     await logoutNow(); await relogin('t_ae'); await sleep(1500);
     t('N2 the correction is not repeated on the next sign-in (nothing left to correct)', mock.writes.length === 1);
 
-    // D. plaintext password in the stored users: hashed in memory for sign-in, stored only after an Admin signs in
-    const PT = JSON.parse(JSON.stringify(SEED)); PT.users = PT.users.map(u => u.username === 't_ae' ? { ...u, password: PASS.t_ae } : u);   // synthetic plaintext
-    await open(PT);
-    t('N2 stored plaintext password: nothing written while loading', mock.writes.length === 0);
-    await relogin('t_ae'); await sleep(1500);
-    t('N2 the plaintext account can sign in (hashed in memory); an AE sign-in writes nothing (no users.admin)', mock.writes.length === 0 && (await ev(`!!document.querySelector('.sidebar')`)));
-    await logoutNow(); await relogin('t_admin'); await sleep(1500);
-    const uae = mock.store.users.find(u => u.username === 't_ae');
-    t('N2 an Admin sign-in stores the users list with the password HASHED (users only; other accounts unchanged)',
-      writtenKeys(0) === 'users' && /^[0-9a-f]{64}$/.test(uae.password) && uae.password !== PASS.t_ae && mock.store.users.filter(u => u.username !== 't_ae').every(u => JSON.stringify(u) === JSON.stringify(PT.users.find(x => x.id === u.id))), mock.writes.map(w => w.key));
+    // D. (P2) direct API use with the signed-in session (as an attacker would, bypassing the UI): the server enforces it.
+    //    Passwords live only in Supabase Auth; no password, hash or other account's record is readable.
+    await fresh('t_ae');
+    const api = await ev(`(async () => {
+      const a = await sb.from('app_data').select('key, value'), p = await sb.from('profiles').select('*'), u = await sb.rpc('user_list');
+      const w = await sb.from('app_data').update({ value: [] }).eq('key', 'jobOrders').select('key');
+      const ins = await sb.from('app_data').insert({ key: 'users', value: [] }).select('key');
+      const del = await sb.from('app_data').delete().eq('key', 'assets').select('key');
+      const txt = JSON.stringify([a.data, p.data, u.data]);
+      return { keys: (a.data || []).map(r => r.key).sort().join(), prof: (p.data || []).map(r => r.employee_id).join(), hash: /[0-9a-f]{64}/i.test(txt), pwKey: /"(password|password_hash|encrypted_password)"/.test(txt),
+               wRows: (w.data || []).length, insOk: !ins.error, delRows: (del.data || []).length }; })()`);
+    t('N2 (P2 API) AE session: the users key and the environment marker row are not readable through the API', !!api.keys && !api.keys.split(',').includes('users') && !api.keys.split(',').includes('__environment'), api);
+    t('N2 (P2 API) AE session: profiles returns only the own record', api.prof === 'TA002', api);
+    t('N2 (P2 API) AE session: no password, hash or password field in anything readable (app_data, profiles, user_list)', !api.hash && !api.pwKey, api);
+    t('N2 (P2 API) AE session: a direct job-order overwrite, a users insert and an assets delete are all refused',
+      api.wRows === 0 && !api.insOk && api.delRows === 0 && mock.store.jobOrders.length === SEED.jobOrders.length && mock.store.assets.length === SEED.assets.length, api);
+    await logoutNow();
+    const anon = await ev(`(async () => { const a = await sb.from('app_data').select('key'), p = await sb.from('profiles').select('*'), u = await sb.rpc('user_list'), j = await sb.rpc('jo_list');
+      const w = await sb.from('app_data').update({ value: [] }).eq('key', 'assets').select('key');
+      return { rows: [a, p, u, j].map(r => Array.isArray(r.data) ? r.data.length : r.data == null ? 0 : 1), w: (w.data || []).length }; })()`);
+    t('N2 (P2 API) signed out (anonymous): app_data, profiles, user_list and jo_list return nothing; a write changes nothing',
+      anon.rows.every(n => n === 0) && anon.w === 0 && mock.store.assets.length === SEED.assets.length, anon);
 
     // E. sign-out writes what is still waiting in the save queue (no lost change, no write after sign-out)
     await fresh('t_admin'); await nav('Asset Registry');
@@ -1373,26 +1555,26 @@ async function main() {
     t('N2 nothing is written after the sign-out', mock.writes.length === n2);
 
     // F. a forced sign-out (own account deactivated) discards the waiting change and says so
-    await fresh('t_admin'); await nav('Settings'); await ev(`window.__save = T.prop('onSaveUser'); true`); await nav('Asset Registry');
+    await fresh('t_ae'); await nav('Asset Registry');
     n2 = mock.writes.length;
-    await ev(`T.prop('onStatusChange')('5006','BREAKDOWN'); window.__save(${JSON.stringify({ ...SEED.users[0], password: '', active: false })}, 1); true`); await sleep(2500);
+    await ev(`T.prop('onStatusChange')('5006','BREAKDOWN'); true`); await mock.updateAccount(2, { active: false }); await sleep(3000);
     t('N2 account deactivated while a change was waiting: signed out, the waiting asset change is NOT written, the user is told',
-      (await signedOut()) && !writesSince(n2).some(w => w.key === 'assets') && mock.store.assets.find(a => a.num === '5006').status === 'OPERATIONAL' && (await ev(`T.body().includes('Not saved: assets') && T.body().includes('no longer active')`)), writesSince(n2).map(w => w.key));
+      (await signedOut()) && !writesSince(n2).some(w => w.key === 'assets' && !w.rejected && !w.failed) && mock.store.assets.find(a => a.num === '5006').status === 'OPERATIONAL' && (await ev(`T.body().includes('Not saved: assets') && T.body().includes('no longer active')`)), writesSince(n2).map(w => w.key));
+    await mock.updateAccount(2, { active: true });
 
     // G. default accounts can never come back
     t('N2 the served app contains no built-in accounts and none of the local test fixtures (usernames or passwords)',
       !/DEFAULT_USERS/.test(san) && !Object.keys(PASS).some(u => san.includes("'" + u + "'") || san.includes('"' + u + '"')) && !Object.values(PASS).some(p => san.includes(p)));
-    await open(without(SEED, 'users'));
-    await loginTry('t_admin', PASS.t_admin);
-    t('N2 users row missing: nothing written (no accounts recreated), sign-in unavailable', mock.writes.length === 0 && !('users' in mock.store) && (await signedOut()) && (await ev(`T.txt(document.querySelector('.login-error')).includes('unavailable')`)));
     const NOU = JSON.parse(JSON.stringify(SEED)); NOU.users = [];
     await open(NOU); await loginTry('t_admin', PASS.t_admin);
-    t('N2 users list empty: nothing written, nobody can sign in, the list stays empty', mock.writes.length === 0 && mock.store.users.length === 0 && (await signedOut()));
+    t('N2 no accounts on the server: nothing written, nobody can sign in, none is created', mock.writes.length === 0 && mock.store.users.length === 0 && (await signedOut())
+      && (await ev(`T.txt(document.querySelector('.login-error')) === 'Invalid Employee ID or password. Please try again.'`)));
     const NOA = JSON.parse(JSON.stringify(SEED)); NOA.users = NOA.users.filter(u => u.username !== 't_admin');
-    await open(NOA); await loginTry('t_admin', PASS.t_admin); await loginTry('admin', PASS.t_admin);
-    t('N2 an Admin record removed: it is not recreated, the remaining users are unchanged, nothing written', mock.writes.length === 0 && JSON.stringify(mock.store.users) === JSON.stringify(NOA.users) && (await signedOut()));
+    const ids = () => mock.store.users.map(u => u.id + ':' + u.role).join();
+    await open(NOA); const idsNoa = ids(); await loginTry('t_admin', PASS.t_admin); await loginTry('admin', PASS.t_admin);
+    t('N2 an Admin account removed: it is not recreated, the remaining accounts are unchanged, nothing written', mock.writes.length === 0 && ids() === idsNoa && !mock.store.users.some(u => u.id === 1) && (await signedOut()));
     await relogin('t_ae'); await sleep(1500);
-    t('N2 after another user signs in, the removed Admin is still not recreated', JSON.stringify(mock.store.users) === JSON.stringify(NOA.users));
+    t('N2 after another user signs in, the removed Admin is still not recreated', ids() === idsNoa);
 
     // H. Reset Data (Admin): datasets emptied, user accounts untouched, no default accounts
     await fresh('t_admin', SEED2); await nav('Settings');
@@ -1404,14 +1586,15 @@ async function main() {
     await fresh('t_admin', SEED2); await nav('Settings');
     mock.failKeys.add('pm'); n2 = mock.writes.length;
     await ev(`T.prop('onResetData')(); true`); await sleep(2500);
-    t('N2 Reset Data with a failed PM save: the user is told PM was not reset (no silent success)', (await ev(`T.body().includes('Not saved: PM schedule')`)) && mock.store.pm.length === SEED2.pm.length);
+    t('N2 Reset Data failing on the server: the user is told it was not saved; it is one transaction, so NOTHING was reset',
+      (await ev(`T.body().includes('Not saved:') && T.body().includes('PM schedule')`)) && ['assets', 'jobOrders', 'pm', 'employees'].every(k => mock.store[k].length === SEED2[k].length));
     mock.failKeys.clear();
   }
 
   // ============ SESS (Phase 2B-4): session lifecycle, logout, authorization changes, save failures, browser storage ============
   console.log('--- SESS. session lifecycle and authentication-state hardening');
   {
-    const loginNow = (id, pw) => ev(`(()=>{ T.setVal(document.getElementById('login-username'), ${JSON.stringify(id)}); T.setVal(document.getElementById('login-password'), ${JSON.stringify(pw)}); document.querySelector('form button[type=submit]').click(); return true; })()`);
+    const loginNow = (id, pw) => ev(`(()=>{ T.setVal(document.getElementById('login-username'), ${JSON.stringify(idOf(id))}); T.setVal(document.getElementById('login-password'), ${JSON.stringify(pw)}); document.querySelector('form button[type=submit]').click(); return true; })()`);
     const atLogin = () => ev(`!!document.querySelector('.login-card input[type=password]') && !document.querySelector('.sidebar') && !document.querySelector('.main') && !document.querySelector('.modal')`);
     const logout = async () => { await ev(`document.querySelector('.btn-logout').click(); true`); await sleep(600); };
     const storeUser = id => mock.store.users.find(u => u.id === id);
@@ -1421,11 +1604,10 @@ async function main() {
     // Browser storage after this phase: no session, no password hash (64-hex) and no "password" field anywhere; no sessionStorage, no cookies.
     const storageClean = () => ev(`(()=>{ const vals = Object.keys(localStorage).map(k => localStorage.getItem(k));
       return localStorage.getItem('cmms_vg_session') === null && !vals.some(v => /[0-9a-f]{64}/i.test(v) || /"password"/.test(v)) && sessionStorage.length === 0 && document.cookie === ''; })()`);
-    // A stored-record change made while the user is signed in (as a change arriving from elsewhere would be): the Admin's
-    // own save handler is captured on Settings and called later from another page.
-    const stashSave = async () => { await nav('Settings'); await ev(`window.__save = T.prop('onSaveUser'); !!window.__save`); };
-    const A1 = SEED2.users.find(u => u.id === 1);
-    const changeSelf = async patch => { await ev(`window.__save(${JSON.stringify({ ...A1, password: '', ...patch })}, 1); true`); await settle(); };
+    // (P2) An account change made ELSEWHERE while the user is signed in (another Admin, on the server). The app re-reads its
+    // own account when the window regains focus, every 60 s and after a refused action; the test uses the focus path.
+    const stashSave = async () => { await nav('Settings'); };
+    const changeSelf = async patch => { await mock.updateAccount(1, patch); await ev(`window.dispatchEvent(new Event('focus')); true`); await settle(); };
 
     // 1. logout clears everything opened in the session
     await fresh('t_admin'); await nav('Asset Registry');
@@ -1439,8 +1621,11 @@ async function main() {
     t('SESS the next user (SE) gets the Profile tab, not the previous Admin\'s Users tab', !(await usersTab()) && (await ev(`!T.row('t_admin')`)));
     t('SESS nothing about the session or any password is in browser storage (localStorage, sessionStorage, cookies)', await storageClean());
 
-    // 2. authorization changes while signed in take effect at once
-    await fresh('t_admin', SEED2); await stashSave();
+    // 2. authorization changes while signed in take effect at once. A second (synthetic) Admin exists, because the server
+    //    never lets the LAST active Admin be demoted or deactivated (tested separately in tests/p2/db.test.mjs).
+    const SEEDA = JSON.parse(JSON.stringify(SEED2));
+    SEEDA.users.push({ id: 12, username: 't_admin2', employeeId: 'TA012', plainPassword: PASS.t_admin, fullName: 'Test Admin Two', role: 'Admin', active: true });
+    await fresh('t_admin', SEEDA); await stashSave();
     await ev(`(T.all('.settings-tab').find(e=>T.txt(e).includes('Users'))||{click(){}}).click(); true`); await sleep(250);
     await ev(`T.click('Add User','button'); true`); await sleep(300);
     const before = { tab: await usersTab(), modal: await ev(`!!document.querySelector('.modal')`) };
@@ -1451,24 +1636,58 @@ async function main() {
     await ev(`T.prop('onResetPassword') ? T.prop('onResetPassword')(5) : null; true`); await settle();
     t('SESS the demoted account\'s handlers refuse admin actions (no write)', mock.writes.length === w0 && storeUser(5).password === SEED2.users.find(u => u.id === 5).password);
 
-    await fresh('t_admin', SEED2); await stashSave(); await nav('Asset Registry');
+    await fresh('t_admin', SEEDA); await stashSave(); await nav('Asset Registry');
     await ev(`T.click('Add Asset','button'); true`); await sleep(300);
     const addOpen = await ev(`!!document.querySelector('.modal')`);
     await changeSelf({ role: 'Senior Engineer' });
     t('SESS Admin demoted to SE with the Add Asset form open: the form closes and Add Asset disappears', addOpen && (await ev(`!document.querySelector('.modal') && !T.find('Add Asset','button')`)) && (await role()) === 'Senior Engineer');
 
-    await fresh('t_admin', SEED2); await stashSave(); await nav('PM Schedule');
+    await fresh('t_admin', SEEDA); await stashSave(); await nav('PM Schedule');
     await changeSelf({ role: 'Department User', department: 'Cement Plant', assignedCategories: SEED2.users.find(u => u.id === 6).assignedCategories });
     t('SESS changed to Department User while on PM Schedule (not allowed): moved to Dashboard, PM no longer in the navigation',
       storeUser(1).role === 'Department User' && (await activePage()).endsWith('Dashboard') && (await ev(`!T.all('.nav-item').some(e => T.txt(e).endsWith('PM Schedule'))`)));
 
-    await fresh('t_admin', SEED2); await stashSave();
+    await fresh('t_admin', SEEDA); await stashSave();
     await changeSelf({ active: false });
     t('SESS account deactivated while signed in: signed out at once', storeUser(1).active === false && (await waitFor(`!!document.querySelector('.login-card input[type=password]') && !document.querySelector('.sidebar')`, 5000)));
     t('SESS the deactivated account cannot sign in again', !(await relogin('t_admin', { expectFail: true })));
 
+    // 3. a reset whose save fails shows no temporary password and changes nothing
+    await fresh('t_admin', SEED2); await nav('Settings');
+    const u5 = JSON.stringify(storeUser(5));
+    mock.failKeys.add('users');
+    await ev(`(()=>{ T.click('Reset','button',T.row('t_jce')); return true; })()`); await settle();
+    t('SESS reset with a failed save: no temporary password shown, an error is shown, the stored account is unchanged',
+      (await ev(`!document.querySelector('.temp-pw-notice') && T.body().includes('The password was not reset')`)) && JSON.stringify(storeUser(5)) === u5);
+    mock.failKeys.clear();
+    await ev(`(()=>{ T.click('Reset','button',T.row('t_jce')); return true; })()`); await settle();
+    const tmp = await ev(`(()=>{ const m = document.querySelector('.temp-pw-notice'); return m ? m.querySelector('input.temp-pw').value : null; })()`);
+    t('SESS reset after the store recovers succeeds (flag set, hash changed)', !!tmp && storeUser(5).must_change_password === true && JSON.stringify(storeUser(5)) !== u5);
+    await ev(`T.click('Done','.temp-pw-notice button'); true`); await sleep(300);
+    t('SESS after a reset the browser storage still holds no password or hash', await storageClean());
+    await logout();
+    t('SESS after a reset the old password no longer signs in', !(await relogin('t_jce', { expectFail: true })));
+
+    // 4. forced change: a failed save keeps the restriction and the old (temporary) password
+    await loginNow('t_jce', tmp);
+    const gated = await waitFor(`!!document.getElementById('fc-new')`, 15000);
+    mock.failKeys.add('users'); const h5 = storeUser(5).password;
+    await ev(`(()=>{ T.setVal(document.getElementById('fc-current'), ${JSON.stringify(tmp)}); T.setVal(document.getElementById('fc-new'), 'Jce-Fail-Pass9'); T.setVal(document.getElementById('fc-confirm'), 'Jce-Fail-Pass9'); document.querySelector('.force-change button[type=submit]').click(); return true; })()`);
+    await sleep(1500);
+    t('SESS forced change with a failed save: still restricted (no navigation, no pages), flag and hash unchanged, error shown',
+      gated && (await ev(`!!document.getElementById('fc-new') && !document.querySelector('.sidebar') && !document.querySelector('.main')`)) && storeUser(5).must_change_password === true && storeUser(5).password === h5
+      && (await ev(`T.txt(document.querySelector('.force-change .login-error')).length > 0`)));
+    mock.failKeys.clear();
+    await ev(`(T.all('.force-change button').find(b => T.txt(b) === 'Sign out')||{click(){}}).click(); true`); await sleep(600);
+    t('SESS the new password from the failed change does not sign in', !(await relogin('t_jce', { password: 'Jce-Fail-Pass9', expectFail: true })));
+    await loginNow('t_jce', tmp);
+    t('SESS the temporary password still leads to the forced change after the failure', (await waitFor(`!!document.getElementById('fc-new')`, 15000)) && (await ev(`!document.querySelector('.sidebar')`)));
+    await ev(`(()=>{ T.setVal(document.getElementById('fc-current'), ${JSON.stringify(tmp)}); T.setVal(document.getElementById('fc-new'), 'Jce-Good-Pass9'); T.setVal(document.getElementById('fc-confirm'), 'Jce-Good-Pass9'); document.querySelector('.force-change button[type=submit]').click(); return true; })()`);
+    t('SESS forced change after recovery succeeds: flag cleared only now, application opens', (await waitFor(`!!document.querySelector('.sidebar')`, 10000)) && storeUser(5).must_change_password === false && (await role()) === 'Job Card Editor');
+    await logout();
+    t('SESS after the change the temporary password no longer signs in', !(await relogin('t_jce', { password: tmp, expectFail: true })));
+
     // 5. an old browser copy of the users list (with hashes) is removed on load and never used
-    mock.reset(SEED2);   // fresh synthetic data (part 2 deactivated the Admin)
     await ev(`localStorage.setItem('cmms_vg_users', JSON.stringify([{ id: 1, username: 't_admin', role: 'Admin', active: true, password: ${JSON.stringify('a'.repeat(64))} }])); true`);
     await B.send('Page.reload', {}); await waitFor(`!!document.querySelector('.login-card')`, 20000); await sleep(1500);
     t('SESS an old users copy in browser storage is deleted on load; the app starts signed out', (await ev(`localStorage.getItem('cmms_vg_users') === null`)) && (await atLogin()));
@@ -1487,10 +1706,9 @@ async function main() {
       mock.requests = [];
       await B.send('Page.navigate', { url: URL0 });
       await waitFor(`!!document.querySelector('.login-card input[type=password]')`, 20000);
-      for (let i = 0; i < 100 && !mock.requests.some(r => r.m === 'GET' && /select=(\*|%2A)/.test(r.u)); i++) await sleep(100);
-      await sleep(1200);
+      await sleep(800);
     };
-    const loginNow = (id, pw) => ev(`(()=>{ T.setVal(document.getElementById('login-username'), ${JSON.stringify(id)}); T.setVal(document.getElementById('login-password'), ${JSON.stringify(pw)}); document.querySelector('form button[type=submit]').click(); return true; })()`);
+    const loginNow = (id, pw) => ev(`(()=>{ T.setVal(document.getElementById('login-username'), ${JSON.stringify(idOf(id))}); T.setVal(document.getElementById('login-password'), ${JSON.stringify(pw)}); document.querySelector('form button[type=submit]').click(); return true; })()`);
     const atLogin = () => ev(`!!document.querySelector('.login-card input[type=password]') && !document.querySelector('.sidebar') && !document.querySelector('.nav-item') && !document.querySelector('.main')`);
     const errText = () => ev(`T.txt(document.querySelector('.login-error'))`);
 
@@ -1501,12 +1719,13 @@ async function main() {
     t('AUTH forged browser session (Admin id, username and role) is not accepted: still only the login page', await atLogin());
     t('AUTH the old session key is deleted on load (never read)', await ev(`localStorage.getItem('cmms_vg_session') === null`));
     await loginNow('t_admin', SEED.users[0].password); await sleep(1500);
-    t('AUTH the stored password hash typed as the password is refused (no passthrough)', (await atLogin()) && (await errText()) === '⚠ Invalid username or password. Please try again.');
+    t('AUTH the stored password hash typed as the password is refused (no passthrough)', (await atLogin()) && (await errText()) === 'Invalid Employee ID or password. Please try again.');
 
-    await toLoginPage(SEED);
-    await loginNow('t_ae', PASS.t_ae);
+    const SEEDE = JSON.parse(JSON.stringify(SEED)); SEEDE.users = SEEDE.users.map(u => u.id === 2 ? { ...u, employeeId: 'TA123' } : u);
+    await toLoginPage(SEEDE);
+    await loginNow('ta123', PASS.t_ae);
     const empOk = await waitFor(`!!document.querySelector('.sidebar') && !T.body().includes('Loading')`, 15000); await sleep(800);
-    t('AUTH sign-in by username; the profile shows the stored role', empOk && (await ev(`T.txt(document.querySelector('.sidebar-user-role')) === 'Assistant Engineer'`)));
+    t('AUTH 5-character Employee ID signs in (case-insensitive); the profile shows the stored role', empOk && (await ev(`T.txt(document.querySelector('.sidebar-user-role')) === 'Assistant Engineer'`)));
     t('AUTH signing in writes no session to browser storage', await ev(`localStorage.getItem('cmms_vg_session') === null`));
     await ev(`document.querySelector('.btn-logout').click(); true`); await sleep(600);
     t('AUTH logout returns to the login page and clears the signed-in state', (await atLogin()) && (await ev(`localStorage.getItem('cmms_vg_session') === null`)));
@@ -1516,9 +1735,207 @@ async function main() {
     const evStart = B.events.length;
     await toLoginPage(SEED, { failLoad: true });
     B.events.slice(evStart).forEach(e => { if (e.method === 'Runtime.consoleAPICalled' && e.params.type === 'error' && JSON.stringify(e.params.args || []).includes('Supabase load error')) e.__expected = true; });
-    t('AUTH (N1) user data failed to load: no sign-in form at all (no fallback to built-in or other data); the failure screen is shown; nothing written',
+    await loginNow('t_admin', PASS.t_admin); await waitFor(`!!document.querySelector('.data-unavailable') || !!document.querySelector('.sidebar')`, 15000); await sleep(1000);
+    t('AUTH (N1) data failed to load after sign-in: no application (no fallback to built-in or other data); the failure screen is shown; nothing written',
       (await ev(`!!document.querySelector('.data-unavailable') && !document.querySelector('.login-card') && !document.querySelector('.sidebar')`)) && mock.writes.length === 0);
     mock.failLoad = false;
+  }
+
+  // ============ LOGIN2 (P2): login states, password recovery by email (server), recovery links, email verification, forced change ============
+  console.log('--- LOGIN2. login states, password recovery, recovery links, verification, forced change');
+  {
+    const goLogin = async (data, opt = {}) => {
+      if (!opt.keep) mock.reset(data); mock.loadDelay = opt.loadDelay || 0;
+      await B.send('Page.navigate', { url: 'about:blank' }); await sleep(200);
+      await B.send('Storage.clearDataForOrigin', { origin: `http://127.0.0.1:${SITE_PORT}`, storageTypes: 'local_storage' });
+      mock.requests = [];
+      await B.send('Page.navigate', { url: URL0 + (opt.hash || '') });
+      await waitFor(`!!document.querySelector('.login-card')`, 20000);
+    };
+    // (P2) nothing is read before sign-in, so there is no "connecting" state: the form is usable at once even when the data
+    // service is slow
+    await goLogin(SEED, { loadDelay: 2500 });
+    t('LOGIN2 (P2) the sign-in form is usable at once: no data read before sign-in, no "connecting" state',
+      await ev(`!document.querySelector('.login-connecting') && !!document.querySelector('form button[type=submit]') && !document.querySelector('form button[type=submit]').disabled`));
+    mock.loadDelay = 0;
+    // field-level validation
+    await ev(`(()=>{ T.setVal(document.getElementById('login-username'), ''); T.setVal(document.getElementById('login-password'), ''); document.querySelector('form button[type=submit]').click(); return true; })()`); await sleep(300);
+    const v1 = await ev(`({ id: document.getElementById('login-username').getAttribute('aria-invalid'), pw: document.getElementById('login-password').getAttribute('aria-invalid'), marked: document.querySelectorAll('.login-input.invalid').length, msg: T.txt(document.querySelector('.login-error')) })`);
+    await ev(`T.setVal(document.getElementById('login-username'), 'TA001'); true`); await sleep(150);
+    const v2 = await ev(`({ id: document.getElementById('login-username').getAttribute('aria-invalid'), pw: document.getElementById('login-password').getAttribute('aria-invalid'), marked: document.querySelectorAll('.login-input.invalid').length })`);
+    t('LOGIN2 validation: both empty fields are marked (aria-invalid, red outline) with the Employee ID message; typing clears that field only',
+      v1.id === 'true' && v1.pw === 'true' && v1.marked === 2 && v1.msg === 'Please enter your Employee ID and password.' && v2.id === 'false' && v2.pw === 'true' && v2.marked === 1, { v1, v2 });
+    t('LOGIN2 temporary-password guidance is on the sign-in card', await ev(`T.txt(document.querySelector('.login-temp-note')).includes('temporary password')`));
+    // forgot password: validation, then a real request that never reveals whether an account exists
+    await ev(`T.setVal(document.getElementById('login-username'), 'ab12c'); true`);
+    await ev(`T.click('Forgot password?', 'button'); true`); await sleep(300);
+    const r0 = await ev(`({ head: T.txt(document.querySelector('.login-welcome')), field: !!document.getElementById('recover-id'), prefill: document.getElementById('recover-id').value, pw: !!document.getElementById('login-password') })`);
+    t('LOGIN2 forgot password: the card switches to "Reset password" with an Employee ID field (prefilled from a 5-character ID); no password field', r0.head === 'Reset password' && r0.field && r0.prefill === 'ab12c' && !r0.pw, r0);
+    const rsub = async id => { await ev(`(()=>{ T.setVal(document.getElementById('recover-id'), ${JSON.stringify(id)}); document.querySelector('.recover-form button[type=submit]').click(); return true; })()`); await sleep(300); };
+    const req0 = mock.requests.length;
+    await rsub('');
+    const e1 = await ev(`T.txt(document.querySelector('.recover-form .login-error'))`);
+    await rsub('AB1');
+    const e2 = await ev(`T.txt(document.querySelector('.recover-form .login-error'))`);
+    await rsub('t_admin');
+    const e3 = await ev(`(()=>{ const e = document.querySelector('.recover-form .login-error'); return e ? T.txt(e) : ''; })()`);
+    t('LOGIN2 recovery validation: empty and malformed IDs refused with a clear message (marked invalid)', e1 === 'Enter your Employee ID.' && e2 === 'An Employee ID has exactly 5 letters or digits.' && e3 === e2 && (await ev(`document.getElementById('recover-id').getAttribute('aria-invalid') === 'true'`)));
+    t('LOGIN2 recovery validation: an invalid ID sends nothing', !mock.requests.slice(req0).some(r => r.u.includes('request-recovery')));
+    await ev(`T.click('← Back to sign in', 'button'); true`); await sleep(300);
+    t('LOGIN2 back to sign in: the sign-in form is back', await ev(`!!document.getElementById('login-username') && !!document.getElementById('login-password') && T.txt(document.querySelector('.login-welcome')) === 'Welcome back'`));
+    // the same answer for an unknown ID, an account without a verified recovery email, and a real one; mail only for the last
+    const SEEDR = JSON.parse(JSON.stringify(SEED));
+    SEEDR.users = SEEDR.users.map(u => u.id === 2 ? { ...u, recoveryEmail: 'ae-recovery@example.invalid', recoveryEmailVerified: true } : u.id === 3 ? { ...u, recoveryEmail: 'se-unverified@example.invalid', recoveryEmailVerified: false } : u);
+    await goLogin(SEEDR);
+    const askReset = async id => {
+      await ev(`T.click('Forgot password?', 'button'); true`); await sleep(300); await rsub(id);
+      await waitFor(`!!document.querySelector('.recover-form .login-success, .recover-form .login-error')`, 8000);
+      const m = await ev(`T.txt(document.querySelector('.recover-form .login-success, .recover-form .login-error'))`);
+      await ev(`T.click('← Back to sign in', 'button'); true`); await sleep(300); return m;
+    };
+    const mUnknown = await askReset('ZZ999'), mUnverified = await askReset('TS003'), mReal = await askReset('TA002');
+    t('LOGIN2 recovery request: the same neutral answer for an unknown ID, an unverified address and a real account (no account enumeration)',
+      mUnknown === mReal && mUnverified === mReal && /If an account with a verified recovery email exists/.test(mReal), { mUnknown, mUnverified, mReal });
+    t('LOGIN2 recovery request: exactly one email, to the VERIFIED recovery address only (never the internal sign-in address)',
+      mock.mails.length === 1 && mock.mails[0].to === 'ae-recovery@example.invalid' && !mock.mails.some(m => String(m.to).endsWith('@' + SIGN_IN_DOMAIN)), mock.mails.map(m => m.to));
+    const link = ((mock.mails[0] || {}).text || '').match(/https?:\/\/\S+/);
+    // the link from the email: landing with a new-password form; the token never stays in the address or storage
+    const hashOf = l => l.slice(l.indexOf('#'));
+    await goLogin(SEEDR, { keep: true, hash: link ? hashOf(link[0]) : '#none' }); await sleep(800);
+    const land = await ev(`({ head: T.txt(document.querySelector('.login-welcome')), hash: location.hash, href: location.href, form: !!document.getElementById('rl-new'),
+      stored: JSON.stringify(Object.assign({}, localStorage)) + JSON.stringify(Object.assign({}, sessionStorage)), login: !!document.getElementById('login-password') })`);
+    t('LOGIN2 reset link: landing "Choose a new password" with a new-password form; no sign-in form', !!link && land.head === 'Choose a new password' && land.form && !land.login, land.head);
+    t('LOGIN2 reset link: the token fragment is removed from the address at once and stored nowhere', land.hash === '' && !/access_token|refresh_token/.test(land.href) && !/access_token|refresh_token|eyJ/.test(land.stored));
+    const setNew = async (a, b) => { await ev(`(()=>{ T.setVal(document.getElementById('rl-new'), ${JSON.stringify(a)}); T.setVal(document.getElementById('rl-confirm'), ${JSON.stringify(b)}); document.querySelector('.recovery-landing form button[type=submit]').click(); return true; })()`); await sleep(1500); };
+    await setNew('short', 'short');
+    t('LOGIN2 reset link: a password that breaks the rules is refused with the rule (nothing changed)', (await ev(`!!document.querySelector('.recovery-landing .login-error') && !!document.getElementById('rl-new')`)) && mock.store.users.find(u => u.id === 2).password === SEED.users[1].password);
+    await setNew('Ae-Recovered-Pass9', 'Ae-Recovered-Pass9');
+    t('LOGIN2 reset link: the new password is set (confirmation shown; stored in Supabase Auth only)', (await ev(`T.txt(document.querySelector('.recovery-landing .login-success')).includes('Your password was changed')`))
+      && mock.store.users.find(u => u.id === 2).password === require('crypto').createHash('sha256').update('Ae-Recovered-Pass9').digest('hex'));
+    t('LOGIN2 reset link: the browser keeps no session after the reset (the user signs in normally)', await ev(`!Object.keys(localStorage).some(k => /auth|token|sb-/.test(k)) && sessionStorage.length === 0`));
+    await ev(`T.click('Back to sign in', 'button'); true`); await sleep(400);
+    t('LOGIN2 after the reset the old password no longer signs in', !(await relogin('t_ae', { expectFail: true })));
+    t('LOGIN2 after the reset the new password signs in', await relogin('t_ae', { password: 'Ae-Recovered-Pass9' }));
+    await ev(`document.querySelector('.btn-logout').click(); true`); await sleep(600);
+    // broken or expired links
+    await goLogin(SEEDR, { keep: true, hash: '#error=access_denied&error_code=otp_expired&error_description=expired' }); await sleep(600);
+    t('LOGIN2 expired link: "invalid or has expired" with the way to request a new one; no form', (await ev(`T.txt(document.querySelector('.recovery-landing .login-error')).includes('invalid or has expired') && !document.getElementById('rl-new')`)) && (await ev(`location.hash === ''`)));
+    await goLogin(SEEDR, { keep: true, hash: '#access_token=forged-token&refresh_token=forged-refresh&expires_in=3600&type=recovery' }); await sleep(600);
+    const pwBefore = mock.store.users.find(u => u.id === 2).password;
+    await setNew('Forged-Reset-Pass9', 'Forged-Reset-Pass9');
+    t('LOGIN2 forged link: refused ("not valid any more"), no password changed', (await ev(`T.txt(document.querySelector('.recovery-landing .login-error')).includes('not valid')`)) && mock.store.users.find(u => u.id === 2).password === pwBefore);
+    // recovery email verification: an Admin sets an address, the server mails a confirmation link, the link confirms it
+    await fresh('t_admin', SEEDR, { keep: true }); await nav('Settings'); mock.mails = [];
+    { const u = { ...mock.store.users.find(x => x.id === 3) }; delete u.password; delete u.recoveryEmail; delete u.recoveryEmailVerified;
+      await ev(`T.prop('onSaveUser')({ ...${JSON.stringify(u)}, recoveryEmail: 'se-new@example.invalid' }, 3); true`); await settle(); }
+    const vm = mock.mails.find(m => m.to === 'se-new@example.invalid');
+    t('LOGIN2 an Admin sets a recovery email: stored unverified, and a confirmation email goes to that address only',
+      !!vm && mock.mails.length === 1 && mock.store.users.find(u => u.id === 3).recoveryEmail === 'se-new@example.invalid' && mock.store.users.find(u => u.id === 3).recoveryEmailVerified === false, mock.mails.map(m => m.to));
+    const vlink = vm && (vm.text || '').match(/https?:\/\/\S+/);
+    await ev(`document.querySelector('.btn-logout').click(); true`); await sleep(600);
+    await goLogin(SEEDR, { keep: true, hash: vlink ? hashOf(vlink[0]) : '#verify-email=none' });
+    await waitFor(`/now confirmed|could not/.test(T.txt(document.querySelector('.recovery-landing')))`, 8000);
+    t('LOGIN2 verification link: its own landing ("Email confirmation"); fragment removed; the address is now verified on the server',
+      !!vlink && (await ev(`T.txt(document.querySelector('.login-welcome'))`)) === 'Email confirmation' && (await ev(`location.hash === ''`)) && mock.store.users.find(u => u.id === 3).recoveryEmailVerified === true);
+    // forced change screen: circuit board + live requirement checklist; the restriction is unchanged (tested in ACCT/SESS)
+    const FC = JSON.parse(JSON.stringify(SEED2)); FC.users = FC.users.map(u => u.id === 5 ? { ...u, must_change_password: true } : u);
+    await goLogin(FC); await sleep(1500);
+    await ev(`(()=>{ T.setVal(document.getElementById('login-username'), 'TJ005'); T.setVal(document.getElementById('login-password'), ${JSON.stringify(PASS.t_jce)}); document.querySelector('form button[type=submit]').click(); return true; })()`);
+    await waitFor(`!!document.getElementById('fc-new')`, 15000); await sleep(800);
+    const ck = () => ev(`[...document.querySelectorAll('.pw-checklist li')].map(li => li.classList.contains('ok'))`);
+    const c0 = await ck();
+    await ev(`T.setVal(document.getElementById('fc-new'), 'Abcdef1!'); true`); await sleep(150);
+    const c1 = await ck();
+    await ev(`T.setVal(document.getElementById('fc-confirm'), 'Abcdef1!'); true`); await sleep(150);
+    const c2 = await ck();
+    t('LOGIN2 forced change: live checklist of the password rules (5) plus "both match"; ticks follow the input', c0.length === 6 && c0.every(x => !x) && c1.slice(0, 5).every(Boolean) && !c1[5] && c2.every(Boolean), { c0, c1, c2 });
+    t('LOGIN2 forced change: same circuit board around its card; still no navigation or application', (await ev(`!!document.querySelector('.force-change > svg.login-visual') && document.querySelectorAll('.force-change .lc-traces path').length >= 4 && !document.querySelector('.sidebar')`)));
+    await ev(`(T.all('.force-change button').find(b => T.txt(b) === 'Sign out')||{click(){}}).click(); true`); await sleep(500);
+  }
+
+  // ============ NOTIF (P2): server notifications (p2/sql 0008: recipients, de-duplication, read state on the server) ============
+  console.log('--- NOTIF. server notifications (recipients computed by the database; local PGlite backend)');
+  {
+    const SEEDN = JSON.parse(JSON.stringify(SEED2));
+    SEEDN.users.push({ id: 9, username: 't_jce_el', fullName: 'Test JCE Electrical', role: 'Job Card Editor', active: true, section: 'Electrical' }, { id: 21, username: 't_viewer', fullName: 'Test Viewer', role: 'Viewer', active: true });
+    const bell = () => ev(`(()=>{ const b = document.querySelector('.notif-bell'); if (!b) return null; const badge = b.querySelector('.notif-badge'); return { label: b.getAttribute('aria-label'), badge: badge ? T.txt(badge) : '' }; })()`);
+    const openPanel = async () => { await ev(`document.querySelector('.notif-bell').click(); true`); await sleep(900); return ev(`[...document.querySelectorAll('.notif-item')].map(e => ({ jo: e.dataset.jo, ev: e.dataset.event, unread: e.classList.contains('unread'), text: T.txt(e) }))`); };
+    const closePanel = async () => { await ev(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true`); await sleep(200); };
+    const as = async (user) => { await ev(`(document.querySelector('.btn-logout')||{click(){}}).click(); true`); await sleep(500); await relogin(user); await sleep(1800); };
+    await fresh('t_ae', SEEDN); await sleep(1800);
+    const b0 = await bell();
+    t('NOTIF bell in the top bar for a signed-in user, 0 unread, accessible label; read from the server (my_notifications)',
+      !!b0 && b0.label === 'Notifications, 0 unread' && b0.badge === '' && mock.requests.some(r => r.u.includes('/rpc/my_notifications')), b0);
+    const p0 = await openPanel();
+    t('NOTIF empty panel: "No notifications."', p0.length === 0 && (await ev(`T.txt(document.querySelector('.notif-panel')).includes('No notifications.')`)));
+    await closePanel();
+    // lifecycle of JO-9006 (raised by the DU t_du, id 6): AE starts it (assigning the Mechanical JCE), completes it; SE approves and closes
+    await nav('Job Orders');
+    await ev(`T.prop('onStatusChange')('JO-9006', 'IN PROGRESS', { assigneeId: 5 }); true`); await settle();
+    await ev(`T.prop('onStatusChange')('JO-9006', 'COMPLETED'); true`); await settle();
+    await sleep(2000);
+    const b1 = await bell();
+    t('NOTIF AE (acting user included, N-D2): badge shows 2 unread (In progress, Completed)', !!b1 && b1.badge === '2' && b1.label === 'Notifications, 2 unread', b1);
+    const p1 = await openPanel();
+    t('NOTIF AE panel: newest first, unread, with the job-order reference (number, asset)', p1.length === 2 && p1[0].jo === 'JO-9006' && p1[0].ev === 'COMPLETED' && p1[1].ev === 'IN_PROGRESS' && p1.every(x => x.unread) && p1[0].text.includes('Test Mixer'), p1);
+    await ev(`document.querySelector('.notif-item[data-event="COMPLETED"]').click(); true`); await sleep(1500);
+    t('NOTIF clicking an item marks it read ON THE SERVER and opens that job order', (await ev(`!!document.querySelector('.modal') && T.modalText().includes('jo-9006')`)) && ((await bell()) || {}).badge === '1'
+      && (await mock.notesFor(2)).filter(n => n.jobNo === 'JO-9006' && n.read).map(n => n.event).join() === 'COMPLETED');
+    await ev(`(document.querySelector('.modal-close')||{click(){}}).click(); true`); await sleep(300);
+    await as('t_se'); await nav('Job Orders');
+    await ev(`T.prop('onApproveJO')('JO-9006'); true`); await settle();
+    await ev(`T.prop('onCloseJO')('JO-9006', { closedDate: '2026-10-14' }); true`); await settle(); await sleep(2000);
+    const se = await openPanel();
+    t('NOTIF SE: In progress, Completed and Closed of JO-9006 (approval is not a lifecycle notification)', se.map(x => x.ev).join() === 'CLOSED,COMPLETED,IN_PROGRESS', se.map(x => x.ev));
+    await ev(`T.click('Mark all as read', '.notif-panel button'); true`); await sleep(1200);
+    t('NOTIF "Mark all as read": every item read (on the server too), badge gone', (await ev(`[...document.querySelectorAll('.notif-item')].every(e => !e.classList.contains('unread'))`)) && ((await bell()) || {}).badge === ''
+      && (await mock.notesFor(3)).every(n => n.read));
+    await closePanel();
+    // recipients by role (computed by the database)
+    await as('t_du');
+    const du = await openPanel();
+    t('NOTIF Department User: only their own job order, In progress / Completed / Closed (no Raised)', du.length === 3 && du.every(x => x.jo === 'JO-9006') && du.map(x => x.ev).join() === 'CLOSED,COMPLETED,IN_PROGRESS', du.map(x => x.jo + ':' + x.ev));
+    await closePanel();
+    await as('t_jce');
+    const jce = await openPanel();
+    t('NOTIF Job Card Editor (Mechanical): only Closed of the Mechanical job order (no In progress / Completed)', jce.length === 1 && jce[0].jo === 'JO-9006' && jce[0].ev === 'CLOSED', jce);
+    await closePanel();
+    await as('t_jce_el');
+    t('NOTIF Job Card Editor of another section (Electrical): nothing', (await openPanel()).length === 0);
+    await closePanel();
+    await as('t_admin');
+    const ad = await openPanel();
+    t('NOTIF Admin: all three lifecycle events, unread (read state is per user: the SE marking their own read changed nothing here)', ad.length === 3 && ad.every(x => x.unread), ad);
+    await closePanel();
+    // a new job order raised by the DU: Raised goes to Admin/AE/SE, not to the DU or the JCEs
+    await as('t_du'); await nav('Job Orders');
+    await ev(`T.prop('setJoModal')({ mode: 'add' }); true`); await sleep(400);
+    await ev(`T.prop('onSave')({ ...${JSON.stringify(SEED2.jobOrders.find(j => j.jobNo === 'JO-9006'))}, jobNo: '', problem: 'NOTIF new job', repairType: 'Unplanned' }, null); true`); await settle(); await sleep(1600);
+    const newNo = (mock.store.jobOrders.find(j => j.problem === 'NOTIF new job') || {}).jobNo;
+    const has = async (id, e) => (await mock.notesFor(id)).some(n => n.jobNo === newNo && n.event === e);
+    const raised = {}; for (const id of [1, 2, 3, 5, 6, 7, 9, 21]) raised[id] = await has(id, 'OPEN');
+    t('NOTIF new job order raised: Raised for Admin, AE, SE; not for the DU who raised it, the JCEs, the inactive JCE or the Viewer',
+      !!newNo && [1, 2, 3].every(id => raised[id]) && ![5, 6, 7, 9, 21].some(id => raised[id]), { newNo, raised });
+    // no duplicates: an unrelated change to the job-order list creates nothing for unchanged statuses
+    const before = await mock.noteCount();
+    await as('t_ae'); await nav('Job Orders');
+    await ev(`T.prop('onDeleteJO')('JO-9007'); true`); await settle(); await sleep(1500);
+    t('NOTIF no duplicates: a job-order change without a status change (here a delete) creates no notification', (await mock.noteCount()) === before);
+    await as('t_viewer');
+    t('NOTIF Viewer: no bell and nothing stored for the Viewer', (await ev(`!document.querySelector('.notif-bell')`)) && (await mock.notesFor(21)).length === 0);
+    // direct API: a user can read and mark only their own notifications
+    await as('t_du');
+    const api = await ev(`(async () => { const a = await sb.rpc('my_notifications', { p_limit: 50 }); const t1 = await sb.from('notifications').select('*'); const t2 = await sb.from('jo_events').select('*');
+      return { own: (a.data || []).length, tbl: (t1.data || []).length + (t2.data || []).length }; })()`);
+    const adminUnread0 = (await mock.notesFor(1)).filter(n => !n.read).length;
+    await ev(`(async () => { for (let i = 1; i < 200; i++) await sb.rpc('notification_mark_read', { p_ids: [i] }); return true; })()`);
+    t('NOTIF (API) the notification tables are not readable directly; my_notifications returns only the caller\'s own; marking others\' ids changes nothing for them',
+      api.tbl === 0 && api.own === (await mock.notesFor(6)).length && (await mock.notesFor(1)).filter(n => !n.read).length === adminUnread0, { api, adminUnread0 });
+    // failures are visible, not silent
+    mock.notifyOff = true;
+    await ev(`document.querySelector('.notif-bell').click(); true`); await sleep(1200);
+    t('NOTIF if notifications cannot be loaded, the panel says so', await ev(`T.txt(document.querySelector('.notif-panel')).includes('could not be loaded')`));
+    mock.notifyOff = false; await closePanel();
   }
 
   // ============ T9 + network ============
@@ -1541,4 +1958,4 @@ main().catch(async e => {
   console.error('HARNESS ERROR', e);
   try { if (BROWSER) for (const x of BROWSER.events.filter(v => v.method === 'Runtime.exceptionThrown').slice(-3))
     console.error('  page exception:', ((x.params.exceptionDetails.exception || {}).description || x.params.exceptionDetails.text || '').slice(0, 400)); } catch (x) {}
-  try { if (BROWSER) await BROWSER.close(); } catch (x) {} process.exit(2); });
+  try { if (BROWSER) await BROWSER.close(); } catch (x) {} process.exit(1); });   // a harness error is a FAILURE (exit 2 = skipped)

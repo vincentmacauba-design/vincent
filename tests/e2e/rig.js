@@ -1,4 +1,5 @@
-// Local E2E rig: sanitized copy of the WORKING index.html + HTTPS mock of the Supabase REST API (synthetic data)
+// Local E2E rig: sanitized copy of the WORKING index.html + HTTPS local backend (backend-mock.js: the real P2 SQL on PGlite +
+// the real P2 Edge Function logic behind emulated PostgREST / Auth / Functions endpoints; synthetic data)
 // + headless Edge over the DevTools protocol. Production is unreachable: the copy has no production URL/key,
 // the app runs on 127.0.0.1 (never a production host), and every *.supabase.co except the fake staging ref is
 // mapped to NOTFOUND. The guard is not modified: the app reaches the mock through its normal staging path
@@ -22,25 +23,27 @@ function buildSite() {
   writeStagingConfig();
   return san;
 }
-// N1: extra = {seedEmptyDatabase: true} opts the local mock into first-load seeding (tests restore the default afterwards).
+// extra: additional staging-config.js fields for a test. signInDomain: the (synthetic) Supabase Auth sign-in domain.
 function writeStagingConfig(extra = {}) {
-  const cfg = Object.assign({ url: `https://${FAKE_HOST}`, anonKey: 'sb_publishable_E2Efake0123456789abcdef' }, extra);
+  const cfg = Object.assign({ url: `https://${FAKE_HOST}`, anonKey: 'sb_publishable_E2Efake0123456789abcdef', signInDomain: SIGN_IN_DOMAIN }, extra);
   fs.writeFileSync(path.join(D, 'site', 'staging-config.js'), `window.CMMS_STAGING_CONFIG = ${JSON.stringify(cfg)};\n`);
 }
 
 // ---------- synthetic seed ----------
 const sha = s => crypto.createHash('sha256').update(s).digest('hex');
-const PASS = { t_admin: 'Synthetic-Admin-1', t_ae: 'Synthetic-AE-1', t_se: 'Synthetic-SE-1', t_odd: 'Synthetic-Odd-1',
-               t_jce: 'Synthetic-JCE-1', t_du: 'Synthetic-DU-1', t_jce_ns: 'Synthetic-JCE-NS-1', t_jce_el: 'Synthetic-JCE-EL-1', t_viewer: 'Synthetic-Viewer-1' };
-// Extended seed: + Department User (Cement Plant, category plants[1]), an INACTIVE Job Card Editor and a Job Card Editor WITHOUT a
-// section (both not eligible for work assignment), + three Cement Plant JOs on asset 5003 (two raised by the DU, one by someone else).
+const PASS = { t_admin: 'Synthetic-Admin-1', t_ae: 'Synthetic-AE-1', t_se: 'Synthetic-SE-1',
+               t_jce: 'Synthetic-JCE-1', t_du: 'Synthetic-DU-1', t_jce_el: 'Synthetic-JCE-EL-1', t_viewer: 'Synthetic-Viewer-1', t_jce_off: 'Synthetic-Unused-1' };
+// Sign-in is by Employee ID (Supabase Auth). Synthetic IDs for the synthetic accounts.
+const EMP = { t_admin: 'TA001', t_ae: 'TA002', t_se: 'TS003', t_jce: 'TJ005', t_du: 'TD006', t_jce_off: 'TJ007', t_jce_el: 'TJ009', t_viewer: 'VW001' };
+// Extended seed: + Department User (Cement Plant, category plants[1]) and an INACTIVE Job Card Editor (not eligible for work
+// assignment), + three Cement Plant JOs on asset 5003 (two raised by the DU, one by someone else).
 function seed2(plants) {
   const d = seed(plants);
   d.users.push(
     { id: 6, username: 't_du', fullName: 'Test DU Cement', role: 'Department User', email: 'du@example.invalid', active: true, password: sha(PASS.t_du),
       department: 'Cement Plant', assignedCategories: [plants[1]] },
-    { id: 7, username: 't_jce_off', fullName: 'Test JCE Inactive', role: 'Job Card Editor', email: 'jceoff@example.invalid', active: false, section: 'Electrical', password: sha('Synthetic-Unused-1') },
-    { id: 8, username: 't_jce_ns', fullName: 'Test JCE NoSection', role: 'Job Card Editor', email: 'jcens@example.invalid', active: true, password: sha(PASS.t_jce_ns) });
+    { id: 7, username: 't_jce_off', fullName: 'Test JCE Inactive', role: 'Job Card Editor', email: 'jceoff@example.invalid', active: false, section: 'Electrical', password: sha('Synthetic-Unused-1') });
+  // (A Job Card Editor WITHOUT a section cannot exist: the server refuses such an account, p2/sql 0001.)
   const J = (jobNo, status, extra) => ({ ...d.jobOrders[0], jobNo, status, assetNum: '5003', assetDesc: 'Test Mixer', assetCategory: plants[1], dept: 'Cement Plant',
     problem: 'Synthetic problem ' + jobNo, legacyField: 'keep-' + jobNo, ...extra });
   d.jobOrders.push(J('JO-9006', 'OPEN', { requesterId: 6, requester: 'Test DU Cement' }), J('JO-9007', 'OPEN', { requesterId: 99, requester: 'Someone Else' }),
@@ -58,7 +61,6 @@ function seed(plants) {
       { id: 1, username: 't_admin', fullName: 'Test Admin', role: 'Admin', email: 'admin@example.invalid', active: true, password: sha(PASS.t_admin) },
       { id: 2, username: 't_ae', fullName: 'Test AE', role: 'Assistant Engineer', email: 'ae@example.invalid', active: true, password: sha(PASS.t_ae) },
       { id: 3, username: 't_se', fullName: 'Test SE', role: 'Senior Engineer', email: 'se@example.invalid', active: true, password: sha(PASS.t_se) },
-      { id: 4, username: 't_odd', fullName: 'Test Odd', role: 'admin', email: 'odd@example.invalid', active: true, password: sha(PASS.t_odd) },
       { id: 5, username: 't_jce', fullName: 'Test JCE', role: 'Job Card Editor', email: 'jce@example.invalid', active: true, section: 'Mechanical', password: sha(PASS.t_jce) },
     ],
     assets: [A('5001', plants[0], 'Test Pump', 'OPERATIONAL'), A('5002', plants[0], 'Test Valve', 'OPERATIONAL'), A('5003', plants[1], 'Test Mixer', 'BREAKDOWN'),
@@ -74,11 +76,20 @@ function seed(plants) {
   };
 }
 
-// ---------- mock PostgREST (HTTPS) ----------
-class Mock {
-  constructor() { this.requests = []; this.writes = []; this.store = {}; this.failKeys = new Set(); this.failLoad = false; }   // failLoad: full-table reads answered with HTTP 500   // failKeys: upserts answered with HTTP 500, not stored
-  reset(data) { this.store = JSON.parse(JSON.stringify(data)); this.writes = []; this.failKeys = new Set(); this.failLoad = false; this.loadDelay = 0; }   // loadDelay: ms before answering the full-table read (connecting state)
+// ---------- local backend (HTTPS): the real P2 SQL on PGlite + the real P2 Edge Function logic ----------
+const { BackendMock, pgliteEntry, SIGN_IN_DOMAIN } = require('./backend-mock');
+// Every account record gets its synthetic Employee ID and plain password (the fake Auth service needs the password; the
+// stored record keeps only its SHA-256 for assertions).
+function withAuth(data) {
+  const d = JSON.parse(JSON.stringify(data || {}));
+  if (Array.isArray(d.users)) d.users = d.users.map(u => ({ ...u, employeeId: u.employeeId || EMP[u.username], plainPassword: u.plainPassword || PASS[u.username] }));
+  return d;
+}
+class Mock extends BackendMock {
+  reset(data, opt) { return super.reset(withAuth(data), opt); }
   async start(ip = TEST_MOCK_IP) {
+    await this.init();
+    this.appUrl = `http://127.0.0.1:${SITE_PORT}/index.html`;
     const dir = path.join(D, 'cert');
     if (!fs.existsSync(path.join(dir, 'cert.pem'))) {
       fs.mkdirSync(dir, { recursive: true });
@@ -87,44 +98,6 @@ class Mock {
     this.srv = https.createServer({ key: fs.readFileSync(path.join(dir, 'key.pem')), cert: fs.readFileSync(path.join(dir, 'cert.pem')) }, (q, r) => this.handle(q, r));
     this.srv.on('upgrade', (q, s) => { this.requests.push({ m: 'UPGRADE', u: q.url }); s.destroy(); });   // realtime websocket: refused
     return new Promise((res, rej) => { this.srv.once('error', rej); this.srv.listen(443, ip, res); });
-  }
-  handle(q, r) {
-    const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
-      'Access-Control-Allow-Headers': q.headers['access-control-request-headers'] || '*', 'Access-Control-Expose-Headers': 'Content-Range' };
-    this.requests.push({ m: q.method, u: q.url });
-    if (q.method === 'OPTIONS') { r.writeHead(204, cors); return r.end(); }
-    const u = new URL(q.url, 'https://' + FAKE_HOST);
-    const send = (code, obj) => { r.writeHead(code, { ...cors, 'Content-Type': 'application/json' }); r.end(obj === undefined ? '' : JSON.stringify(obj)); };
-    if (u.pathname !== '/rest/v1/app_data') return send(404, { message: 'mock: not found' });
-    if (q.method === 'GET') {
-      const keyEq = u.searchParams.get('key');
-      if (this.failLoad && !keyEq) return send(500, { message: 'mock: load failure' });
-      const reply = () => {
-        let rows = Object.entries(this.store).map(([key, value]) => ({ key, value, updated_at: '2026-10-10T00:00:00Z' }));
-        if (keyEq && keyEq.startsWith('eq.')) rows = rows.filter(x => x.key === keyEq.slice(3));
-        const sel = u.searchParams.get('select');
-        if (sel === 'value') rows = rows.map(x => ({ value: x.value }));
-        if ((q.headers.accept || '').includes('vnd.pgrst.object')) return rows.length === 1 ? send(200, rows[0]) : send(406, { message: 'mock: not single' });
-        return send(200, rows);
-      };
-      if (this.loadDelay && !keyEq) { setTimeout(reply, this.loadDelay); return; }
-      return reply();
-    }
-    if (q.method === 'POST') {
-      let body = ''; q.on('data', c => body += c); q.on('end', () => {
-        const items = [].concat(JSON.parse(body));
-        if (items.some(it => this.failKeys.has(it.key))) { items.forEach(it => this.writes.push({ key: it.key, failed: true })); return send(500, { message: 'mock: injected failure' }); }
-        for (const it of items) {
-          if (it.key === '__environment') { this.writes.push({ key: it.key, rejected: true }); continue; }   // marker is protected (§13.4)
-          const prev = this.store[it.key];
-          this.writes.push({ key: it.key, prevLen: Array.isArray(prev) ? prev.length : null, len: Array.isArray(it.value) ? it.value.length : null, value: it.value, t: Date.now() });
-          this.store[it.key] = it.value;
-        }
-        send(201);
-      });
-      return;
-    }
-    send(405, { message: 'mock: method' });
   }
 }
 
@@ -172,4 +145,4 @@ async function launch(mockIp = TEST_MOCK_IP) {
   return { send, evaluate, events, close };
 }
 
-module.exports = { buildSite, writeStagingConfig, seed, seed2, Mock, startSite, launch, sleep, PASS, FAKE_HOST, SITE_PORT };
+module.exports = { pgliteEntry, buildSite, writeStagingConfig, seed, seed2, Mock, startSite, launch, sleep, PASS, EMP, FAKE_HOST, SITE_PORT, SIGN_IN_DOMAIN };

@@ -1,15 +1,19 @@
 // Interactive local preview of the CMMS on synthetic data. LOCAL ONLY — reuses the E2E rig (rig.js):
 //  - serves a sanitized copy of the working index.html (production URL/key replaced in memory; written to the OS temp folder)
-//  - runs the HTTPS mock of the Supabase REST API on 127.0.0.1:443 with the synthetic seed (5 roles + SE with editor bundle)
+//  - runs the local P2 backend (backend-mock.js: the real P2 SQL on PGlite + the real Edge Function logic) on 127.0.0.1:443
+//    with the synthetic seed; sign-in is by synthetic Employee ID through the emulated Supabase Auth. Needs CMMS_PGLITE_DIR.
+//    Emails the server would send (password recovery, recovery-email confirmation) are printed here instead.
 //  - opens a separate, visible Edge window (throwaway profile) that maps the fake staging host to 127.0.0.1 and every other
 //    *.supabase.co and the production hostname to NOTFOUND. The app's environment guard is unchanged: it reaches the mock
-//    through its normal staging path (staging-config.js → resolver → __environment marker).
+//    through its normal staging path (staging-config.js → resolver → environment_marker()).
 // Usage:  node tests/e2e/serve.js              start on http://localhost:5173 + open Edge; Ctrl+C stops everything (data resets on every start)
 //         node tests/e2e/serve.js --no-browser start servers only (open the printed command yourself)
 //         node tests/e2e/serve.js --selfcheck  start, sign in as every role in headless Edge, print what each sees, exit
 'use strict';
 const os = require('os'), fs = require('fs'), path = require('path'), cp = require('child_process'), net = require('net'), http = require('http'), https = require('https');
-const { buildSite, seed2, Mock, startSite, launch, sleep, PASS, FAKE_HOST, SITE_PORT } = require('./rig');
+const { pgliteEntry, buildSite, seed2, Mock, startSite, launch, sleep, PASS, EMP, FAKE_HOST, SITE_PORT } = require('./rig');
+// PREVIEW_MOCK_IP: loopback address for the local backend (default 127.0.0.1), so a second instance can run beside a preview.
+const MOCK_IP = process.env.PREVIEW_MOCK_IP || '127.0.0.1';
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 // Preview address: http://localhost:5173 (PREVIEW_PORT overrides). The automated tests keep 127.0.0.1:8770, so both can run at once.
 // `localhost` is one of the loopback hosts the app's environment guard accepts for staging-config.js; any other host stays blocked.
@@ -24,7 +28,7 @@ async function startPreviewSite() {
   try { servers.push(await startSite(PREVIEW_PORT, '::1')); } catch (e) { /* no IPv6 loopback: IPv4 is enough */ }
   return { close: () => servers.forEach(s => s.close()) };
 }
-const RULES = `MAP ${FAKE_HOST} 127.0.0.1, MAP *.supabase.co ~NOTFOUND, MAP vincent-mauve.vercel.app ~NOTFOUND`;
+const RULES = `MAP ${FAKE_HOST} ${MOCK_IP}, MAP *.supabase.co ~NOTFOUND, MAP vincent-mauve.vercel.app ~NOTFOUND`;
 const ACCOUNTS = [
   ['Admin', 't_admin'], ['Assistant Engineer', 't_ae'], ['Senior Engineer', 't_se'], ['Job Card Editor (section Mechanical)', 't_jce'],
   ['Department User (Cement Plant; category 02 CEMENT PLANT)', 't_du'],
@@ -44,7 +48,11 @@ function portOwner(port) {
 function portFree(port, host) {
   return new Promise(res => { const t = net.createServer(); t.once('error', e => res(e.code)); t.listen(port, host, () => t.close(() => res(null))); });
 }
-// Readiness: the page AND the mock database must answer before the browser is opened.
+// Readiness: the page AND the local backend must answer before the browser is opened.
+function post(url, body, opts = {}) {
+  return new Promise(res => { const rq = https.request(url, { method: 'POST', timeout: 4000, agent: false, ...opts }, r => { let b = ''; r.on('data', c => b += c); r.on('end', () => res({ status: r.statusCode, body: b })); });
+    rq.on('timeout', () => rq.destroy(new Error('timeout'))); rq.on('error', e => res({ status: 0, body: e.message })); rq.end(body); });
+}
 function get(url, opts = {}) {
   return new Promise(res => { const lib = url.startsWith('https') ? https : http;
     const rq = lib.get(url, { timeout: 4000, agent: false, ...opts }, r => { let b = ''; r.on('data', c => b += c); r.on('end', () => res({ status: r.statusCode, body: b })); });
@@ -52,14 +60,15 @@ function get(url, opts = {}) {
 }
 async function ready() {
   const page = await get(URL0);
-  const mockRes = await get(`https://127.0.0.1:443/rest/v1/app_data?select=value&key=eq.__environment`, { headers: { host: FAKE_HOST }, servername: FAKE_HOST, rejectUnauthorized: false });
+  const mockRes = await post(`https://${MOCK_IP}:443/rest/v1/rpc/environment_marker`, '{}', { headers: { host: FAKE_HOST, 'content-type': 'application/json' }, servername: FAKE_HOST, rejectUnauthorized: false });
   return { page: page.status === 200 && page.body.includes('ENVIRONMENT GUARD'), mock: mockRes.status === 200 && mockRes.body.includes('"staging"') };
 }
 
 async function main() {
+  if (!pgliteEntry()) { console.error('\nCannot start: the local backend needs PGlite. Set CMMS_PGLITE_DIR to a folder with @electric-sql/pglite installed.'); process.exit(2); }
   // 1. Ports: report the owner of a busy port and stop; never kill anything.
   for (const [port, what] of [[443, 'mock database (HTTPS)'], [PREVIEW_PORT, 'preview page']]) {
-    const err = await portFree(port, '127.0.0.1');
+    const err = await portFree(port, port === 443 ? MOCK_IP : '127.0.0.1');
     if (err === 'EADDRINUSE') {
       console.error(`\nCannot start: port ${port} (${what}) is already in use by ${portOwner(port)}.`);
       console.error(port === 443
@@ -71,17 +80,21 @@ async function main() {
   }
   const san = buildSite();
   const plants = eval(san.match(/const PLANTS = (\[[^\]]*\]);/)[1]);
-  const mock = new Mock(); await mock.start('127.0.0.1'); mock.reset(seed2(plants));   // the preview keeps 127.0.0.1:443
+  const mock = new Mock(); await mock.start(MOCK_IP); await mock.reset(seed2(plants));   // the preview keeps 127.0.0.1:443 by default
+  mock.appUrl = URL0;   // links in the (printed) emails open this preview
   const site = await startPreviewSite();
   const origHandle = mock.handle.bind(mock);
-  mock.handle = (q, r) => { if (q.method === 'POST') q.on('end', () => { const w = mock.writes[mock.writes.length - 1]; if (w) console.log(`  [mock] saved "${w.key}"${w.len != null ? ` (${w.len} records)` : ''}${w.failed ? ' FAILED' : ''}`); }); origHandle(q, r); };
+  let seenWrites = 0, seenMails = 0;
+  mock.handle = async (q, r) => { await origHandle(q, r);
+    for (; seenWrites < mock.writes.length; seenWrites++) { const w = mock.writes[seenWrites]; console.log(`  [backend] ${w.rejected ? 'refused' : w.failed ? 'FAILED' : 'saved'} "${w.key}"${w.fn ? ` via ${w.fn}` : ''}${w.len != null ? ` (${w.len} records)` : ''}`); }
+    for (; seenMails < mock.mails.length; seenMails++) { const m = mock.mails[seenMails]; console.log(`  [email, not sent] to ${m.to}: ${m.subject}\n    ${String(m.text).replace(/\n/g, '\n    ')}`); } };
 
   if (process.argv.includes('--selfcheck')) return selfcheck(mock, site);
 
   console.log('\nCMMS local preview — synthetic data only, production unreachable');
   console.log(`  URL:   ${URL0}   (open it in the Edge window this script starts)`);
-  console.log('  Accounts (synthetic, local mock only):');
-  for (const [role, u] of ACCOUNTS) console.log(`    ${role.padEnd(55)} ${u.padEnd(8)} ${PASS[u]}`);
+  console.log('  Accounts (synthetic, local backend only). Sign in with the Employee ID:');
+  for (const [role, u] of ACCOUNTS) console.log(`    ${role.padEnd(55)} ${EMP[u].padEnd(6)} ${PASS[u]}`);
   // 2. Readiness: do not open the browser until the page and the mock database both answer.
   const rd = await ready();
   if (!rd.page || !rd.mock) { console.error(`\nCannot start: ${!rd.page ? 'the preview page' : 'the mock database'} did not answer. Nothing was opened.`); site.close(); mock.srv.close(); process.exit(4); }
@@ -115,7 +128,7 @@ async function main() {
 
 // Headless check: sign in as each account and print the visible pages and key permissions.
 async function selfcheck(mock, site) {
-  const B = await launch('127.0.0.1');
+  const B = await launch(MOCK_IP);
   const ev = async e => B.evaluate(e);
   const waitFor = async (expr, ms = 20000) => { const end = Date.now() + ms; while (Date.now() < end) { try { if (await ev(expr)) return true; } catch (e) {} await sleep(150); } return false; };
   let ok = true;
@@ -126,14 +139,14 @@ async function selfcheck(mock, site) {
       mock.requests = [];
       await B.send('Page.navigate', { url: URL0 });
       await waitFor(`!!document.querySelector('input[type=password]')`);
-      for (let i = 0; i < 100 && !mock.requests.some(r => r.m === 'GET' && /select=(\*|%2A)/.test(r.u)); i++) await sleep(100);
       await sleep(500);
       await ev(`(()=>{ const s=(el,v)=>{ Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,v); el.dispatchEvent(new Event('input',{bubbles:true})); };
-        const [a,b]=document.querySelectorAll('form input'); s(a,${JSON.stringify(u)}); s(b,${JSON.stringify(PASS[u])}); document.querySelector('form button[type=submit]').click(); return true; })()`);
+        const [a,b]=document.querySelectorAll('form input'); s(a,${JSON.stringify(EMP[u])}); s(b,${JSON.stringify(PASS[u])}); document.querySelector('form button[type=submit]').click(); return true; })()`);
       const signedIn = await waitFor(`!!document.querySelector('.sidebar')`);
       const pages = signedIn ? await ev(`[...document.querySelectorAll('.nav-item')].map(e=>e.title).join(', ')`) : '(sign-in failed)';
       if (!signedIn) ok = false;
-      console.log(`  ${signedIn ? 'OK  ' : 'FAIL'} ${role.padEnd(55)} ${u.padEnd(8)} pages: ${pages}`);
+      console.log(`  ${signedIn ? 'OK  ' : 'FAIL'} ${role.padEnd(55)} ${EMP[u].padEnd(6)} pages: ${pages}`);
+      if (signedIn) { await ev(`document.querySelector('.btn-logout').click(); true`); await sleep(500); }
     }
     const hosts = [...new Set(B.events.filter(e => e.method === 'Network.requestWillBeSent').map(e => { try { return new URL(e.params.request.url).host; } catch (x) { return ''; } }))];
     const bad = hosts.filter(h => /supabase\.co$/.test(h) && h !== FAKE_HOST || /vincent-mauve/.test(h));

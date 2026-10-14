@@ -1,6 +1,8 @@
 // Permission model tests: F1 (§12) + F2 roles/scope/user validation (§6, §3.2, §7) + D19 downloads + F5 approval rules (§4). Offline; no network, no data.
 'use strict';
-const vm = require('vm');
+const vm = require('vm'), fs = require('fs'), path = require('path');
+const SQLP2 = ['0005_p2b_job_order_functions.sql', '0006_completion.sql', '0007_p2b_more_functions.sql'].map(f => fs.readFileSync(path.join(__dirname, '..', 'p2', 'sql', f), 'utf8')).join('\n');
+const sqlFn = name => { const i = SQLP2.indexOf('create function public.' + name + '('); return i < 0 ? '' : SQLP2.slice(i, SQLP2.indexOf('end $$;', i)); };
 const { sanitizedIndex } = require('./lib/sanitize');
 const html = sanitizedIndex(process.argv[2]).replace(/\r\n/g, '\n');
 let pass = 0, fail = 0;
@@ -9,10 +11,10 @@ const t = (n, c, info) => { c ? pass++ : fail++; if (!c || process.env.V) consol
 // ---- load the real PERMISSIONS + SCOPE blocks (pure code before sortByAssetNum) ----
 const a = html.indexOf('// ─── PERMISSIONS'), b = html.indexOf('function sortByAssetNum(arr){');
 t('permission/scope block present', a > 0 && b > a && html.slice(a, b).includes('// ─── SCOPE'));
-const ctx = {}; vm.createContext(ctx);
+const ctx = { TextEncoder, URLSearchParams }; vm.createContext(ctx);
 vm.runInContext("var DESIGNATIONS = {'Admin':'Admin Designation','Senior Engineer':'SE Designation'};", ctx);   // defined earlier in index.html
 vm.runInContext((html.match(/^const DATA_KEYS = .*$/m) || ['var DATA_KEYS_MISSING = 1;'])[0], ctx);              // N1: real line from index.html
-vm.runInContext(html.slice(a, b) + '\nthis.X = {validateNewPassword, authVerify, profileFor, AUTH_SIGNED_OUT, findLoginCandidates, authAdapterFor, can, ROLE_CAPS, DEPARTMENTS, canSeeAsset, canSeeJO, mayEditJO, isDeptUser, validateUserRecord, normalizeUserRecord, pickFields, JO_REQUEST_FIELDS, JO_WORK_FIELDS, isApproved, canApproveJO, canCloseJO, normWork, workChanged, withStoredFields, withoutApprover, approvalEvent, resetApprovalIfChanged, JO_CONTROL_FIELDS, isJobCardEditor, isEligibleEditor, DU_REPAIR_TYPE, JCE_SECTIONS, jceSectionAllows, planAssetImport, applyAssetPlan, isValidAuthState, authzFingerprint, planDataLoad, escHtml, stableJson, realtimeAction};', ctx);
+vm.runInContext(html.slice(a, b) + '\nthis.X = {validatePassword, passwordProblems, PASSWORD_RULES, FORCED_CHANGE_ALLOWED, signInOutcome, signInEmailFor, normalizeEmployeeId, profileFromRow, signedInState, profileFor, AUTH_SIGNED_OUT, authAdapterFor, EMPLOYEE_ID_RE, parseRecoveryLink, notificationsFor, datasetsFor, can, ROLE_CAPS, DEPARTMENTS, canSeeAsset, canSeeJO, mayEditJO, isDeptUser, validateUserRecord, normalizeUserRecord, pickFields, JO_REQUEST_FIELDS, JO_WORK_FIELDS, isApproved, canApproveJO, canCloseJO, normWork, workChanged, withStoredFields, withoutApprover, approvalEvent, resetApprovalIfChanged, JO_CONTROL_FIELDS, isJobCardEditor, isEligibleEditor, validateNewPassword, DU_REPAIR_TYPE, JCE_SECTIONS, jceSectionAllows, planAssetImport, applyAssetPlan, isValidAuthState, mustChangePassword, authzFingerprint, planDataLoad, escHtml, stableJson, realtimeAction, circuitTraces, recoveryStep, recoveryLinkKind, RECOVERY_MESSAGES, RECOVERY_SERVICE, unreadCount, NOTIFY_EVENT_LABEL, signalSchedule, signalKeyframes, glowKeyframes};', ctx);
 vm.runInContext('function sortByAssetNum(arr){return [...arr].sort((a,b)=>(parseInt(a.num)||0)-(parseInt(b.num)||0));}', ctx);
 const { can, ROLE_CAPS, DEPARTMENTS, canSeeAsset, canSeeJO, mayEditJO, isDeptUser, validateUserRecord, normalizeUserRecord } = ctx.X;
 const ROLES = ['Admin', 'Assistant Engineer', 'Senior Engineer', 'Job Card Editor', 'Department User'];
@@ -155,7 +157,7 @@ const appA = html.indexOf('\nfunction App() {'), appB = html.indexOf('\nfunction
 const app = html.slice(appA, appB);
 const G = [...app.matchAll(/\n  (?:async )?function (\w+)\(([^)]*)\) \{\n    if \(!allow\((.*)\)\) (return[^;]*;)\n/g)];
 const guardOf = Object.fromEntries(G.map(m => [m[1], { args: m[2], cond: m[3] }]));
-const MUT = ['saveUser','deleteUser','updateAssetStatus','saveAsset','saveJO','updateJOStatus','deleteAsset','clearAllAssets','deleteJO','approveJO','closeJO','revertJO','saveEmployee','savePMItem','importPMFromCSV','recordPMService','updateEmployeeStatus','deleteEmployee','importEmployeesFromData','fixEmployeeStatusFromDates','resetData','addCustomPlant','renameCustomPlant','importAssetsFromCSV','importJOsFromCSV','changeOwnPassword','applyAssetImport'];
+const MUT = ['saveUser','deleteUser','resetUserPassword','updateAssetStatus','saveAsset','saveJO','updateJOStatus','deleteAsset','clearAllAssets','deleteJO','approveJO','closeJO','revertJO','saveEmployee','savePMItem','importPMFromCSV','recordPMService','updateEmployeeStatus','deleteEmployee','importEmployeesFromData','fixEmployeeStatusFromDates','resetData','addCustomPlant','renameCustomPlant','importAssetsFromCSV','importJOsFromCSV','changeOwnPassword','applyAssetImport'];
 t(`T6a all ${MUT.length} mutations start with an allow() guard`, MUT.every(m => guardOf[m]), MUT.filter(m => !guardOf[m]).join(','));
 t('T6b no other App() function is guarded (load-time writes untouched)', G.length === MUT.length, G.map(m => m[1]).filter(n => !MUT.includes(n)).join(','));
 function g(m, role, vars = {}, jobOrders = []) {
@@ -172,8 +174,8 @@ const EXP6 = [
   ['deleteAsset', {}, ED], ['clearAllAssets', {}, AD], ['deleteJO', { jobNo: 'JO-1' }, ED], ['approveJO', { jobNo: 'JO-1' }, r => R3.includes(r)], ['closeJO', { jobNo: 'JO-1' }, r => R3.includes(r)], ['revertJO', { jobNo: 'JO-1' }, AD],
   ['saveEmployee', {}, AD], ['savePMItem', {}, ED], ['importPMFromCSV', {}, ED], ['recordPMService', {}, ED],
   ['updateEmployeeStatus', {}, ED], ['deleteEmployee', {}, AD], ['importEmployeesFromData', {}, AD], ['fixEmployeeStatusFromDates', {}, AD],
-  ['resetData', {}, AD], ['changeOwnPassword', {}, () => true],
-  ['applyAssetImport', {}, ED], ['addCustomPlant', {}, ED], ['renameCustomPlant', {}, ED], ['importAssetsFromCSV', {}, ED], ['importJOsFromCSV', {}, ED],
+  ['resetData', {}, AD], ['changeOwnPassword', { FORCED_CHANGE_ALLOWED: { forcedChangeAllowed: true } }, () => true],
+  ['resetUserPassword', {}, AD], ['applyAssetImport', {}, ED], ['addCustomPlant', {}, ED], ['renameCustomPlant', {}, ED], ['importAssetsFromCSV', {}, ED], ['importJOsFromCSV', {}, ED],
 ];
 let t6 = 0;
 for (const [m, vars, exp] of EXP6) for (const r of [...ROLES, 'Viewer']) if (!!g(m, r, vars) !== exp(r)) { t6++; t(`T6 ${m} ${JSON.stringify(vars)} ${r}`, false); }
@@ -189,14 +191,18 @@ const jos = [{ jobNo: 'JO-1', dept: 'HR', status: 'OPEN' }];
 t('T6h JO guards also require the JO to be in scope (DU with another department fails, others pass)',
   !g('deleteJO', du, { jobNo: 'JO-1' }, jos) && g('deleteJO', { role: 'Admin' }, { jobNo: 'JO-1' }, jos) && !g('updateJOStatus', { ...du, role: 'Department User' }, { status: 'IN PROGRESS', jobNo: 'JO-1' }, jos));
 t('T6i importEmployeesFromData denial returns {added:0, updated:0}', /return \{added:0, updated:0\};/.test(G.find(m => m[1] === 'importEmployeesFromData')[4]));
-const saveJOBody = app.slice(app.indexOf('  function saveJO('), app.indexOf('  function updateJOStatus('));
-t('T6j saveJO edit: checks mayEditJO on the STORED record and copies the other sections from it', /const stored = jobOrders\.find\(j => j\.jobNo===editJobNo\);\n\s*if \(!allow\(!!stored && mayEditJO\(currentUser, stored\)\)\) return;/.test(saveJOBody) && /\{\.\.\.stored, \.\.\.pickFields\(jo, JO_WORK_FIELDS\.filter\(k => k !== 'section'\)\)\}/.test(saveJOBody) && /\{\.\.\.stored, \.\.\.pickFields\(jo, JO_REQUEST_FIELDS\), requester: stored\.requester, dept: stored\.dept\}/.test(saveJOBody));
-t('T6k saveJO create by DU: asset in scope, department from profile, work sections blank, OPEN; every new JO gets requesterId', /canSeeAsset\(currentUser, a\) && DEPARTMENTS\.includes\(currentUser\.department\)/.test(saveJOBody) && /\.\.\.JO_WORK_BLANK, requester: currentUser\.fullName, dept: currentUser\.department, status: 'OPEN'/.test(saveJOBody) && /requesterId: currentUser\.id/.test(saveJOBody));
+const saveJOBody = app.slice(app.indexOf('  async function saveJO('), app.indexOf('  async function updateJOStatus('));
+t('T6j job order edit: the browser checks mayEditJO on the STORED record; the server (jo_update) keeps every other section from the stored record (allow-listed fields per role)', /const stored = jobOrders\.find\(j => j\.jobNo===editJobNo\);\n\s*if \(!allow\(!!stored && mayEditJO\(currentUser, stored\)\)\) return;/.test(saveJOBody)
+  && /jo := f\.jo \|\| private\.pick\(p_fields, array_remove\(work, 'section'\)\);/.test(sqlFn('jo_update')) && /jo := f\.jo \|\| private\.pick\(p_fields, req\) \|\| jsonb_build_object\('requester', f\.jo -> 'requester', 'dept', f\.jo -> 'dept'\);/.test(sqlFn('jo_update')));
+t('T6k job order create by DU: asset in scope + department checked in the browser AND by the server; the server sets department and requester from the profile, blank work sections, OPEN and the numeric requesterId',
+  /canSeeAsset\(currentUser, a\) && DEPARTMENTS\.includes\(currentUser\.department\)/.test(saveJOBody) && /if not private\.du_asset_in_scope\(me, p_jo ->> 'assetNum'\)/.test(sqlFn('jo_create'))
+  && /jsonb_build_object\('requester', me\.full_name, 'dept', me\.department, 'recvName', ''/.test(sqlFn('jo_create')) && /jsonb_build_object\('jobNo', 'JO-' \|\| n, 'status', 'OPEN', 'requesterId', me\.legacy_id\)/.test(sqlFn('jo_create')));
 
 // ---- T8 static ----
 const babel = html.slice(html.indexOf('<script type="text/babel">'));
 const roleCmp = [...babel.matchAll(/[^\n]*\brole\s*(===|!==)[^\n]*/g)].map(m => m[0].trim());
-const allowedRoleCmp = [/^const cls = role==='Admin'\?'role-admin'/, /^if \(!user \|\| typeof user\.role !== 'string' \|\| typeof cap !== 'string'/,
+const allowedRoleCmp = [/^const cls = role==='Admin'\?'role-admin'/, /^function notificationsFor\(user\) \{ return !!user && user\.role !== 'Viewer' && !mustChangePassword\(user\); \}$/,
+  /^const accountFields = u => \(\{fullName: u\.fullName, role: u\.role, department: u\.role === 'Department User' \? u\.department : null,$/, /^assignedCategories: u\.role === 'Department User' \? u\.assignedCategories : null, section: u\.role === 'Job Card Editor' \? u\.section : null\}\);$/, /^if \(!user \|\| typeof user\.role !== 'string' \|\| typeof cap !== 'string'/,
   /^function isDeptUser\(user\) \{ return !!user && user\.role === 'Department User'; \}$/, /^function isJobCardEditor\(user\) \{ return !!user && user\.role === 'Job Card Editor'; \}$/,
   /^if \(u\.role === 'Department User'\) \{$/, /^if \(u\.role === 'Job Card Editor' && !JCE_SECTIONS\.includes\(u\.section\)\)/, /^if \(out\.role !== 'Department User'\) \{ delete out\.department; delete out\.assignedCategories; \}$/,
   /^if \(out\.role !== 'Job Card Editor'\) delete out\.section;/, /^\{f\.role==='Department User'&&\($/, /^\{f\.role==='Job Card Editor'&&\($/];   // helpers, validation and admin-form field display only
@@ -241,14 +247,19 @@ t('F5 withStoredFields: status/approval/closure from the stored record; forged f
 const ae5 = X5.approvalEvent({ id: 3, fullName: 'Test SE', role: 'Senior Engineer' }, 'APPROVED');
 t('F5 approvalEvent shape {event, by, byId, designation, at}', ae5.event === 'APPROVED' && ae5.by === 'Test SE' && ae5.byId === 3 && ae5.designation === 'SE Designation' && /^\d{4}-\d{2}-\d{2}T/.test(ae5.at) && !('reason' in ae5));
 t('F5 approve / close / revert / step changes validate the transition in the save layer', /if \(!canApproveJO\(jobOrders\.find/.test(app) && /if \(!canCloseJO\(jobOrders\.find/.test(app) && /only a CLOSED job order can be reverted/.test(app) && /is not a valid step/.test(app));
-t('F5 approve never changes status; close never approves; complete sets PENDING', /approvalStatus:'APPROVED', approvedBy:ev\.by/.test(app) && !/approvalStatus:'APPROVED'[^\n]*status:'CLOSED'/.test(app) && !/status:'CLOSED'[^\n]*approvalStatus/.test(app) && /status, approvalStatus:'PENDING'/.test(app));
-t('F5 saveJO: control fields from the stored record, then the approval reset check; creates start clean', /jo = withStoredFields\(jo, stored, JO_CONTROL_FIELDS\);[^\n]*\n\s*jo = resetApprovalIfChanged\(stored, jo, currentUser\);/.test(app) && /jo = \{\.\.\.withStoredFields\(jo, \{\}, JO_CONTROL_FIELDS\), status: 'OPEN'/.test(app));
-t('F5 CSV import: only OPEN/IN PROGRESS/COMPLETED, COMPLETED as PENDING, others rejected and listed', /const IMPORTABLE = \['OPEN','IN PROGRESS','COMPLETED'\];/.test(app) && /j\.status==='COMPLETED' \? \{\.\.\.j, approvalStatus:'PENDING'\} : j/.test(app) && /const toAdd = accepted\.filter/.test(app));
+t('F5 approve never changes status; close never approves; complete sets PENDING (server functions)', /'status', 'COMPLETED', 'approvalStatus', 'PENDING'/.test(sqlFn('jo_set_status'))
+  && !/'status',/.test(sqlFn('jo_approve').replace(/f\.jo ->> 'status'/g, '')) && !/'approvalStatus',/.test(sqlFn('jo_close').replace(/f\.jo ->> 'approvalStatus'/g, '')));
+t('F5 job order edit: status / closure / approval / assignment never come from the form (not in the allow-lists); a completion change after approval resets it; creates start OPEN',
+  ['status', 'closedBy', 'closedDate', 'approvalStatus', 'approvedBy', 'approvalHistory', 'requesterId', 'assignedTo', 'assignedToId', 'jobNo'].every(k => !new RegExp("'" + k + "'").test(sqlFn('jo_update').slice(0, sqlFn('jo_update').indexOf('begin'))))
+  && /if f\.jo ->> 'approvalStatus' = 'APPROVED' and private\.work_changed\(f\.jo, jo\) then/.test(sqlFn('jo_update')) && /'status', 'OPEN'/.test(sqlFn('jo_create')));
+t('F5 CSV import: only OPEN/IN PROGRESS/COMPLETED, COMPLETED as PENDING, others rejected and listed (browser) and refused again by the server', /const IMPORTABLE = \['OPEN','IN PROGRESS','COMPLETED'\];/.test(app)
+  && /if st not in \('OPEN', 'IN PROGRESS', 'COMPLETED'\) then/.test(sqlFn('jo_import')) && /case when st = 'COMPLETED' then jsonb_build_object\('approvalStatus', 'PENDING'\)/.test(sqlFn('jo_import')));
 
 // ---- F5 finalisation: history events, CSV approver, dedicated workflow actions ----
 const ceV = X5.approvalEvent({ id: 1, fullName: 'C', role: 'Admin' }, 'CLOSED', '', { closedDate: '2026-01-15' });
 t('F5b approvalEvent carries extra data (CLOSED keeps the selected closedDate; at stays automatic)', ceV.event === 'CLOSED' && ceV.closedDate === '2026-01-15' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(ceV.at) && ceV.at.slice(0, 10) !== '2026-01-15');
-t('F5b closeJO appends a CLOSED event (with closedDate); revertJO appends a REVERTED event', /const cev = approvalEvent\(currentUser, 'CLOSED', '', \{closedDate\}\);/.test(app) && /closedDate, approvalHistory:\[\.\.\.historyOf\(j\), cev\]\}/.test(app) && /const rev = approvalEvent\(currentUser, 'REVERTED', 'reverted to COMPLETED'\);/.test(app) && /closedDate:'', approvalHistory:\[\.\.\.historyOf\(j\), rev\]\}/.test(app));
+t('F5b closing appends a CLOSED event (with closedDate); revert appends a REVERTED event (server functions)', /private\.approval_event\(me, 'CLOSED', null, jsonb_build_object\('closedDate'/.test(sqlFn('jo_close'))
+  && /private\.approval_event\(me, 'REVERTED', 'reverted to COMPLETED', null\)/.test(sqlFn('jo_revert')));
 t('F5b approval history is never cleared or replaced (only appended via historyOf)', !/approvalHistory\s*:\s*\[\s*\]/.test(app) && (app.match(/approvalHistory:\[/g) || []).length === (app.match(/approvalHistory:\[\.\.\.historyOf\(j\)/g) || []).length);
 // CSV "Approved By" = approver only: run the real export function with a stubbed download
 const csvSrc = ['function csvCell(', 'function exportJobOrdersCSV('].map(sig => { const i = html.indexOf(sig); return html.slice(i, html.indexOf('\n}\n', i) + 2); }).join('\n');
@@ -283,19 +294,21 @@ t('R2/2B-3 user form offers exactly the six roles (five + Viewer) and no capabil
 t('R2 isEligibleEditor: active Job Card Editor with one of the three sections only', Y.isEligibleEditor({ role: 'Job Card Editor', section: 'Mechanical' }) && Y.isEligibleEditor({ role: 'Job Card Editor', section: 'Electrical', active: true })
   && !Y.isEligibleEditor({ role: 'Job Card Editor', section: 'Mechanical', active: false }) && !Y.isEligibleEditor({ role: 'Job Card Editor', section: ' ' }) && !Y.isEligibleEditor({ role: 'Job Card Editor' }) && !Y.isEligibleEditor({ role: 'Job Card Editor', section: 'Mech' })
   && !Y.isEligibleEditor({ role: 'Assistant Engineer', section: 'Mechanical' }) && !Y.isEligibleEditor({ role: 'Senior Engineer', section: 'Mechanical', extraBundles: ['JOB_CARD_EDITOR'] }) && !Y.isEligibleEditor(undefined) && !Y.isEligibleEditor({ role: 'job card editor', section: 'Mechanical' }));
-t('R2 validateNewPassword: ≥8 chars, ≤128, not 64-hex, differs from current', Y.validateNewPassword('Abcdefgh', 'old') === null && !!Y.validateNewPassword('Abcdefg', 'old') && !!Y.validateNewPassword('short', 'old') && !!Y.validateNewPassword('x'.repeat(129), 'old') && !!Y.validateNewPassword('a'.repeat(64), 'old') && !!Y.validateNewPassword('SamePass1', 'SamePass1') && !!Y.validateNewPassword(undefined, 'x'));
+t('R2/2B-2 validateNewPassword: policy (≥8, upper, lower, number, special), ≤72 BYTES (Supabase Auth limit; refused, never shortened), not 64-hex, differs from current', Y.validateNewPassword('Abcdef1!', 'old') === null && !!Y.validateNewPassword('Abcdefgh', 'old') && !!Y.validateNewPassword('Abcdef1', 'old') && !!Y.validateNewPassword('Abcdefg', 'old') && !!Y.validateNewPassword('short', 'old') && !!Y.validateNewPassword('x'.repeat(129), 'old') && !!Y.validateNewPassword('a'.repeat(64), 'old') && !!Y.validateNewPassword('SamePass1', 'SamePass1') && !!Y.validateNewPassword(undefined, 'x'));
 t('R2 DU repair type constant is Unplanned', Y.DU_REPAIR_TYPE === 'Unplanned');
 t('R2 assignment fields are workflow-only (edit/create cannot set them)', ['assignedTo', 'assignedToId'].every(k => Y.JO_CONTROL_FIELDS.includes(k)));
-const sj = app.slice(app.indexOf('  function saveJO('), app.indexOf('  function updateJOStatus('));
+const sj = app.slice(app.indexOf('  async function saveJO('), app.indexOf('  async function updateJOStatus('));
 t('R2 saveJO rejects a Department User repair type other than Unplanned, on create AND on edit', (sj.match(/if \(jo\.repairType !== DU_REPAIR_TYPE\) \{ addToast\('Department Users can only raise Unplanned repairs\.', true\); return; \}/g) || []).length === 2);
-const us = app.slice(app.indexOf('  function updateJOStatus('), app.indexOf('\n  }\n', app.indexOf('  function updateJOStatus(')));
-t('R2 updateJOStatus: start requires an eligible editor (self for JCE, chosen for Admin/AE) checked against the stored users', /if \(isJobCardEditor\(currentUser\)\) \{\n\s*const me = users\.find/.test(us) && /if \(!isEligibleEditor\(me\)\)/.test(us) && /const ed = assignment && users\.find\(u => u\.id === assignment\.assigneeId\);\n\s*if \(!isEligibleEditor\(ed\)\)/.test(us));
-t('R2 updateJOStatus: assignment and status change are one map + one save of job orders only', /\{\.\.\.j, status, \.\.\.assign\}/.test(us) && (us.match(/queueSave\('jobOrders', next\)/g) || []).length === 1 && !/queueSave\('assets'/.test(us) && (us.match(/setJobOrders\(/g) || []).length === 1);
-t('R2 updateJOStatus: Admin/AE: assignee = editor, Received By = acting user, section = editor section; JCE: all self', /assign = \{assignedTo: ed\.fullName, assignedToId: ed\.id, recvName: currentUser\.fullName, section: ed\.section\};/.test(us) && /assign = \{assignedTo: me\.fullName, assignedToId: me\.id, recvName: me\.fullName, section: me\.section\};/.test(us));
+const us = app.slice(app.indexOf('  async function updateJOStatus('), app.indexOf('\n  }\n', app.indexOf('  async function updateJOStatus(')));
+t('R2 updateJOStatus: start requires an eligible editor (the own server profile for a JCE, a listed active editor for Admin/AE)', /if \(isJobCardEditor\(currentUser\)\) \{\n\s*if \(!isEligibleEditor\(currentUser\)\)/.test(us) && /const ed = assignment && users\.find\(u => u\.id === assignment\.assigneeId\);\n\s*if \(!isEligibleEditor\(ed\)\)/.test(us));
+t('R2 updateJOStatus: assignment and status change are ONE server step (jo_set_status) and nothing else', (us.match(/serverChange\('jo_set_status', \{p_job_no: jobNo, p_status: status, p_assignee_legacy_id: assigneeId\}, \['jobOrders'\]/g) || []).length === 1 && !/queueSave\(|dbSave\(|setJobOrders\(/.test(us));
+t('R2 server jo_set_status: Admin/AE: assignee = editor, Received By = acting user, section = editor section; JCE: all self', /'assignedTo', ed\.full_name, 'assignedToId', ed\.legacy_id,\s+'recvName', case when me\.role = 'Job Card Editor' then ed\.full_name else me\.full_name end,/.test(sqlFn('jo_set_status')) && /if me\.role = 'Job Card Editor' then ed := me;/.test(sqlFn('jo_set_status')));
 t('R2 BUG FIX: every JO guard looks up the TARGET job order (j.jobNo===jobNo)', !/jobOrders\.find\(j => j\.jobNo\)/.test(app) && (app.match(/canSeeJO\(currentUser, \(jobOrders\.find\(j => j\.jobNo===jobNo\)\)\)/g) || []).length >= 5);
 const cp = app.slice(app.indexOf('  async function changeOwnPassword('), app.indexOf('  function deleteUser('));
-t('R2 changeOwnPassword: verifies the current password with plain SHA-256 and writes ONLY the password field of the own record, after a successful save', /\(await sha256Hex\(currentPw\)\) !== me\.password/.test(cp) && /const updatedMe = \{\.\.\.me, password: hashed\};\s+const next = users\.map\(u => u\.id === me\.id \? updatedMe : u\);\s+const saveErr = await dbSave\('users', next\);\s+if \(saveErr\) \{[^}]*return false; \}\s+setUsers\(prev => prev\.map\(u => u\.id === me\.id \? updatedMe : u\)\);/.test(cp) && /validateNewPassword\(newPw, currentPw\)/.test(cp));
-t('R2 saveUser self-edit needs profile.edit (Admin/AE/SE)', /editId === currentUser\.id && can\(currentUser,'profile\.edit'\)\)\)\) return;/.test(app));
+t('R2 changeOwnPassword: allowed during a forced change; rules checked first; the SERVER verifies the current password, stores the new one and clears the flag; no hash in the browser',
+  /if \(!allow\(!!currentUser && can\(currentUser,'profile\.password'\) && FORCED_CHANGE_ALLOWED\)\) return false;/.test(cp) && /const err = validateNewPassword\(newPw, currentPw\);/.test(cp)
+  && /await serverFunction\('complete-password-change', \{currentPassword: currentPw, newPassword: newPw\}\)/.test(cp) && !/sha256|dbSave|setUsers/i.test(cp));
+t('R2 saveUser self-edit needs profile.edit (Admin/AE/SE)', /editId === currentUser\.id && can\(currentUser,'profile\.edit'\)\)\)\) return null;/.test(app));
 
 // ---- R3: Job Card Editor sections (Electrical, Mechanical, Maintenance) ----
 const Z = ctx.X;
@@ -304,8 +317,10 @@ const jM = { role: 'Job Card Editor', section: 'Mechanical' }, jE = { role: 'Job
 t('R3 start: OPEN with no section → any editor may start; OPEN with a section → only that section', Z.jceSectionAllows(jM, { status: 'OPEN', section: '' }, 'start') && Z.jceSectionAllows(jE, { status: 'OPEN' }, 'start') && Z.jceSectionAllows(jM, { status: 'OPEN', section: 'Mechanical' }, 'start') && !Z.jceSectionAllows(jM, { status: 'OPEN', section: 'Electrical' }, 'start'));
 t('R3 progress/edit: section must match; no section → not theirs', Z.jceSectionAllows(jM, { status: 'IN PROGRESS', section: 'mechanical' }) && !Z.jceSectionAllows(jM, { status: 'IN PROGRESS', section: 'Electrical' }) && !Z.jceSectionAllows(jM, { status: 'IN PROGRESS', section: '' }) && !Z.jceSectionAllows(jM, { status: 'OPEN', section: '' }) && !Z.jceSectionAllows(jE, { status: 'IN PROGRESS', section: 'Maintenance' }) && !Z.jceSectionAllows(jM, null));
 t('R3 non-editors are never restricted by sections (Admin, AE, SE, DU)', ['Admin', 'Assistant Engineer', 'Senior Engineer', 'Department User'].every(r => Z.jceSectionAllows({ role: r }, { status: 'IN PROGRESS', section: 'Electrical' }, 'progress')));
-const usR3 = app.slice(app.indexOf('  function updateJOStatus('), app.indexOf('\n  }\n', app.indexOf('  function updateJOStatus(')));
-t('R3 save layer: updateJOStatus checks the section before any change; mayEditJO (used by saveJO) checks it for edits; JCE cannot change Section Assigned', /if \(!jceSectionAllows\(currentUser, cur, status==='IN PROGRESS' \? 'start' : 'progress'\)\)/.test(usR3) && usR3.indexOf('jceSectionAllows') < usR3.indexOf('setJobOrders(') && /return canSeeJO\(user, jo\) && jceSectionAllows\(user, jo\);/.test(html) && /pickFields\(jo, JO_WORK_FIELDS\.filter\(k => k !== 'section'\)\)/.test(app));
+const usR3 = app.slice(app.indexOf('  async function updateJOStatus('), app.indexOf('\n  }\n', app.indexOf('  async function updateJOStatus(')));
+t('R3 save layer: updateJOStatus checks the section before the server step; mayEditJO (used by saveJO) checks it for edits; the server refuses another section and keeps Section Assigned',
+  /if \(!jceSectionAllows\(currentUser, cur, status==='IN PROGRESS' \? 'start' : 'progress'\)\)/.test(usR3) && usR3.indexOf('jceSectionAllows') < usR3.indexOf('serverChange(') && /return canSeeJO\(user, jo\) && jceSectionAllows\(user, jo\);/.test(html)
+  && /if not private\.jce_allows\(me, f\.jo, 'edit'\)/.test(sqlFn('jo_update')) && /array_remove\(work, 'section'\)/.test(sqlFn('jo_update')));
 
 // ---- R3: asset import plan (non-destructive) ----
 const CATS3 = ['01 FUEL FARM', '02 CEMENT PLANT', '03 LPG PLANT'];
@@ -330,85 +345,104 @@ t('IMPORT save layer: CSV parse only previews (no save); apply blocks invalid fi
 
 // ---- AUTH (Phase 2B-1): authentication state, verification and profile, offline with synthetic records ----
 (async () => {
-  const { authVerify, profileFor, AUTH_SIGNED_OUT, findLoginCandidates, authAdapterFor } = ctx.X;
-  const sha = s => require('crypto').createHash('sha256').update(String(s)).digest('hex');
-  const hashFn = async s => sha(s);
+  const { signInOutcome, signInEmailFor, normalizeEmployeeId, profileFromRow, signedInState, profileFor, AUTH_SIGNED_OUT, authAdapterFor } = ctx.X;
   const ad = authAdapterFor('staging');
-  const U = [
-    { id: 1, username: 'u_admin', role: 'Admin', active: true, password: sha('Pw-Admin-1') },
-    { id: 2, username: 'u_ae', role: 'Assistant Engineer', active: true, password: sha('Pw-AE-1') },
-    { id: 3, username: 'u_off', role: 'Senior Engineer', active: false, password: sha('Pw-Off-1') },
-    { id: 4, username: 'u_blank', role: 'Admin', active: true, password: '' },
-    { id: 5, username: 'u_plain', role: 'Admin', active: true, password: 'Pw-Plain-1' },
-    { id: 6, username: 'CD456', role: 'Job Card Editor', section: 'Mechanical', active: true, password: sha('Pw-CD-1') },
-    { id: 7, username: 'u_dup', role: 'Admin', active: true, password: sha('Pw-Dup-1') },
-    { id: 8, username: 'u_dup', role: 'Admin', active: true, password: sha('Pw-Dup-1') },
-  ];
-  const V = (loginId, password, extra = {}) => authVerify({ adapter: ad, loginId, password, users: U, usersLoaded: true, hashFn, ...extra });
   t('AUTH initial state is signed out (no subject) and frozen', AUTH_SIGNED_OUT.status === 'signed-out' && AUTH_SIGNED_OUT.subject === null && Object.isFrozen(AUTH_SIGNED_OUT));
-  let r = await V('u_admin', 'Pw-Admin-1');
-  t('AUTH correct username + password signs in; the state holds only id/username/adapter/env/time (no role, no hash) and is frozen',
-    r.ok && r.state.status === 'signed-in' && JSON.stringify(Object.keys(r.state.subject)) === '["id","username"]' && r.state.adapter === 'appdata' && r.state.env === 'staging'
-    && !('role' in r.state) && !JSON.stringify(r.state).includes(U[0].password) && Object.isFrozen(r.state) && Object.isFrozen(r.state.subject));
-  t('AUTH wrong password refused', !(await V('u_admin', 'wrong')).ok);
-  t('AUTH the stored hash typed as the password is refused (no passthrough)', !(await V('u_admin', U[0].password)).ok);
-  t('AUTH sign-in by username (exact, surrounding spaces trimmed as the original form did); a different case does not match', (await V(' u_ae ', 'Pw-AE-1')).ok && (await V('CD456', 'Pw-CD-1')).ok && !(await V('U_AE', 'Pw-AE-1')).ok && !(await V('cd456', 'Pw-CD-1')).ok);
-  t('AUTH duplicate username (ambiguous) refused', !(await V('u_dup', 'Pw-Dup-1')).ok && findLoginCandidates(U, 'u_dup').length === 2);
-  t('AUTH inactive account refused', !(await V('u_off', 'Pw-Off-1')).ok);
-  t('AUTH empty stored password refused, with empty or any input', !(await V('u_blank', '')).ok && !(await V('u_blank', 'x')).ok);
-  t('AUTH unhashed stored password refused (no plaintext comparison)', !(await V('u_plain', 'Pw-Plain-1')).ok);
-  t('AUTH unknown user or empty login ID refused', !(await V('nobody', 'Pw-Admin-1')).ok && !(await V('', 'Pw-Admin-1')).ok && !(await V(null, 'Pw-Admin-1')).ok);
-  r = await V('u_admin', 'Pw-Admin-1', { usersLoaded: false });
-  t('AUTH users not loaded from the backend: unavailable, never signs in (no fallback)', !r.ok && r.reason === 'unavailable');
-  r = await V('u_admin', 'Pw-Admin-1', { adapter: null });
-  t('AUTH no adapter (blocked environment): unavailable', !r.ok && r.reason === 'unavailable');
-  t('AUTH failure results carry no user data', JSON.stringify(await V('u_admin', 'wrong')) === '{"ok":false,"reason":"invalid"}');
-  const st = (await V('u_ae', 'Pw-AE-1')).state;
-  t('PROFILE is the stored record of the subject (role from the record)', profileFor(st, U).role === 'Assistant Engineer');
-  t('PROFILE follows a role change in the stored users', profileFor(st, U.map(u => u.id === 2 ? { ...u, role: 'Senior Engineer' } : u)).role === 'Senior Engineer');
-  t('PROFILE null when the account is deactivated, deleted or renamed',
-    profileFor(st, U.map(u => u.id === 2 ? { ...u, active: false } : u)) === null && profileFor(st, U.filter(u => u.id !== 2)) === null
-    && profileFor(st, U.map(u => u.id === 2 ? { ...u, username: 'other' } : u)) === null);
-  t('PROFILE null when signed out or the state is not a signed-in state', profileFor(AUTH_SIGNED_OUT, U) === null && profileFor(null, U) === null && profileFor({ status: 'x', subject: { id: 1, username: 'u_admin' } }, U) === null);
-  t('PROFILE a state claiming a role still gets the STORED role', profileFor({ status: 'signed-in', subject: { id: 2, username: 'u_ae', role: 'Admin' }, role: 'Admin' }, U).role === 'Assistant Engineer');
-  t('AUTH adapters: production and staging only; frozen; anything else none', authAdapterFor('production').env === 'production' && authAdapterFor('staging').env === 'staging'
+  t('AUTH Employee ID: exactly 5 letters or digits, trimmed, upper-cased; anything else is no ID (and no request is made)',
+    normalizeEmployeeId(' ab123 ') === 'AB123' && ['AB12', 'AB1234', 'AB-12', 'AB 12', 'ÄB123', '', null, undefined].every(x => normalizeEmployeeId(x) === null));
+  t('AUTH sign-in address derived from the Employee ID (lower-case) and the configured domain; no domain or bad ID → none',
+    signInEmailFor('ab123', 'accounts.example.invalid') === 'ab123@accounts.example.invalid' && signInEmailFor('AB123', null) === null && signInEmailFor('AB123', 'nodot') === null && signInEmailFor('x', 'a.b') === null);
+  t('AUTH Supabase Auth answer → result: a session is success; any refusal reads the same ("invalid"); GoTrue text never shown',
+    signInOutcome({ data: { session: { access_token: 'a' } } }).ok === true
+    && [{ error: { status: 400, message: 'Invalid login credentials' } }, { error: { status: 400, message: 'Email not confirmed' } }, { error: { status: 400, message: 'User is banned' } }, { data: { session: null } }]
+      .every(r => JSON.stringify(signInOutcome(r)) === JSON.stringify({ ok: false, reason: 'invalid', message: 'Invalid Employee ID or password. Please try again.' })));
+  t('AUTH network / server failure → "unavailable" (connection message); too many attempts → its own message', [null, { error: { status: 0 } }, { error: { status: 503 } }, { error: { name: 'AuthRetryableFetchError' } }].every(r => signInOutcome(r).reason === 'unavailable' && /could not be reached/.test(signInOutcome(r).message))
+    && /Too many sign-in attempts/.test(signInOutcome({ error: { status: 429 } }).message));
+  const ROW = { user_id: 'u-1', legacy_id: 2, employee_id: 'AB123', full_name: 'Test AE', role: 'Assistant Engineer', active: true, must_change_password: false, recovery_email: 'x@example.invalid', recovery_email_verified_at: null };
+  const PR = profileFromRow(ROW);
+  t('PROFILE row → app record: numeric legacy id kept as id, Employee ID as sign-in name, flags typed; no password field', PR.id === 2 && PR.employeeId === 'AB123' && PR.username === 'AB123' && PR.must_change_password === false
+    && PR.recoveryEmailVerified === false && !('password' in PR) && profileFromRow({ ...ROW, legacy_id: '2' }) === null && profileFromRow(null) === null);
+  t('PROFILE a malformed forced-change flag fails closed', profileFromRow({ ...ROW, must_change_password: 'yes' }).must_change_password === false && profileFromRow({ ...ROW, must_change_password: true }).must_change_password === true);
+  const st = signedInState(ad, PR);
+  t('AUTH signed-in state holds only id/username/adapter/env/time (no role) and is frozen', st.status === 'signed-in' && JSON.stringify(Object.keys(st.subject)) === '["id","username"]' && st.adapter === 'supabase-auth' && !('role' in st) && Object.isFrozen(st));
+  t('PROFILE the signed-in user is the SERVER profile of the subject; inactive / other account → none', profileFor(st, PR).role === 'Assistant Engineer' && profileFor(st, { ...PR, active: false }) === null
+    && profileFor(st, { ...PR, id: 3 }) === null && profileFor(st, null) === null && profileFor(AUTH_SIGNED_OUT, PR) === null);
+  t('PROFILE a state claiming a role still gets the SERVER role', profileFor({ status: 'signed-in', subject: { id: 2, username: 'AB123', role: 'Admin' } }, PR).role === 'Assistant Engineer');
+  t('AUTH adapters: production and staging only (Supabase Auth); frozen; anything else none', authAdapterFor('production').name === 'supabase-auth' && authAdapterFor('staging').env === 'staging'
     && Object.isFrozen(authAdapterFor('production')) && ['blocked', undefined, null, '', 'mock', 'local', 'Production'].every(x => authAdapterFor(x) === null));
-  // static: the app no longer reads or writes a browser session and signs in through authVerify with a plain SHA-256
   const appSrc = html.slice(html.indexOf('function App()'));
-  t('AUTH app wiring: no browser-session read/write; sign-in via authVerify + sha256Hex; auth state starts signed out',
-    !/localStorage\.(getItem|setItem)\(SESSION_KEY/.test(html) && /authVerify\(\{adapter: authAdapter[^}]*hashFn: sha256Hex\}\)/.test(appSrc) && /useState\(AUTH_SIGNED_OUT\)/.test(appSrc)
-    && /const currentUser = isValidAuthState\(auth, authAdapter\) \? profileFor\(auth, users\) : null;/.test(appSrc) && !/setCurrentUser/.test(html));
-  // ---- release 2026-10-14: own-password rule, unique usernames, no temporary passwords / forced change / Employee ID ----
-  const { validateNewPassword } = ctx.X;
-  t('PASSWORD own change: at least 8 characters, at most 128, not a 64-hex string, different from the current one (no other policy)',
-    validateNewPassword('short1', 'x') !== null && validateNewPassword('abcdefgh', 'x') === null && validateNewPassword('a'.repeat(129), 'x') !== null
-    && validateNewPassword('a'.repeat(64), 'x') !== null && validateNewPassword('Same-Pass-1', 'Same-Pass-1') !== null && validateNewPassword(undefined, 'x') !== null);
-  const EU = [{ id: 1, username: 'u_admin' }, { id: 2, username: 'u_two' }];
-  t('USERNAME duplicate rejected for new accounts and edits; an account keeps its own username', /username is already used/.test(validateUserRecord({ role: 'Admin', username: 'u_two' }, [], { users: EU }))
-    && /username is already used/.test(validateUserRecord({ role: 'Admin', username: 'u_two' }, [], { users: EU, editId: 1 })) && validateUserRecord({ role: 'Admin', username: 'u_two' }, [], { users: EU, editId: 2 }) === null);
-  t('USERNAME checks run after the existing role/assignment checks (earlier messages unchanged)', /valid role/.test(validateUserRecord({ role: 'x', username: 'u_two' }, [], { users: EU })));
-  t('NORM role-only fields removed for other roles; every other field kept', (n => !('department' in n) && !('section' in n) && n.id === 9 && n.fullName === 'X')(normalizeUserRecord({ role: 'Admin', department: 'HR', section: 'Electrical', id: 9, fullName: 'X' })));
+  const hl = appSrc.slice(appSrc.indexOf('  async function handleLogin('), appSrc.indexOf('  function handleLogout('));
+  t('AUTH app wiring: Supabase Auth password sign-in with the derived address; no request for a malformed ID; the server profile is read; data only without a pending forced change',
+    ['const email = signInEmailFor(loginId, SIGN_IN_DOMAIN);', "if (!email || typeof password !== 'string' || !password) return {ok: false, reason: 'invalid', message: SIGN_IN_FAILED};",
+     'await sb.auth.signInWithPassword({email, password})', 'const p = await loadProfile();', 'if (!mustChangePassword(p.profile)) loadAll(p.profile);'].every(x => hl.includes(x))
+    && appSrc.includes(".from('profiles').select('*').eq('user_id', u.user.id).maybeSingle()") && appSrc.includes('useState(AUTH_SIGNED_OUT)')
+    && hl.indexOf('loadAll(p.profile)') > hl.indexOf('const p = await loadProfile();') && hl.indexOf('const p = await loadProfile();') > hl.indexOf('signInWithPassword'));
+  t('AUTH production sign-in stays unconfigured until the owner decides the domain (fails closed with a message)', html.includes('const PRODUCTION_SIGN_IN_DOMAIN = null;')
+    && hl.includes("if (!SIGN_IN_DOMAIN) return {ok: false, reason: 'unavailable', message: SIGN_IN_NOT_CONFIGURED};"));
+  t('AUTH no browser password check of any kind: no hashing, no users list, no hash passthrough', !/sha256|crypto\.subtle\.digest|authVerify|findLoginCandidates|hashPwd|usersFromDb/.test(html.slice(html.indexOf('<script type="text/babel">'))));
+  t('AUTH an inactive / missing profile after sign-in ends the session again (no access)', /if \(!p\.profile\) \{\s+writeGate\.signedIn = false;\s+try \{ await sb\.auth\.signOut\(\{scope: 'local'\}\); \} catch\(_\) \{\}/.test(hl));
+  // ---- Phase 2B-2: password policy, temporary passwords, Employee ID, forced change (offline, synthetic) ----
+  const { validatePassword, passwordProblems, validateNewPassword } = ctx.X;
+  const PV = [
+    ['valid', 'Abcdef1!', []], ['no uppercase', 'abcdef1!', ['upper']], ['no lowercase', 'ABCDEF1!', ['lower']], ['no number', 'Abcdefg!', ['digit']],
+    ['no special', 'Abcdefg1', ['special']], ['space is not special', 'Abcdef1 x', ['special']], ['7 characters', 'Abcd1!x', ['length']],
+    ['only letters', 'abcdefgh', ['upper', 'digit', 'special']], ['empty', '', ['empty']], ['not a string', undefined, ['empty']], ['null', null, ['empty']],
+    ['73 bytes', 'Aa1!' + 'x'.repeat(69), ['tooLong']], ['72 bytes ok', 'Aa1!' + 'x'.repeat(68), []], ['37 two-byte characters (74 bytes)', 'Aa1!' + 'é'.repeat(35), ['tooLong']], ['unicode special ok', 'Abcdef1€', []],
+  ];
+  for (const [n, pw, exp] of PV) t('POLICY ' + n, JSON.stringify(passwordProblems(pw)) === JSON.stringify(exp) && (exp.length ? typeof validatePassword(pw) === 'string' : validatePassword(pw) === null), passwordProblems(pw));
+  t('POLICY messages name every missing rule; too short mentions "at least 8"', validatePassword('abc').includes('at least 8') && ['uppercase', 'number', 'special'].every(w => validatePassword('abcdefgh').includes(w)));
+  t('POLICY change-password validation uses the policy and refuses reuse / 64-hex', validateNewPassword('abcdefgh', 'x') !== null && validateNewPassword('Abcdef1!', 'Abcdef1!') !== null && validateNewPassword('Abcdef1!', 'old') === null && validateNewPassword('a'.repeat(64), 'x') !== null);
+  // Temporary passwords: generated ONLY by the server (p2/functions/_shared/policy.mjs); tested there, with the same rules.
+  const { generateTempPassword, validatePassword: serverValidate } = await import(require('url').pathToFileURL(require('path').join(__dirname, '..', 'p2', 'functions', '_shared', 'policy.mjs')).href);
+  const wc = require('crypto').webcrypto, rnd = n => wc.getRandomValues(new Uint32Array(n));
+  const temps = Array.from({ length: 600 }, () => generateTempPassword(rnd));
+  t('TEMP (server) 600 generated passwords satisfy the app policy AND the server policy, use only the allowed alphabet',
+    temps.every(p => validatePassword(p) === null && serverValidate(p) === null && /^[A-HJ-NP-Za-km-z2-9!@#$%*\-_=+?]+$/.test(p)), temps.find(p => validatePassword(p) !== null) ? 'invalid sample found' : '');
+  t('TEMP (server) no duplicates among 600 (secure random source)', new Set(temps).size === temps.length);
+  t('TEMP (server) even a degenerate source (all zeros) yields a policy-compliant password', validatePassword(generateTempPassword(n => new Uint32Array(n))) === null);
+  t('TEMP the browser generates no password and has no random source for it', !/generateTempPassword|getRandomValues/.test(html.slice(html.indexOf('<script type="text/babel">'))));
+  const EU = [{ id: 1, username: 'u_admin', employeeId: 'AB123' }, { id: 2, username: 'CD456' }, { id: 3, username: 'u_three' }];
+  const VU = (u, opts) => validateUserRecord({ role: 'Admin', ...u }, [], { users: EU, ...opts });
+  t('EMPID required for new accounts only', /Employee ID is required/.test(VU({ username: 'n1' }, { isNew: true })) && VU({ username: 'n1' }, { editId: 3 }) === null);
+  t('EMPID format: exactly 5 letters or digits', ['AB12', 'AB1234', 'AB-12', 'AB 12', 'ÄB123'].every(e => /exactly 5/.test(VU({ username: 'n1', employeeId: e }, { isNew: true }))) && VU({ username: 'n1', employeeId: 'xy789' }, { isNew: true }) === null);
+  t('EMPID duplicate (case-insensitive) rejected; the account itself may keep its own ID', /already used/.test(VU({ username: 'n1', employeeId: 'ab123' }, { isNew: true })) && VU({ username: 'u_admin', employeeId: 'AB123' }, { editId: 1 }) === null);
+  t('EMPID equal to another account\'s username rejected (ambiguous login)', /matches another account's username/.test(VU({ username: 'n1', employeeId: 'cd456' }, { isNew: true })));
+  t('USERNAME duplicate rejected; a 5-character username equal to another account\'s Employee ID rejected (ambiguous login)',
+    /username is already used/.test(VU({ username: 'u_three', employeeId: 'ZZ001' }, { isNew: true })) && /matches another account's Employee ID/.test(VU({ username: 'ab123', employeeId: 'ZZ002' }, { isNew: true })));
+  t('EMPID checks run after the existing role/assignment checks (earlier messages unchanged)', /valid role/.test(validateUserRecord({ role: 'x', employeeId: 'bad' }, [], { users: EU, isNew: true })));
+  const nE = normalizeUserRecord({ role: 'Admin', employeeId: ' ab123 ', must_change_password: true, id: 9 }), nB = normalizeUserRecord({ role: 'Admin', employeeId: '  ' });
+  t('NORM Employee ID trimmed and upper-cased; blank removed; the forced-change flag and other fields kept', nE.employeeId === 'AB123' && nE.must_change_password === true && nE.id === 9 && !('employeeId' in nB));
+  // static wiring (the real App code)
   const appS = html.slice(html.indexOf('\nfunction App() {'), html.indexOf('\nfunction NavItem('));
-  t('RELEASE no temporary passwords, forced password change, Employee ID login, password-reset tool, recovery or notification code in the app',
-    !/must_change_password|mustChangePassword|generateTempPassword|LOCAL_ACCOUNT_TOOLS|resetUserPassword|ForcePasswordChange|TempPasswordNotice|employeeId|EMPLOYEE_ID_RE|PASSWORD_RULES|recoveryStep|RecoveryLanding|NotificationBell|notificationMode|local_mock_notifications|LoginCircuit|circuitTraces|signalSchedule/.test(html));
-  t('WIRING saveUser: role/assignment + unique username validated; new accounts need a password; admin-set passwords hashed with plain SHA-256 (no passthrough)',
-    /validateUserRecord\(user, customPlants, \{users, editId\}\)/.test(appS) && /if \(!editId && !\(typeof user\.password === 'string' && user\.password !== ''\)\)/.test(appS) && /await sha256Hex\(user\.password\)/.test(appS));
+  const su = appS.slice(appS.indexOf('  async function saveUser('), appS.indexOf('  // ── Recovery links'));
+  t('WIRING account administration only through the admin-users server function (create / update / set_active / reset_password); the browser never sets or hashes a password',
+    /serverFunction\('admin-users', \{action: 'create', employeeId: user\.employeeId/.test(su) && /serverFunction\('admin-users', \{action: 'update', userId: target\.userId/.test(su)
+    && /serverFunction\('admin-users', \{action: 'set_active', userId: target\.userId, active: false\}\)/.test(su) && /serverFunction\('admin-users', \{action: 'reset_password', userId: target\.userId\}\)/.test(su)
+    && !/password:/.test(su.replace(/temporaryPassword/g, '')) && !/sha256|dbSave\('users'/.test(su));
+  t('WIRING saveUser: Employee ID + uniqueness + role/assignment validated before the server call; the server temporary password is returned once for display',
+    /validateUserRecord\(user, customPlants, \{users, editId, isNew: !editId\}\)/.test(su) && /return editId \? null : \{temporaryPassword: res\.body\.temporaryPassword, name: user\.fullName\};/.test(su));
+  t('WIRING accounts are deactivated, never deleted; an Admin cannot deactivate or reset their own account', /action: 'set_active', userId: target\.userId, active: false/.test(su) && /Cannot deactivate your own account/.test(su) && /Use Change Password for your own account/.test(su));
+  t('WIRING the user form has no password field; the Employee ID is fixed once created; a recovery email can be set', (f => !/type=\{generated|Set password|New Password/.test(f) && /readOnly=\{selfOnly \|\| mode==='edit'\}/.test(f) && /Recovery email \(for password reset\)/.test(f))(html.slice(html.indexOf('function UserFormModal('), html.indexOf('function UserFormModal(') + 6000)));
+  t('WIRING forced change: the gate renders instead of the app, and allow() refuses everything but the own password change',
+    /if \(mustChangePassword\(currentUser\)\) return \(/.test(appS) && /if \(mustChangePassword\(currentUser\) && ok !== FORCED_CHANGE_ALLOWED\)/.test(appS));
   // ---- Phase 2B-4: session lifecycle (offline, synthetic) ----
-  const { isValidAuthState, authzFingerprint } = ctx.X;
-  const AP = authAdapterFor('staging'), good = { status: 'signed-in', subject: { id: 2, username: 'u_ae' }, adapter: 'appdata', env: 'staging', since: 'x' };
+  const { isValidAuthState, mustChangePassword, authzFingerprint } = ctx.X;
+  const AP = authAdapterFor('staging'), good = { status: 'signed-in', subject: { id: 2, username: 'u_ae' }, adapter: 'supabase-auth', env: 'staging', since: 'x' };
   t('SESSION a well-formed signed-in state of this environment is valid', isValidAuthState(good, AP) === true);
   const BAD = [['null', null], ['string', 'signed-in'], ['signed out', AUTH_SIGNED_OUT], ['status case', { ...good, status: 'Signed-in' }], ['status truthy', { ...good, status: true }],
     ['no subject', { ...good, subject: null }], ['subject string', { ...good, subject: 'u_ae' }], ['id object', { ...good, subject: { id: {}, username: 'u_ae' } }],
     ['id missing', { ...good, subject: { username: 'u_ae' } }], ['username empty', { ...good, subject: { id: 2, username: '' } }], ['username number', { ...good, subject: { id: 2, username: 5 } }],
-    ['other env', { ...good, env: 'production' }], ['other adapter', { ...good, adapter: 'supabase-auth' }], ['no adapter field', { ...good, adapter: undefined }], ['array', [good]]];
+    ['other env', { ...good, env: 'production' }], ['other adapter', { ...good, adapter: 'appdata' }], ['no adapter field', { ...good, adapter: undefined }], ['array', [good]]];
   for (const [n, st2] of BAD) t('SESSION malformed state denied: ' + n, isValidAuthState(st2, AP) === false);
   t('SESSION no adapter (blocked environment) → every state is invalid', isValidAuthState(good, authAdapterFor('blocked')) === false && isValidAuthState(good, null) === false);
-  t('SESSION profileFor rejects a non-object subject', profileFor({ status: 'signed-in', subject: 'u_ae' }, U) === null);
+  t('SESSION profileFor rejects a non-object subject', profileFor({ status: 'signed-in', subject: 'u_ae' }, { id: 2, username: 'u_ae', role: 'Admin', active: true }) === null);
+  t('FORCED any truthy flag forces a change (fail closed); absent/false does not',
+    [true, 1, 'true', 'yes', {}, []].every(v => mustChangePassword({ must_change_password: v })) && [undefined, false, 0, '', null].every(v => !mustChangePassword({ must_change_password: v })) && !mustChangePassword(null));
   const fu = { id: 2, username: 'u_ae', role: 'Assistant Engineer', password: 'h', email: 'x' };
-  t('AUTHZ fingerprint changes on role, scope and status; empty when signed out',
+  t('AUTHZ fingerprint changes on role, scope, status and forced-change; empty when signed out',
     authzFingerprint(null) === '' && ['role', 'department', 'section'].every(k => authzFingerprint(fu) !== authzFingerprint({ ...fu, [k]: 'Other' }))
     && authzFingerprint(fu) !== authzFingerprint({ ...fu, assignedCategories: ['A'] }) && authzFingerprint(fu) !== authzFingerprint({ ...fu, active: false })
-    && authzFingerprint(fu) !== authzFingerprint({ ...fu, id: 3 }));
+    && authzFingerprint(fu) !== authzFingerprint({ ...fu, must_change_password: true }) && authzFingerprint(fu) !== authzFingerprint({ ...fu, id: 3 }));
   t('AUTHZ fingerprint ignores the password and contact fields (a password change does not count as a role change)',
     authzFingerprint(fu) === authzFingerprint({ ...fu, password: 'other', email: 'y' }) && !authzFingerprint(fu).includes('"h"'));
   t('STORAGE (N1) no dataset is written to browser storage: the only localStorage writes are the sidebar and theme preferences',
@@ -418,8 +452,9 @@ t('IMPORT save layer: CSV parse only previews (no save); apply blocks invalid fi
   t('STORAGE (N1) every legacy data copy (session, users, assets/JOs, PM, employees, categories) is deleted on load',
     /\[SESSION_KEY, USERS_KEY, STORE_KEY, PM_KEY, EMPLOYEES_KEY, CUSTOM_PLANTS_KEY\]\.forEach\(k => localStorage\.removeItem\(k\)\)/.test(appS)
     && ["STORE_KEY = 'cmms_vg_state'", "PM_KEY = 'cmms_vg_pm'", "EMPLOYEES_KEY = 'cmms_vg_employees'", "USERS_KEY = 'cmms_vg_users'", "CUSTOM_PLANTS_KEY = 'cmms_vg_plants'"].every(k => html.includes(k)));
-  t('WIRING logout closes every App-level form and returns to the dashboard',
-    /function handleLogout\(forced\) \{[^]*?writeGate\.signedIn = false;\s+setAuth\(AUTH_SIGNED_OUT\);\s+setAssetModal\(null\); setJoModal\(null\); setJoViewModal\(null\); setAssetImport\(null\);[^\n]*\s+setPage\('dashboard'\);/.test(appS));
+  t('WIRING logout ends the server session, clears every dataset and account read under it, closes every form and returns to the dashboard',
+    /function handleLogout\(forced\) \{[^]*?writeGate\.signedIn = false;\s+signedInRef\.current = false;\s+pending\.finally\(\(\) => \{ if \(sb\) sb\.auth\.signOut\(\)\.catch\(\(\) => \{\}\); \}\);[^\n]*\s+setAuth\(AUTH_SIGNED_OUT\); setProfile\(null\); setUsers\(\[\]\);\s+(\/\/[^\n]*\s+)?setAssets\(\[\]\); setJobOrders\(\[\]\); setPM\(\[\]\); setEmployees\(\[\]\); setCustomPlants\(\[\]\);\s+writableKeys\.clear\(\); isLoaded\.current = false; setDbLoaded\(false\); setLoadIssue\(null\); setDeferredFix\(\{employees: false\}\);\s+setAssetModal\(null\); setJoModal\(null\); setJoViewModal\(null\); setAssetImport\(null\);[^\n]*\s+setPage\('dashboard'\);/.test(appS));
+  t('WIRING a session ended on the server (expired/revoked) or a deactivated account signs the app out', /if \(event === 'SIGNED_OUT' && signedInRef\.current\) \{ handleLogout\(true\);/.test(appS) && /if \(r\.gone\) \{ handleLogout\(true\); addToast\('Your account is no longer active/.test(appS));
   t('WIRING an authorization change closes forms, leaves pages the role cannot see, and re-mounts the page area',
     /const authzKey = authzFingerprint\(currentUser\);/.test(appS) && /\}, \[authzKey\]\);/.test(appS) && /<div className="main" key=\{authzKey\}>/.test(appS));
   t('WIRING the Users tab renders only while the CURRENT user may administer users', /\{tab==='users' && canAdminUsers && \(/.test(html));
@@ -428,35 +463,37 @@ t('IMPORT save layer: CSV parse only previews (no save); apply blocks invalid fi
   // ---- N1: safe initialization (planDataLoad), per-dataset saves, print escaping (offline, synthetic) ----
   const { planDataLoad, escHtml } = ctx.X;
   const R = (k, v) => ({ key: k, value: v });
-  const FULL = ['assets', 'jobOrders', 'pm', 'employees', 'users', 'customPlants'].map(k => R(k, []));
-  const PROD = { envName: 'production', seedOptIn: true }, STG = { envName: 'staging', seedOptIn: true }, STG0 = { envName: 'staging', seedOptIn: false };
-  t('LOAD read error → fail (never seed), in every environment', [PROD, STG, STG0].every(o => planDataLoad({ data: null, error: { message: 'x' } }, o).action === 'fail' && planDataLoad({ data: FULL, error: { message: 'x' } }, o).reason === 'failed'));
-  t('LOAD unusable responses → fail', [undefined, null, 'x', {}, { data: 'rows' }, { data: {} }].every(r => planDataLoad(r, STG).action === 'fail'));
-  t('LOAD zero rows in production → fail "empty" even if a seed opt-in were present (never seeds production)', planDataLoad({ data: [] }, PROD).action === 'fail' && planDataLoad({ data: [] }, PROD).reason === 'empty');
-  t('LOAD zero rows in staging WITHOUT the explicit opt-in → fail "empty"', planDataLoad({ data: [] }, STG0).reason === 'empty' && planDataLoad({ data: [] }, { envName: 'staging' }).reason === 'empty' && planDataLoad({ data: [] }, { envName: 'staging', seedOptIn: 'true' }).reason === 'empty');
-  t('LOAD only the staging marker row + opt-in → seed (fresh local mock); in production → fail', planDataLoad({ data: [R('__environment', { env: 'staging' })] }, STG).action === 'seed' && planDataLoad({ data: [R('__environment', { env: 'staging' })] }, PROD).action === 'fail');
-  t('LOAD blocked/unknown environment never seeds', ['blocked', undefined, '', 'Staging'].every(e => planDataLoad({ data: [] }, { envName: e, seedOptIn: true }).action === 'fail'));
-  const full = planDataLoad({ data: FULL }, PROD);
-  t('LOAD all six datasets → load, all writable, none missing', full.action === 'load' && full.loaded.length === 6 && !full.missing.length && !full.invalid.length);
-  const part = planDataLoad({ data: FULL.filter(r => r.key !== 'pm' && r.key !== 'users') }, PROD);
-  t('LOAD missing datasets → partial; only the datasets read are writable', part.action === 'partial' && JSON.stringify(part.missing) === '["pm","users"]' && !part.loaded.includes('pm') && part.loaded.includes('assets'));
-  const bad = planDataLoad({ data: FULL.map(r => r.key === 'assets' ? R('assets', null) : r.key === 'employees' ? R('employees', { a: 1 }) : r) }, STG);
-  t('LOAD malformed dataset values (null, object) → partial, reported as invalid, NOT writable and never seeded', bad.action === 'partial' && JSON.stringify(bad.invalid) === '["assets","employees"]' && !bad.loaded.includes('assets'));
-  t('LOAD rows with only unknown keys or only malformed values → fail "empty" (nothing writable)', planDataLoad({ data: [R('other', [])] }, PROD).reason === 'empty' && planDataLoad({ data: [R('assets', 'x')] }, STG).reason === 'empty');
-  t('LOAD empty arrays are valid data (an empty dataset is loaded, not missing)', planDataLoad({ data: FULL }, PROD).loaded.includes('jobOrders'));
+  const KEYS5 = ['assets', 'jobOrders', 'pm', 'employees', 'customPlants'], FULL = KEYS5.map(k => R(k, []));
+  const { datasetsFor } = ctx.X;
+  t('LOAD read error → fail', planDataLoad({ data: null, error: { message: 'x' } }).action === 'fail' && planDataLoad({ data: FULL, error: { message: 'x' } }).reason === 'failed');
+  t('LOAD unusable responses → fail', [undefined, null, 'x', {}, { data: 'rows' }, { data: {} }].every(r => planDataLoad(r).action === 'fail'));
+  t('LOAD zero rows → fail "empty"; the browser never seeds (whatever options are passed)', planDataLoad({ data: [] }).reason === 'empty' && planDataLoad({ data: [] }, { envName: 'staging', seedOptIn: true }).action === 'fail'
+    && planDataLoad({ data: [R('__environment', { env: 'staging' })] }, { envName: 'staging', seedOptIn: true }).action === 'fail');
+  const full = planDataLoad({ data: FULL }, { expected: KEYS5 });
+  t('LOAD all five datasets → load, all writable, none missing (accounts are not a dataset)', full.action === 'load' && full.loaded.length === 5 && !full.missing.length && !full.invalid.length);
+  const part = planDataLoad({ data: FULL.filter(r => r.key !== 'pm') }, { expected: KEYS5 });
+  t('LOAD missing datasets → partial; only the datasets read are writable', part.action === 'partial' && JSON.stringify(part.missing) === '["pm"]' && !part.loaded.includes('pm') && part.loaded.includes('assets'));
+  const bad = planDataLoad({ data: FULL.map(r => r.key === 'assets' ? R('assets', null) : r.key === 'employees' ? R('employees', { a: 1 }) : r) }, { expected: KEYS5 });
+  t('LOAD malformed dataset values (null, object) → partial, reported as invalid, NOT writable', bad.action === 'partial' && JSON.stringify(bad.invalid) === '["assets","employees"]' && !bad.loaded.includes('assets'));
+  t('LOAD rows with only unknown keys or only malformed values → fail "empty"', planDataLoad({ data: [R('other', [])] }).reason === 'empty' && planDataLoad({ data: [R('assets', 'x')] }).reason === 'empty');
+  t('LOAD a users row is never a dataset (ignored even if a server sent one)', !planDataLoad({ data: [...FULL, R('users', [{ id: 1 }])] }, { expected: KEYS5 }).loaded.includes('users'));
+  t('LOAD Department User reads assets, job orders (scoped server lists) and categories only; every other role all five', JSON.stringify(datasetsFor({ role: 'Department User' })) === '["assets","jobOrders","customPlants"]'
+    && ['Admin', 'Assistant Engineer', 'Senior Engineer', 'Job Card Editor', 'Viewer'].every(r => JSON.stringify(datasetsFor({ role: r })) === JSON.stringify(KEYS5)));
+  const rd = html.slice(html.indexOf('async function readDatasets('), html.indexOf('// N2: JSON with sorted object keys.'));
+  t('WIRING Department Users read assets / job orders ONLY through the server scoped lists', /const scoped = \{assets: 'asset_list', jobOrders: 'jo_list'\};/.test(rd) && /sb\.rpc\(scoped\[k\]\)/.test(rd) && /sb\.from\('app_data'\)\.select\('key,value'\)\.in\('key', direct\)/.test(rd));
   const evil = '<img src=x onerror="alert(1)">&\'<script>x</script>';
   t('ESC escapes & < > " \' and leaves plain text unchanged', escHtml(evil) === '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;&amp;&#39;&lt;script&gt;x&lt;/script&gt;' && escHtml('Pump 3/4 — 25T') === 'Pump 3/4 — 25T' && escHtml(null) === '' && escHtml(0) === '0');
   // static wiring
-  const dbS = html.slice(html.indexOf('async function dbSave('), html.indexOf('async function sha256Hex('));
-  t('WIRING dbSave refuses any dataset that was not read completely in this load', /if \(DATA_KEYS\.includes\(key\) && !writableKeys\.has\(key\)\) \{[^}]*return new Error/.test(dbS));
-  const ld = appS.slice(appS.indexOf('  // ── Load from Supabase on mount'), appS.indexOf('  // ── Real-time sync'));
-  t('WIRING load: a failed or empty read shows the failure screen and writes nothing', /if \(plan\.action === 'fail'\) \{ fail\(plan\.reason/.test(ld) && /, err => fail\('failed', err\)\);/.test(ld) && /if \(loadIssue && loadIssue\.kind !== 'partial'\) return \(/.test(appS));
-  t('WIRING load: only the datasets read become writable; unread asset/JO lists are shown empty, never built-in data', /plan\.loaded\.forEach\(k => writableKeys\.add\(k\)\)/.test(ld) && /if \(!\('assets' in map\)\) setAssets\(\[\]\);/.test(ld));
-  t('WIRING load (N2): the normal load path writes NOTHING (no dbSave/saveNow/persist); corrections are deferred; no localStorage fallback',
-    !/dbSave\(|saveNow\(|persistUsers\(|persistEmployees\(|queueSave\(/.test(ld.slice(ld.indexOf('} else {'))) && /if \(stableJson\(fixed\) !== stableJson\(map\.employees\)\) setDeferredFix\(f => \(\{\.\.\.f, employees: true\}\)\);/.test(ld)
-    && /setDeferredFix\(f => \(\{\.\.\.f, users: true\}\)\)/.test(ld) && !/localStorage/.test(ld));
-  t('WIRING load (N2): seeding writes only with the {seed:true} flag while seedAllowed is set, and closes it again',
-    /writeGate\.seedAllowed = true;[^]*?dbSave\('assets', deduped, seed\);[^]*?dbSave\('users', \[\], seed\);[^]*?writeGate\.seedAllowed = false;/.test(ld));
+  const dbS = html.slice(html.indexOf('async function dbSave('), html.indexOf('const MSG_NO_PERMISSION'));
+  t('WIRING dbSave: only assets / PM / categories, only datasets read after this sign-in, only as an UPDATE of the existing row, "saved" only when the server returns that row',
+    /if \(!DIRECT_WRITE_KEYS\.includes\(key\)\) \{[^}]*return new Error/.test(dbS) && /if \(!writableKeys\.has\(key\)\) \{[^}]*return new Error/.test(dbS)
+    && /sb\.from\('app_data'\)\.update\(\{value, updated_at: new Date\(\)\.toISOString\(\)\}\)\.eq\('key', key\)\.select\('key'\)/.test(dbS) && /if \(!Array\.isArray\(data\) \|\| data\.length !== 1\)/.test(dbS) && !/upsert|insert/.test(dbS));
+  t('WIRING no upsert, insert or delete of app_data anywhere in the app', !/\.upsert\(|\.insert\(|\.delete\(\)/.test(html.slice(html.indexOf('<script type="text/babel">'))));
+  const ld = appS.slice(appS.indexOf('  async function loadAll('), appS.indexOf('  // Re-reads datasets after a server change'));
+  t('WIRING load: a failed or empty read shows the failure screen and changes nothing', /if \(plan\.action === 'fail'\) \{ setLoadIssue\(\{kind: plan\.reason\}\);/.test(ld) && /if \(loadIssue && loadIssue\.kind !== 'partial'\) return \(/.test(appS));
+  t('WIRING load: only the datasets read become changeable; unread lists are shown empty, never built-in data', /plan\.loaded\.forEach\(k => writableKeys\.add\(k\)\)/.test(ld) && /expected\.filter\(k => !plan\.loaded\.includes\(k\)\)\.forEach\(k => applyDataset\(k, \[\]\)\)/.test(ld) && !/BASE_ASSETS/.test(html));
+  t('WIRING load (N2): the load path changes NOTHING; corrections are deferred; no localStorage', !/dbSave\(|saveNow\(|queueSave\(|serverChange\(|employee_apply/.test(ld)
+    && /if \(stableJson\(fixed\) !== stableJson\(value\)\) setDeferredFix\(f => \(\{\.\.\.f, employees: true\}\)\);/.test(appS) && !/localStorage/.test(ld));
   // ---- N2: no writes before sign-in, deferred corrections, realtime conflicts (offline, synthetic) ----
   const { stableJson, realtimeAction } = ctx.X;
   t('STABLE key order does not matter; nested objects and arrays; undefined fields ignored like JSON',
@@ -465,34 +502,107 @@ t('IMPORT save layer: CSV parse only previews (no save); apply blocks invalid fi
   t('REALTIME our own write coming back (any key order) is an echo, with or without a waiting change', realtimeAction([{ dept: 'X', status: 'OPEN', jobNo: 'JO-1' }], false, recent) === 'echo' && realtimeAction(mine, true, recent) === 'echo');
   t('REALTIME another change while a local change of that dataset is waiting → conflict (the waiting change must not overwrite it)', realtimeAction([{ jobNo: 'JO-1', status: 'CLOSED' }], true, recent) === 'conflict');
   t('REALTIME another change with nothing waiting → apply; no history → apply', realtimeAction([{ jobNo: 'JO-2' }], false, recent) === 'apply' && realtimeAction([], false, undefined) === 'apply');
-  const dbS2 = html.slice(html.indexOf('async function dbSave('), html.indexOf('async function sha256Hex('));
-  t('WIRING (N2) dbSave refuses every write while nobody is signed in (except the staging-only seed), before the dataset check',
-    /const seeding = opts\.seed === true && writeGate\.seedAllowed && ENV\.name === 'staging';\s+if \(!writeGate\.signedIn && !seeding\) \{[^}]*return new Error\('not signed in'\); \}\s+if \(DATA_KEYS\.includes\(key\)/.test(dbS2)
-    && /const writeGate = \{signedIn: false, seedAllowed: false\};/.test(html));
-  t('WIRING (N2) the gate follows the signed-in profile and is closed on every sign-out', /useEffect\(\(\) => \{ writeGate\.signedIn = signedInId !== null; \}, \[signedInId\]\);/.test(appS) && /const signedInId = currentUser \? currentUser\.id : null;/.test(appS));
-  t('WIRING (N2) deferred corrections: employees only by emp.statusUpdate, users only by users.admin',
-    /if \(!currentUser\) return;\s+if \(deferredFix\.employees && can\(currentUser,'emp\.statusUpdate'\) && writableKeys\.has\('employees'\)\)/.test(appS) && /if \(deferredFix\.users && can\(currentUser,'users\.admin'\) && writableKeys\.has\('users'\)\)/.test(appS));
-  t('WIRING (N2) normal sign-out writes what is waiting first; a forced sign-out (deactivated/deleted) discards it with a message',
-    /if \(forced === true\) \{[^\n]*pendingSaves\.current = \{\}; if \(k\.length\) addToast\(unsavedMsg\(k\), true\); \}\s+else runBatch\(\);\s+writeGate\.signedIn = false;/.test(appS) && /handleLogout\(true\); addToast\('Your account is no longer active/.test(appS));
+  const dbS2 = html.slice(html.indexOf('async function dbSave('), html.indexOf('const MSG_NO_PERMISSION'));
+  t('WIRING (N2) dbSave and every server call refuse while nobody is signed in, before anything else', /if \(!writeGate\.signedIn\) \{[^}]*return new Error\('not signed in'\); \}\s+if \(!DIRECT_WRITE_KEYS\.includes\(key\)\)/.test(dbS2)
+    && /const writeGate = \{signedIn: false\};/.test(html) && /async function serverCall\(fn, args\) \{\s+if \(!sb \|\| !envReady \|\| !writeGate\.signedIn\) return \{error/.test(html));
+  t('WIRING (N2) the gate follows the signed-in profile, stays closed during a forced change, and is closed on every sign-out', /useEffect\(\(\) => \{ writeGate\.signedIn = signedInId !== null; \}, \[signedInId\]\);/.test(appS)
+    && /const signedInId = currentUser && !mustChangePassword\(currentUser\) \? currentUser\.id : null;/.test(appS));
+  t('WIRING (N2) deferred employee-status correction: only emp.statusUpdate, by the SERVER (employee_apply_date_rules), never during a forced change (signedInId is null then)',
+    /if \(!currentUser \|\| !deferredFix\.employees \|\| !can\(currentUser,'emp\.statusUpdate'\) \|\| !writableKeys\.has\('employees'\)\) return;/.test(appS) && /serverCall\('employee_apply_date_rules'\)/.test(appS) && !/deferredFix\.users/.test(appS));
+  t('WIRING (N2) normal sign-out writes what is waiting first; a forced sign-out (deactivated / session ended) discards it with a message',
+    /if \(forced === true\) \{[^\n]*pendingSaves\.current = \{\}; if \(k\.length\) addToast\(unsavedMsg\(k\), true\); \}\s+else pending = runBatch\(\);\s+writeGate\.signedIn = false;/.test(appS) && /handleLogout\(true\); addToast\('Your account is no longer active/.test(appS));
   t('WIRING (N2) realtime: echo ignored; conflict drops the waiting change with a message, then shows the newer data',
     /const act = realtimeAction\(row\.value, row\.key in pendingSaves\.current, recentWrites\[row\.key\]\);\s+if \(act === 'echo'\) return;\s+if \(act === 'conflict'\) \{\s+delete pendingSaves\.current\[row\.key\];/.test(appS) && /\(recentWrites\[key\] = \(recentWrites\[key\] \|\| \[\]\)\.slice\(-4\)\)\.push\(stableJson\(value\)\);/.test(html));
-  // ---- release 2026-10-14: the original login page is restored ----
-  const lp = html.slice(html.indexOf('function LoginPage({onLogin}) {'), html.indexOf('// ─── DASHBOARD'));
-  t('LOGIN original page: logo, title, divider, Username + Password, original messages and button texts, original footer',
-    /<div className="login-logo-wrap">/.test(lp) && /<hr className="login-divider"\/>/.test(lp) && /<label htmlFor="login-username">Username<\/label>/.test(lp) && /<label htmlFor="login-password">Password<\/label>/.test(lp)
-    && /setError\('Please enter your username and password\.'\)/.test(lp) && /'Invalid username or password\. Please try again\.'/.test(lp) && /'Authenticating\.\.\.' : '→  Sign In'/.test(lp)
-    && /\{error && <div className="login-error">⚠ \{error\}<\/div>\}/.test(lp) && /COMPUTERIZED MAINTENANCE MANAGEMENT SYSTEM<br\/>/.test(lp));
-  t('LOGIN no redesign elements: no introduction panel, background art, theme toggle, forgot-password link or extra states on the login page',
-    !/login-intro|login-visual|login-theme|ThemeToggle|Forgot password|login-connecting|login-caps|login-temp-note|pw-toggle/.test(lp));
-  t('LOGIN original CSS restored (dark card) and kept dark when the app is in light mode', /\.login-card\{background:rgba\(15,32,68,0\.93\);/.test(html) && /\.login-logo-wrap\{text-align:center;margin-bottom:28px;\}/.test(html)
-    && /:root\[data-theme="light"\] \.login-page\{--navy:#0a1628;[^}]*--white:#f8fafc;[^}]*color:var\(--white\);\}/.test(html) && !/\.login-intro\{|\.lc-|\.lv-|\.notif-/.test(html));
+  // ---- 2026-10-14: login redesign (circuit), recovery UI, notification UI gating (offline, synthetic) ----
+  const { circuitTraces, recoveryStep, recoveryLinkKind, RECOVERY_MESSAGES, RECOVERY_SERVICE, unreadCount, NOTIFY_EVENT_LABEL, parseRecoveryLink, notificationsFor } = ctx.X;
+  const inside = (p, S) => p[0] > S.l + 0.5 && p[0] < S.r - 0.5 && p[1] > S.t + 0.5 && p[1] < S.b - 0.5;
+  const pts = d => { const out = []; let x = 0, y = 0; for (const m of d.matchAll(/([MHVL])\s*(-?[\d.]+)(?:\s+(-?[\d.]+))?/g)) { const c = m[1], a = +m[2], b = m[3] != null ? +m[3] : null;
+    const nx = c === 'H' ? a : c === 'V' ? x : a, ny = c === 'H' ? y : c === 'V' ? a : b; if (c !== 'M') for (let k = 1; k <= 20; k++) out.push([x + (nx - x) * k / 20, y + (ny - y) * k / 20]); else out.push([nx, ny]); x = nx; y = ny; } return out; };
+  const SIZES = [[1440, 900, { l: 913, t: 250, r: 1305, b: 650 }], [1920, 1080, { l: 1282, t: 320, r: 1674, b: 760 }], [1024, 768, { l: 573, t: 190, r: 965, b: 590 }], [390, 980, { l: 16, t: 300, r: 374, b: 760 }]];   // card centred in the right panel (54/46 split, panel >= 510px), as the real layout
+  const lays = SIZES.map(([w, h, c]) => ({ w, h, c, L: circuitTraces(w, h, c) }));
+  t('CIRCUIT traces converge on the card from every side that has room (desktop: left, top, bottom; right where the margin allows; ≥ 12 traces)', lays.slice(0, 3).every(({ w, c, L }) => L.traces.length >= 12 && ['left', 'top', 'bottom', ...(w - c.r - 16 > 50 ? ['right'] : [])].every(s => L.traces.some(x => x.side === s)) && (w - c.r - 16 > 50 || !L.traces.some(x => x.side === 'right'))), lays.map(x => x.L.traces.length));
+  t('CIRCUIT every trace starts on the page edge and ends on the socket around the card (16px outside the card)',
+    lays.every(({ w, h, c, L }) => L.socket.l === c.l - 16 && L.socket.r === c.r + 16 && L.traces.every(x => (x.start[0] === 0 || x.start[0] === w || x.start[1] === 0 || x.start[1] === h)
+      && ((x.side === 'left' && x.pad[0] === L.socket.l) || (x.side === 'right' && x.pad[0] === L.socket.r) || (x.side === 'top' && x.pad[1] === L.socket.t) || (x.side === 'bottom' && x.pad[1] === L.socket.b)))));
+  t('CIRCUIT no trace crosses the card or the socket interior, and all points stay on the page', lays.every(({ w, h, L }) => L.traces.every(x => pts(x.d).every(p => !inside(p, L.socket) && p[0] >= -0.5 && p[0] <= w + 0.5 && p[1] >= -0.5 && p[1] <= h + 0.5))));
+  const segs = d => { const out = []; let x = 0, y = 0; for (const m of d.matchAll(/([MHVL])\s*(-?[\d.]+)(?:\s+(-?[\d.]+))?/g)) { const c = m[1], a = +m[2], b = m[3] != null ? +m[3] : null;
+    const nx = c === 'H' ? a : c === 'V' ? x : a, ny = c === 'H' ? y : c === 'V' ? a : b; if (c !== 'M') out.push([x, y, nx, ny]); x = nx; y = ny; } return out; };
+  t('CIRCUIT board routing: every segment is horizontal, vertical or exactly 45°', lays.every(({ L }) => L.traces.every(x => segs(x.d).every(([ax, ay, bx, by]) => Math.abs(ax - bx) < 0.05 || Math.abs(ay - by) < 0.05 || Math.abs(Math.abs(bx - ax) - Math.abs(by - ay)) < 0.25))));
+  const cross = (p, q) => { const [a, b, c, d] = p, [e, f, g, h2] = q; const den = (c - a) * (h2 - f) - (d - b) * (g - e); if (Math.abs(den) < 1e-9) return false;
+    const u = ((e - a) * (h2 - f) - (f - b) * (g - e)) / den, v = ((e - a) * (d - b) - (f - b) * (c - a)) / den; return u > 0.001 && u < 0.999 && v > 0.001 && v < 0.999; };
+  const crossings = L => { let n = 0; for (let i = 0; i < L.traces.length; i++) for (let j = i + 1; j < L.traces.length; j++) for (const p of segs(L.traces[i].d)) for (const q of segs(L.traces[j].d)) if (cross(p, q)) n++; return n; };
+  t('CIRCUIT no two traces cross each other (nested fan-in), at every size', lays.every(({ L }) => crossings(L) === 0), lays.map(({ L }) => crossings(L)));
+  t('CIRCUIT stacked layout (topBound): no top traces and nothing above the introduction\'s bottom edge', (L => !L.traces.some(x => x.side === 'top') && L.traces.every(x => pts(x.d).every(p => p[1] >= 299.5)))(circuitTraces(820, 1000, { l: 214, t: 420, r: 606, b: 880 }, 7, { topBound: 300 })));
+  // ---- light flow: in on the left, hidden behind the card, out on the right (signalSchedule / keyframes) ----
+  const { signalSchedule, signalKeyframes, glowKeyframes } = ctx.X;
+  const plen = d => segs(d).reduce((s, [a, b, c, e]) => s + Math.hypot(c - a, e - b), 0);
+  const flows = lays.map(({ L }) => { const lens = L.traces.map(x => plen(x.d)); return { L, lens, S: signalSchedule(L.traces, lens, L.socket.r - L.socket.l) }; });
+  t('FLOW every right trace continues a left trace that ends on the SAME pad row (aligned in/out), at every size with room on the right',
+    flows.every(({ L, S }) => L.traces.every((x, i) => x.side !== 'right' || (S[i].dir === 'out' && S[i].pair !== null && L.traces[S[i].pair].side === 'left' && L.traces[S[i].pair].pad[1] === x.pad[1] && S[S[i].pair].pair === i)))
+    && flows.slice(0, 2).every(({ L }) => L.traces.some(x => x.side === 'right')));
+  t('FLOW a pair shares duration and delay (one connected flow); the light leaves the right pad exactly when it would have crossed the card',
+    flows.every(({ L, S }) => S.every((s, i) => s.pair === null || (S[s.pair].duration === s.duration && S[s.pair].delay === s.delay)))
+    && flows.every(({ L, S }) => S.every((s, i) => s.dir !== 'out' || s.pair === null || Math.abs((s.from - S[s.pair].to) * s.duration - (L.socket.r - L.socket.l) / s.speed) < 1e-6)));
+  t('FLOW one constant speed: in-travel, hidden transit and out-travel all at the same px/s on every trace',
+    flows.every(({ L, lens, S }) => S.every((s, i) => Math.abs(lens[i] / ((s.to - s.from) * s.duration) - s.speed) < 1e-6)) && new Set(flows.flatMap(f => f.S.map(s => s.speed))).size === 1);
+  t('FLOW top/bottom (and left without a right partner) run in only; nothing runs in on the right', flows.every(({ L, S }) => L.traces.every((x, i) => x.side === 'right' ? S[i].dir === 'out' : S[i].dir === 'in' && S[i].from === 0)));
+  const kfOk = (k, len, dash) => k.every((f, i) => i === 0 || f.offset >= k[i - 1].offset) && k[0].offset === 0 && k[k.length - 1].offset === 1;
+  const hiddenAt = (off, len, dash) => (-off >= len - 0.01) || (dash - off <= 0.01);   // the dash lies entirely beyond an end of the path
+  t('FLOW keyframes: ordered 0..1; outside its travel window each signal is invisible (no flash, never anything drawn over the card)',
+    flows.every(({ lens, S }) => S.every((s, i) => { const k = signalKeyframes(s, lens[i], 26); return kfOk(k) && hiddenAt(k[0].strokeDashoffset, lens[i], 26) && hiddenAt(k[1].strokeDashoffset, lens[i], 26) && hiddenAt(k[2].strokeDashoffset, lens[i], 26) && hiddenAt(k[3].strokeDashoffset, lens[i], 26); })));
+  t('FLOW direction: "in" moves edge → pad (offset decreases), "out" moves pad → edge (offset increases)', flows.every(({ lens, S }) => S.every((s, i) => { const k = signalKeyframes(s, lens[i]); return s.dir === 'in' ? k[2].strokeDashoffset < k[1].strokeDashoffset : k[2].strokeDashoffset > k[1].strokeDashoffset; })));
+  t('FLOW pad glow peaks on arrival (left/top/bottom) and on departure (right), same base and peak brightness everywhere',
+    flows.every(({ S }) => S.every(s => { const g = glowKeyframes(s); const pk = g.reduce((m, f) => f.opacity > m.opacity ? f : m); return kfOk(g) && Math.abs(pk.offset - (s.dir === 'in' ? s.to : s.from)) < 1e-9 && pk.opacity === 0.85 && g[0].opacity === 0.12; })));
+  t('CIRCUIT mobile (card spans the width): no side traces where there is no room, top/bottom traces still converge', (L => !L.traces.some(x => x.side === 'left' || x.side === 'right') && L.traces.some(x => x.side === 'top') && L.traces.some(x => x.side === 'bottom'))(lays[3].L));
+  t('CIRCUIT deterministic for the same size and seed (no layout jumping between renders)', JSON.stringify(circuitTraces(1440, 900, SIZES[0][2])) === JSON.stringify(lays[0].L) && JSON.stringify(circuitTraces(1440, 900, SIZES[0][2], 99)) !== JSON.stringify(lays[0].L));
+  t('RECOVERY offered only where Supabase Auth sign-in is configured (no sign-in domain → no recovery service, e.g. production until decision D4)', RECOVERY_SERVICE === null && /const RECOVERY_SERVICE = typeof SIGN_IN_DOMAIN === 'string' && SIGN_IN_DOMAIN \? Object\.freeze\(\{\s+requestReset: async employeeId => \{ const r = await serverFunction\('request-recovery', \{employeeId\}\);/.test(html));
+  const R0 = { phase: 'idle', message: '' };
+  t('RECOVERY validation: empty and malformed Employee IDs are refused before anything else', recoveryStep(R0, { type: 'submit', employeeId: ' ' }).message === RECOVERY_MESSAGES.empty
+    && ['ABCD', 'ABCDEF', 'AB-12', 't_admin'].every(id => recoveryStep(R0, { type: 'submit', employeeId: id, serviceAvailable: true }).phase === 'invalid'));
+  t('RECOVERY without a backend: a valid ID gives the honest "not available yet" state (no request is made)', (r => r.phase === 'unavailable' && /not available yet/.test(r.message) && /administrator/.test(r.message))(recoveryStep(R0, { type: 'submit', employeeId: 'ab12c', serviceAvailable: false })));
+  t('RECOVERY with a backend: sending, then ONE uniform message for every outcome (no enumeration); only a network failure differs',
+    recoveryStep(R0, { type: 'submit', employeeId: 'AB12C', serviceAvailable: true }).phase === 'sending' && recoveryStep(R0, { type: 'result', ok: true }).message === RECOVERY_MESSAGES.sent
+    && /If an account/.test(RECOVERY_MESSAGES.sent) && recoveryStep(R0, { type: 'result', ok: false }).phase === 'error' && recoveryStep({ phase: 'sent' }, { type: 'reset' }).phase === 'idle');
+  t('RECOVERY links: recovery tokens, errors and verification links are recognised; ordinary fragments are not',
+    recoveryLinkKind('#access_token=x&type=recovery') === 'recovery' && recoveryLinkKind('#type=recovery') === 'recovery' && recoveryLinkKind('#error_code=otp_expired') === 'recovery'
+    && recoveryLinkKind('#verify-email=abc') === 'verify-email' && recoveryLinkKind('') === null && recoveryLinkKind('#section-2') === null);
+  t('RECOVERY wiring: the link is read once, the fragment is removed at once (history.replaceState); tokens are never stored', /const l = parseRecoveryLink\(window\.location\.hash\); if \(l\) history\.replaceState\(null, '', window\.location\.pathname \+ window\.location\.search\);/.test(appS) && !/(localStorage|sessionStorage)\.setItem\([^)]*(hash|token|link)/i.test(html));
+  t('RECOVERY link parsing: a reset link carries its tokens; an expired / errored / incomplete link is an error; a verification link carries its token; ordinary fragments are nothing',
+    (r => r.kind === 'recovery' && r.error === null && r.accessToken === 'A' && r.refreshToken === 'R')(parseRecoveryLink('#access_token=A&refresh_token=R&type=recovery'))
+    && parseRecoveryLink('#error=access_denied&error_code=otp_expired').error === 'expired' && parseRecoveryLink('#access_token=A&type=recovery').error === 'invalid' && parseRecoveryLink('#access_token=A&refresh_token=R&type=signup').error === 'invalid'
+    && parseRecoveryLink('#verify-email=tok123').verifyToken === 'tok123' && parseRecoveryLink('#section-2') === null && parseRecoveryLink('') === null);
+  const rec = appS.slice(appS.indexOf('  async function completeRecovery('), appS.indexOf('  // ── Permission guard'));
+  t('RECOVERY completion: a reset link sets the password through complete-recovery (no current password, server checks the link session); the link session is ended afterwards; verification through verify-recovery-email',
+    /await sb\.auth\.setSession\(\{access_token: link\.accessToken, refresh_token: link\.refreshToken\}\)/.test(rec) && /serverFunction\('complete-recovery', \{newPassword: newPw\}\)/.test(rec)
+    && rec.indexOf("sb.auth.signOut({scope: 'local'})") > rec.indexOf("serverFunction('complete-recovery'") && /serverFunction\('verify-recovery-email', \{token: link\.verifyToken\}\)/.test(rec) && /const err = validatePassword\(newPw\);/.test(rec));
+  t('NOTIFY UI: every signed-in role except Viewer; none during a forced change or when signed out', ['Admin', 'Assistant Engineer', 'Senior Engineer', 'Job Card Editor', 'Department User'].every(r => notificationsFor({ role: r }))
+    && !notificationsFor({ role: 'Viewer' }) && !notificationsFor({ role: 'Admin', must_change_password: true }) && !notificationsFor(null));
+  t('NOTIFY UI: the bell reads only the caller\'s own list and marks only its own items (no recipient is ever sent); no local mock path', /serverCall\('my_notifications', \{p_limit: 50\}\)/.test(html) && /serverCall\('notification_mark_read', \{p_ids: ids\}\)/.test(html)
+    && !/local_mock_notifications|p_recipient|notificationMode|notificationsMock/.test(html) && /\{notificationsFor\(currentUser\) && <NotificationBell /.test(html));
+  t('NOTIFY UI: unread count; event labels for the four lifecycle events', unreadCount([{ read: false }, { read: true }, {}, null]) === 2 && unreadCount(undefined) === 0 && Object.keys(NOTIFY_EVENT_LABEL).join() === 'OPEN,IN_PROGRESS,COMPLETED,CLOSED');
+  t('LOGIN wiring: Employee ID sign-in texts; the forgot-password link and the temporary-password note exist; no "connecting to the database" before sign-in (nothing is read then)',
+    /setError\('Please enter your Employee ID and password\.'\)/.test(html) && /'Invalid Employee ID or password\. Please try again\.'/.test(html) && /<label htmlFor="login-username">Employee ID<\/label>/.test(html) && /Forgot password\?/.test(html)
+    && !/Connecting to the CMMS database/.test(html) && /temporary password you were given/.test(html));
   t('WIRING (N2) a change before the data is loaded is never dropped silently', /if \(!isLoaded\.current\) \{ addToast\(unsavedMsg\(\[key\]\), true\); return; \}/.test(appS));
   t('WIRING realtime never fills in a dataset that was not loaded', /if \(!isLoaded\.current \|\| !row \|\| !writableKeys\.has\(row\.key\) \|\| !Array\.isArray\(row\.value\)\) return;/.test(appS));
-  t('WIRING no persist() left; asset handlers save only assets, JO handlers only job orders', !/\bpersist\(/.test(appS)
-    && ['updateAssetStatus', 'saveAsset', 'deleteAsset', 'clearAllAssets', 'applyAssetImport'].every(f => { const b = appS.slice(appS.indexOf('function ' + f + '('), appS.indexOf('\n  }\n', appS.indexOf('function ' + f + '('))); return /queueSave\('assets'/.test(b) && !/queueSave\('jobOrders'/.test(b); })
-    && ['saveJO', 'updateJOStatus', 'deleteJO', 'approveJO', 'closeJO', 'revertJO', 'importJOsFromCSV'].every(f => { const b = appS.slice(appS.indexOf('function ' + f + '('), appS.indexOf('\n  }\n', appS.indexOf('function ' + f + '('))); return /queueSave\('jobOrders'/.test(b) && !/queueSave\('assets'/.test(b); }));
-  t('WIRING category rename deliberately saves assets AND job orders in one batch', (() => { const b = appS.slice(appS.indexOf('function renameCustomPlant('), appS.indexOf('function importAssetsFromCSV(')); return /queueSave\('jobOrders', nextJOs\)/.test(b) && /queueSave\('assets', next\)/.test(b); })());
-  t('WIRING a failed save is reported by dataset and sets "Not saved" (never "Saved")', /if \(failed\.length\) addToast\(unsavedMsg\(failed\), true\);\s+else addToast\('✓ Saved'\);/.test(appS) && /setSyncStatus\(failed\.length \? 'error' : 'ok'\)/.test(appS) && /syncStatus==='error' \? '⚠ Not saved'/.test(appS));
+  const fnBody = f => appS.slice(appS.indexOf('function ' + f + '('), appS.indexOf('\n  }\n', appS.indexOf('function ' + f + '(')));
+  t('WIRING no persist() left; asset edits save only the asset list; Clear All is the server function asset_clear_all', !/\bpersist\(/.test(appS)
+    && ['updateAssetStatus', 'saveAsset', 'deleteAsset', 'applyAssetImport'].every(f => /queueSave\('assets'/.test(fnBody(f)) && !/queueSave\('jobOrders'/.test(fnBody(f)))
+    && /serverChange\('asset_clear_all', \{p_confirm: 'DELETE ALL ASSETS'\}, \['assets'\]/.test(fnBody('clearAllAssets')));
+  const JO_FN = { saveJO: ['jo_update', 'jo_create'], updateJOStatus: ['jo_set_status'], deleteJO: ['jo_delete'], approveJO: ['jo_approve'], closeJO: ['jo_close'], revertJO: ['jo_revert'], importJOsFromCSV: ['jo_import'] };
+  t('WIRING every job-order action is its own checked server function (one step), never a whole-list save', Object.entries(JO_FN).every(([f, fns]) => { const b = fnBody(f);
+    return fns.every(fn => new RegExp("serverChange\\('" + fn + "', [^\\n]*\\['jobOrders'\\]").test(b)) && !/queueSave\(|dbSave\(|saveNow\(|setJobOrders\(/.test(b); }));
+  const EMP_FN = { saveEmployee: 'employee_save', updateEmployeeStatus: 'employee_set_status', deleteEmployee: 'employee_delete', importEmployeesFromData: 'employee_import', fixEmployeeStatusFromDates: 'employee_apply_date_rules' };
+  t('WIRING every employee action is its own checked server function; the browser never saves the employee list', Object.entries(EMP_FN).every(([f, fn]) => new RegExp("serverChange\\('" + fn + "'").test(fnBody(f)) && !/saveNow\(|dbSave\(|persistEmployees/.test(fnBody(f))) && !/persistEmployees/.test(appS));
+  t('WIRING Reset Data is the server function admin_reset_data (accounts untouched)', /serverChange\('admin_reset_data', \{p_confirm: 'RESET ALL DATA'\}, DATA_KEYS\.slice\(\)/.test(fnBody('resetData')) && !/dbSave\(/.test(fnBody('resetData')));
+  t('WIRING category rename is ONE server step changing categories, assets, job orders and Department User categories together', /serverChange\('category_rename', \{p_old: oldName, p_new: upper\}, \['customPlants', 'assets', 'jobOrders', 'users'\]/.test(appS.slice(appS.indexOf('function renameCustomPlant('), appS.indexOf('function importAssetsFromCSV('))));
+  t('WIRING account errors: 403 = no permission; a network/server failure names what did not happen (never a raw server text); a refusal shows the server reason',
+    /const accountError = \(res, fallback\) => res\.status === 403 \? MSG_NO_PERMISSION : res\.status === 0 \|\| res\.status >= 500 \? fallback\s+: \(res\.body && typeof res\.body\.error === 'string' \? res\.body\.error : fallback\);/.test(appS)
+    && /accountError\(res, 'The password was not reset\.'\)/.test(appS));
+  t('WIRING an Admin editing the OWN record gets the name-only form (the server refuses self-changes through admin-users; nothing is silently dropped)',
+    /selfOnly=\{!canAdminUsers \|\| \(userModal\.mode === 'edit' && !!userModal\.user && !!currentUser && userModal\.user\.id === currentUser\.id\)\}/.test(html)
+    && /Own account \(also an Admin's own record\): only the own name may change here/.test(appS));
+  t('WIRING a failed save is reported by dataset and sets "Not saved" (never "Saved"); the account is then re-read (a deactivated user is signed out)', /if \(failed\.length\) \{ addToast\(unsavedMsg\(failed\), true\); recheckProfile\(\); \}\s+else addToast\('✓ Saved'\);/.test(appS) && /setSyncStatus\(failed\.length \? 'error' : 'ok'\)/.test(appS) && /syncStatus==='error' \? '⚠ Not saved'/.test(appS));
   const pr = html.slice(html.indexOf('function printAssetPDF('), html.indexOf('// ─── CSV UTILITIES')) + html.slice(html.indexOf('function openPrintWindow('), html.indexOf('// ─── ASSET IMPORT PREVIEW'));
   t('PRINT every ${…} interpolation of a record value in the print HTML is escaped (static scan)', (() => {
     const allowed = /^(esc|escHtml)\(|^(title|now|bodyHtml|detailRows|relRows|rows|partsRows|mpRows|nb|thStyle|jsb|jsc|bg|color|jb|jc|sc|rel\.length|items\.map|l|v|content|sect\(|grid3\(|isApproved\(|jo\.approvalStatus|jo\.workDone\?|!jo\.approvalStatus|jo\.priority==='High'|j\.priority==='High'|assets\.length|jobOrders\.length|open\.length|broken\.length|\[\.\.\.new Set|assets\.filter|jobOrders\.filter|rows\|\||\[\[)/;

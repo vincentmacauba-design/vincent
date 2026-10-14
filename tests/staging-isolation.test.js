@@ -125,27 +125,29 @@ function spyClient(result, opts = {}) {
     select(c) { calls.push(['select', c]); return q; },
     eq(c, v) { calls.push(['eq', c, v]); return q; },
     maybeSingle() { calls.push(['maybeSingle']); return opts.reject ? Promise.reject(new Error('net')) : Promise.resolve(result); },
+    in() { calls.push(['in']); return q; },
     upsert() { calls.push(['upsert']); return Promise.resolve({}); },
     insert() { calls.push(['insert']); return Promise.resolve({}); },
     update() { calls.push(['update']); return Promise.resolve({}); },
     delete() { calls.push(['delete']); return Promise.resolve({}); },
   };
-  return { calls, from(tb) { calls.push(['from', tb]); return q; }, channel() { calls.push(['channel']); return {}; } };
+  return { calls, from(tb) { calls.push(['from', tb]); return q; }, channel() { calls.push(['channel']); return {}; },
+           rpc(fn, args) { calls.push(['rpc', fn].concat(args === undefined ? [] : [args])); return opts.reject ? Promise.reject(new Error('net')) : Promise.resolve(result); } };
 }
 const GATE = g.win.CMMS_envGate;
 const stagingEnv = { name: 'staging', url: STG.url, anonKey: STG.anonKey };
-const writesIn = c => c.calls.some(x => ['upsert', 'insert', 'update', 'delete', 'channel'].includes(x[0]));
+const writesIn = c => c.calls.some(x => ['upsert', 'insert', 'update', 'delete', 'channel'].includes(x[0]) || (x[0] === 'rpc' && x[1] !== 'environment_marker'));
 (async () => {
   let c, r;
-  c = spyClient({ data: { value: { env: 'staging' } }, error: null }); r = await GATE(stagingEnv, c);
+  c = spyClient({ data: { env: 'staging' }, error: null }); r = await GATE(stagingEnv, c);
   t('D1 marker ok -> start', r.ok === true);
-  t('D2 marker check is exactly one read of key __environment', JSON.stringify(c.calls) === JSON.stringify([['from', 'app_data'], ['select', 'value'], ['eq', 'key', '__environment'], ['maybeSingle']]));
+  t('D2 marker check is exactly one call of the server function environment_marker (no table read, no arguments)', JSON.stringify(c.calls) === JSON.stringify([['rpc', 'environment_marker']]));
   t('D3 gate performs no write/subscription', !writesIn(c));
   c = spyClient({ data: null, error: null }); r = await GATE(stagingEnv, c);
   t('D4 marker row missing -> blocked', r.ok === false, r.reason);
-  c = spyClient({ data: { value: { env: 'production' } }, error: null }); r = await GATE(stagingEnv, c);
+  c = spyClient({ data: { env: 'production' }, error: null }); r = await GATE(stagingEnv, c);
   t('D5 marker says production -> blocked', r.ok === false, r.reason);
-  c = spyClient({ data: { value: 'staging' }, error: null }); r = await GATE(stagingEnv, c);
+  c = spyClient({ data: 'staging', error: null }); r = await GATE(stagingEnv, c);
   t('D6 marker wrong shape -> blocked', r.ok === false, r.reason);
   c = spyClient({ data: null, error: { message: 'permission denied' } }); r = await GATE(stagingEnv, c);
   t('D7 marker read error -> blocked', r.ok === false, r.reason);
@@ -167,33 +169,37 @@ const writesIn = c => c.calls.some(x => ['upsert', 'insert', 'update', 'delete',
   const idx = re => lines.map((l, i) => re.test(l) ? i : -1).filter(i => i >= 0);
   t('E1 guard script precedes the app script', gStart > 0 && gStart < bStart);
   const cc = idx(/createClient\(/);
-  t('E2 exactly one createClient, only when not blocked', cc.length === 1 && /ENV\.name === 'blocked' \? null : window\.supabase\.createClient\(ENV\.url, ENV\.anonKey\)/.test(lines[cc[0]]));
+  t('E2 exactly one createClient, only when not blocked; the session is kept in memory only (never in browser storage)', cc.length === 1 && /ENV\.name === 'blocked' \? null : window\.supabase\.createClient\(ENV\.url, ENV\.anonKey,$/.test(lines[cc[0]].replace(/\r$/, ''))
+    && /\{auth: \{persistSession: false, autoRefreshToken: true, detectSessionInUrl: false\}\}\);/.test(lines[cc[0] + 1]));
   t('E3 no createClient with SUPABASE_URL directly', !/createClient\(SUPABASE_URL/.test(app));
   const dbs = idx(/^async function dbSave/);
   t('E4 dbSave first statement refuses when !sb || !envReady', dbs.length === 1 && /if \(!sb \|\| !envReady\)[^]*return new Error/.test(lines[dbs[0] + 1]));
   const appStart = idx(/^function App\(\)/)[0], appEnd = idx(/^function NavItem/)[0];
-  const sbUses = idx(/\bsb\.(from|channel|removeChannel)\b/);
-  const dbsEnd = dbs[0] + lines.slice(dbs[0]).findIndex(l => /^\}/.test(l));   // N1: dbSave has an extra guard line; its upsert is anywhere inside its body
-  const outside = sbUses.filter(i => !(i > appStart && i < appEnd) && !(i > dbs[0] && i < dbsEnd));
-  t('E5 every sb.from/channel use is inside App() or dbSave (App mounts only after the gate)', sbUses.length === 4 && outside.length === 0, 'uses=' + sbUses.length);
-  const seed = idx(/plan\.action === 'seed'/);
-  t('E6 first-load seeding is inside App() only, behind the planDataLoad seed action (staging + explicit opt-in), with no accounts',
-    seed.length === 1 && seed[0] > appStart && seed[0] < appEnd && /opts\.envName === 'staging' && opts\.seedOptIn === true \? \{action: 'seed'\}/.test(app)
-    && /seedEmptyDatabase === true/.test(lines.slice(seed[0] - 4, seed[0]).join(' ')) && !/DEFAULT_USERS/.test(lines.slice(seed[0], seed[0] + 9).join(' ')));
+  // Backend integration: the client reaches Supabase only from App() (mounted after the gate) or from four helpers that refuse
+  // before the gate passed and (except the sign-in function call) before a sign-in.
+  const sbUses = idx(/\bsb\.(from|channel|removeChannel|rpc|auth|functions)\b/);
+  const body = name => { const s0 = idx(new RegExp('^async function ' + name + '\\('))[0]; return s0 === undefined ? null : [s0, s0 + lines.slice(s0).findIndex(l => /^\}/.test(l))]; };
+  const helpers = ['dbSave', 'serverCall', 'serverFunction', 'readDatasets'].map(body);
+  const outside = sbUses.filter(i => !(i > appStart && i < appEnd) && !helpers.some(h => h && i > h[0] && i < h[1]));
+  t('E5 every Supabase use is inside App() or the four backend helpers (App mounts only after the gate)', helpers.every(Boolean) && outside.length === 0 && sbUses.length >= 8, 'uses=' + sbUses.length + ' outside=' + outside.map(i => i + 1));
+  t('E5b the helpers refuse before the gate passed; reads/changes also before sign-in', helpers.every(Boolean)
+    && /if \(!sb \|\| !envReady\) return \{status: 0/.test(lines[helpers[2][0] + 1])
+    && /if \(!sb \|\| !envReady \|\| !writeGate\.signedIn\) return \{error/.test(lines[helpers[1][0] + 1])
+    && /if \(!sb \|\| !writeGate\.signedIn\) return \{error/.test(lines[helpers[3][0] + 1]));
+  t('E6 the browser never seeds, inserts or upserts: no seed action, no insert/upsert/delete call anywhere, an empty read is a failure',
+    !/plan\.action === 'seed'|action: 'seed'|\.upsert\(|\.insert\(|\.delete\(\)/.test(app) && /if \(rows\.length === 0\) return \{action: 'fail', reason: 'empty'\};/.test(app));
   // N2: there are no built-in accounts at all, and no code path writes the users list except account management
-  const usersWrites = idx(/dbSave\('users'|saveNow\('users'|persistUsers\(/);
   const resetBody = app.slice(app.indexOf('function resetData()'), app.indexOf('function addCustomPlant('));
-  t('E7 (N2) no built-in default accounts; Reset Data never writes users; seeding writes an EMPTY users list only',
-    !/DEFAULT_USERS/.test(html) && !/dbSave\('users'|saveNow\('users'|persistUsers\(|DEFAULT_USERS/.test(resetBody)
-    && /dbSave\('users', \[\], seed\);/.test(app) && usersWrites.every(i => i > appStart && i < appEnd));
+  t('E7 (N2) no built-in default accounts; the browser never writes the users dataset (accounts are server-side); Reset Data names no accounts',
+    !/DEFAULT_USERS/.test(html) && !/dbSave\('users'|saveNow\('users'|persistUsers\(/.test(app) && !/'users'/.test(resetBody)
+    && /const DIRECT_WRITE_KEYS = Object\.freeze\(\['assets','pm','customPlants'\]\);/.test(app));
   // N2: production-host refusal of the seed path. A staging config carrying the seed opt-in does not change the production
   // resolution, the app reads the opt-in only when ENV is staging, and dbSave honours {seed:true} only in staging.
   const seedCfg = Object.assign({}, STG, { seedEmptyDatabase: true });
-  t('E7b (N2) production host + a staging config with seedEmptyDatabase → still "production"; the opt-in is read only in staging; dbSave seed bypass is staging-only',
+  t('E7b (N2) production host + a staging config with seedEmptyDatabase → still "production"; the app ignores the old seed opt-in; dbSave has no bypass',
     R(L('https:', 'vincent-mauve.vercel.app'), PROD, seedCfg, PROD_HOSTS).name === 'production'
-    && /seedOptIn: ENV\.name === 'staging' && !!\(window\.CMMS_STAGING_CONFIG && window\.CMMS_STAGING_CONFIG\.seedEmptyDatabase === true\)/.test(app)
-    && /const seeding = opts\.seed === true && writeGate\.seedAllowed && ENV\.name === 'staging';/.test(app)
-    && /if \(!writeGate\.signedIn && !seeding\) \{[^}]*return new Error\('not signed in'\); \}/.test(app));  const renders = idx(/render\(.*<App \/>/);
+    && !/seedEmptyDatabase|seedOptIn|seedAllowed/.test(app)
+    && /if \(!writeGate\.signedIn\) \{[^}]*return new Error\('not signed in'\); \}/.test(app));  const renders = idx(/render\(.*<App \/>/);
   t('E8 App is rendered in exactly two places', renders.length === 2, 'found ' + renders.length);
   t('E9 each App render is directly preceded by envReady = true', renders.every(i => /^\s*envReady = true;\s*$/.test(lines[i - 1])));
   const prodBranch = idx(/^if \(ENV\.name === 'production'\) \{$/);
@@ -217,7 +223,7 @@ const writesIn = c => c.calls.some(x => ['upsert', 'insert', 'update', 'delete',
 
   // ---- AUTH adapter selection (Phase 2B-1) ----
   {
-    const aS = html.indexOf('// ─── AUTH (Phase 2B-1'), aE = html.indexOf('function sortByAssetNum(arr){');
+    const aS = html.indexOf('// ─── AUTH (P2: Supabase Auth'), aE = html.indexOf('function sortByAssetNum(arr){');
     t('AUTH block present', aS > 0 && aE > aS);
     const actx = {}; vm.createContext(actx);
     vm.runInContext(html.slice(aS, aE) + '\nthis.A = { authAdapterFor };', actx);
@@ -235,7 +241,7 @@ const writesIn = c => c.calls.some(x => ['upsert', 'insert', 'update', 'delete',
     for (const [name, loc, fileExists, exp] of cases) {
       const requested = loadGuard(loc).writes.some(w => w.includes('staging-config.js'));
       const env = R(loc, PROD, requested && fileExists ? STG : undefined, PROD_HOSTS); const ad = authAdapterFor(env && env.name);
-      t(name, exp === null ? ad === null : !!ad && ad.env === exp && ad.name === 'appdata', JSON.stringify({ requested, env: env && env.name, ad }));
+      t(name, exp === null ? ad === null : !!ad && ad.env === exp && ad.name === 'supabase-auth', JSON.stringify({ requested, env: env && env.name, ad }));
     }
     const prodEnv = R(L('https:', 'vincent-mauve.vercel.app'), PROD, STG, PROD_HOSTS);
     t('AUTH7 production adapter talks to the production project only (never the staging/mock URL)', prodEnv.name === 'production' && prodEnv.url === PROD.url && prodEnv.url !== STG.url);
