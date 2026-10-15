@@ -37,6 +37,7 @@ async function main() {
 
   async function fresh(user, data = SEED, opt = {}) {   // opt.keep: keep the mock data; opt.password; opt.expectFail
     if (!opt.keep) mock.reset(data);
+    try { await ev(`(()=>{ try { sessionStorage.clear(); } catch (e) {} return true; })()`); } catch (e) {}   // tab session (2026-10-15): a fresh start = a new tab
     await B.send('Page.navigate', { url: 'about:blank' }); await sleep(200);
     // clear the site storage (session) BEFORE the app loads, so a running app cannot re-write it
     await B.send('Storage.clearDataForOrigin', { origin: `http://127.0.0.1:${SITE_PORT}`, storageTypes: 'local_storage' });
@@ -71,9 +72,11 @@ async function main() {
     if (!(await ev(`T.all('.nav-item.active').some(e => T.txt(e).endsWith(${JSON.stringify(label)}))`))) throw new Error('page did not become active: ' + label);
   };
   const settle = () => sleep(1500);   // persist() debounce is 800 ms
-  // Phase 2B-1: a reload always signs out (nothing is restored from browser storage). Sign in again on the current page,
-  // keeping the mock data. Retries cover a click that lands before the users finished loading ("unavailable").
+  // Sign in again on the current page, keeping the mock data. Since 2026-10-15 a reload keeps the same tab signed in (tab
+  // session), so a restored session is signed out first. Retries cover a click before the users finished loading.
   const relogin = async (user, opt = {}) => {
+    await waitFor(`!!document.querySelector('.login-card input[type=password]') || (!!document.querySelector('.sidebar') && !T.body().includes('Loading'))`, 20000);
+    if (await ev(`!!document.querySelector('.sidebar')`)) { await ev(`document.querySelector('.btn-logout').click(); true`); await sleep(600); }
     if (!(await waitFor(`!!document.querySelector('.login-card input[type=password]')`, 20000))) throw new Error('login form not shown after reload');
     await sleep(1500);
     for (let i = 0; i < (opt.expectFail ? 1 : 5); i++) {
@@ -295,19 +298,45 @@ async function main() {
   t('UI Admin own profile: role/status still editable (Admin unchanged)', ao.role && ao.status, ao);
   await ev(`T.all('.modal-close')[0].click(); true`); await sleep(200);
 
-  // Phase 2B-1: no browser session; a reload signs out; the role always comes from the stored record
+  // 2026-10-15: a refresh keeps the SAME TAB signed in (tab session in sessionStorage); the role is still re-read from the
+  // stored record; deactivation, a password reset, a forged token, logout and closing the tab all end it.
+  const signedIn = () => waitFor(`!!document.querySelector('.sidebar') && !T.body().includes('Loading')`, 20000);
+  const atLoginForm = () => waitFor(`!!document.querySelector('.login-card input[type=password]') && !document.querySelector('.sidebar')`, 20000);
   await fresh('t_ae'); await nav('Asset Registry');
   t('SESSION baseline: AE sees Add Asset', await ev(`!!T.find('Add Asset','button')`));
+  const tokS = await ev(`(()=>{ const r = sessionStorage.getItem('cmms_vg_tab_session'); return { r, keys: r ? Object.keys(JSON.parse(r)).sort().join() : '' }; })()`);
+  t('SESSION sign-in stores a tab-session token in sessionStorage only (id, username, time, proof; no password or hash); nothing in localStorage',
+    tokS.keys === 'iat,id,proof,username,v' && !mock.store.users.some(u => (tokS.r || '').includes(u.password)) && (await ev(`localStorage.getItem('cmms_vg_session') === null && document.cookie === ''`)), tokS.keys);
   mock.store.users = mock.store.users.map(u => u.id === 2 ? { ...u, role: 'Senior Engineer' } : u);
   await B.send('Page.reload', {});
-  t('SESSION a reload signs out: no session is restored from browser storage', await waitFor(`!!document.querySelector('.login-card input[type=password]') && !document.querySelector('.sidebar')`, 20000));
-  await relogin('t_ae'); await nav('Asset Registry');
-  t('SESSION role read from the stored record at sign-in: AE demoted to SE loses Add Asset', await ev(`!T.find('Add Asset','button')`));
-  t('SESSION nothing about the sign-in is written to browser storage', await ev(`localStorage.getItem('cmms_vg_session') === null`));
+  t('SESSION a refresh keeps the same tab signed in (no login form)', (await signedIn()) && (await ev(`!document.querySelector('.login-card')`)));
+  await nav('Asset Registry');
+  t('SESSION the role is re-read from the stored record after a refresh: AE demoted to SE loses Add Asset', await ev(`!T.find('Add Asset','button')`));
+  mock.store.users = mock.store.users.map(u => u.id === 2 ? { ...u, role: 'Assistant Engineer' } : u);
+  await ev(`document.querySelector('.btn-logout').click(); true`); await sleep(600);
+  t('SESSION logout deletes the tab session; a refresh after logout stays signed out', (await ev(`sessionStorage.getItem('cmms_vg_tab_session') === null`)) && (await (async () => { await B.send('Page.reload', {}); return atLoginForm(); })()));
+  await relogin('t_ae');
+  const goodTok = await ev(`sessionStorage.getItem('cmms_vg_tab_session')`);
+  await ev(`(()=>{ const t = JSON.parse(sessionStorage.getItem('cmms_vg_tab_session')); t.id = 1; t.username = 't_admin'; sessionStorage.setItem('cmms_vg_tab_session', JSON.stringify(t)); return true; })()`);
+  await B.send('Page.reload', {});
+  t('SESSION a forged token (other account, same proof) is refused and deleted: signed out', (await atLoginForm()) && (await ev(`sessionStorage.getItem('cmms_vg_tab_session') === null`)));
+  await ev(`(()=>{ const t = JSON.parse(${JSON.stringify(goodTok)}); t.iat = Date.now() - 13 * 3600e3; sessionStorage.setItem('cmms_vg_tab_session', JSON.stringify(t)); return true; })()`);
+  await B.send('Page.reload', {});
+  t('SESSION an expired token (older than 12 h) is refused: signed out', await atLoginForm());
+  await relogin('t_ae');
+  mock.store.users = mock.store.users.map(u => u.id === 2 ? { ...u, password: require('crypto').createHash('sha256').update('Reset-By-Admin-9!').digest('hex') } : u);
+  await B.send('Page.reload', {});
+  t('SESSION a password reset elsewhere ends the session at the next refresh', await atLoginForm());
+  mock.store.users = mock.store.users.filter(u => u.id !== 2).concat([{ ...SEED.users[1] }]);
+  await B.send('Page.reload', {});   // the page reads the restored account
+  await relogin('t_ae');
+  await ev(`(()=>{ sessionStorage.clear(); return true; })()`); await B.send('Page.reload', {});
+  t('SESSION a new tab (empty sessionStorage) is signed out', await atLoginForm());
+  await relogin('t_ae');
   mock.store.users = mock.store.users.map(u => u.id === 2 ? { ...u, active: false } : u);
   await B.send('Page.reload', {});
-  const out = !(await relogin('t_ae', { expectFail: true })) && (await ev(`T.txt(document.querySelector('.login-error')) === '⚠ Invalid username or password. Please try again.' && !document.querySelector('.sidebar')`));
-  t('SESSION deactivated account cannot sign in', out);
+  const out = (await atLoginForm()) && !(await relogin('t_ae', { expectFail: true })) && (await ev(`T.txt(document.querySelector('.login-error')) === 'Invalid username or password. Please try again.' && !document.querySelector('.sidebar')`));
+  t('SESSION deactivated account: the refresh ends the session and the account cannot sign in', out);
   mock.store.users = mock.store.users.filter(u => u.id !== 2).concat([{ ...SEED.users[1] }]);   // restore for later tests
 
   // ============ F2: Job Card Editor, Department User, SE + editor bundle (extended seed) ============
@@ -727,7 +756,7 @@ async function main() {
     + " padTop: getComputedStyle(sb).paddingTop, itemPad: cs.paddingTop + ' ' + cs.paddingLeft, gap: cs.columnGap, label: T.txt(ni.querySelector('.nav-label')) }; })()");
   t('R4 sidebar: exactly one toggle, first in the content area; not in the top bar, not in the sidebar', lay.count === 1 && lay.inMainTop && !lay.inTopbar && !lay.inSidebar, lay);
   t('R5 sidebar: toggle is the smaller 26px size (was 30px)', await ev("(()=>{ const b=document.querySelector('.sidebar-toggle').getBoundingClientRect(); return Math.round(b.width)===26 && Math.round(b.height)===26; })()"));
-  t('R3 sidebar: navigation restored to its original layout (Main header first, 20px top padding, items 10px/20px, 10px gap)', lay.firstIsSection && lay.padTop === '20px' && lay.itemPad === '10px 20px' && lay.gap === '10px' && lay.label === 'Dashboard', lay);
+  t('R3 sidebar (2026-10-15): no section headers — the first entry is the Dashboard item; 20px top padding, items 10px/20px, 10px gap', !lay.firstIsSection && lay.padTop === '20px' && lay.itemPad === '10px 20px' && lay.gap === '10px' && lay.label === 'Dashboard', lay);
   // geometry on each page, expanded and collapsed: below the top bar, next to the sidebar edge, above the page header, no overlap, no horizontal overflow
   const geo = () => ev("(()=>{ const r=e=>e.getBoundingClientRect(), tb=r(document.querySelector('.topbar')), sb=r(document.querySelector('.sidebar')), tg=r(document.querySelector('.sidebar-toggle')), ph=document.querySelector('.main .page-header'), p=ph&&r(ph), ni=r(document.querySelector('.nav-item'));"
     + " return { belowTopbar: tg.top >= tb.bottom - 0.5, nearSidebar: tg.left >= sb.right - 0.5 && tg.left - sb.right <= 24, abovePage: !!p && tg.bottom <= p.top + 0.5, headerLeft: p ? Math.round(p.left - sb.right) : null,"
@@ -737,7 +766,7 @@ async function main() {
   await ev("document.querySelector('.sidebar-toggle').click(); true"); await sleep(300);
   navTop0.collapsed = (await geo()).navTop;
   await ev("document.querySelector('.sidebar-toggle').click(); true"); await sleep(300);
-  t('R4 sidebar: first nav item directly under the sidebar padding (collapsed 78px = 58px top bar + 20px), lower when expanded ("Main" header shown)', navTop0.collapsed === 78 && navTop0.expanded > navTop0.collapsed, navTop0);
+  t('R4 sidebar: first nav item directly under the sidebar padding in both modes (78px = 58px top bar + 20px; no section header above it)', navTop0.collapsed === 78 && navTop0.expanded === 78, navTop0);
   for (const pg of ['Dashboard', 'Asset Registry', 'Job Orders', 'Reports', 'Settings']) {
     await nav(pg);
     for (const state of ['expanded', 'collapsed']) {
@@ -905,7 +934,7 @@ async function main() {
   const toggle = async () => { await ev("(document.querySelector('.sidebar-toggle')||{click(){}}).click(); true"); await sleep(300); };
   await fresh('t_admin');
   let u1 = await sb();
-  t('U1 default: expanded at 1440px (210px), labels and section headers visible, no horizontal overflow', !u1.collapsed && u1.w === 210 && u1.ml === '210px' && u1.labels === u1.items && u1.sections > 0 && u1.expanded === 'true' && u1.title === 'Collapse sidebar' && !u1.overflow, u1);
+  t('U1 default: expanded at 1440px (210px), labels visible, no section headers, no horizontal overflow', !u1.collapsed && u1.w === 210 && u1.ml === '210px' && u1.labels === u1.items && u1.sections === 0 && u1.expanded === 'true' && u1.title === 'Collapse sidebar' && !u1.overflow, u1);
   t('U1 every nav item has title and aria-label equal to its label', await ev("T.all('.nav-item').every(e => { const lbl = T.txt(e.querySelector('.nav-label')); return lbl && e.title === lbl && e.getAttribute('aria-label') === lbl; })"));
   await toggle(); u1 = await sb();
   t('U1 collapse: 60px, main shifts, labels and sections hidden, icons kept, state stored "1"', u1.collapsed && u1.w === 60 && u1.ml === '60px' && u1.labels === 0 && u1.sections === 0 && u1.icons === u1.items && u1.expanded === 'false' && u1.title === 'Expand sidebar' && u1.stored === '1' && !u1.overflow, u1);
@@ -931,8 +960,8 @@ async function main() {
   await fresh('t_odd');
   t('Q-D user with role "admin" (lowercase): no pages and no actions', await ev(`!T.navLabels().includes('Asset Registry') && !T.navLabels().includes('Job Orders') && !T.find('Add Asset','button') && !T.find('Clear All Assets','button')`));
 
-  // ============ THEME (release 2026-10-14): light/dark mode; the ORIGINAL login page (dark in both themes) ============
-  console.log('--- THEME. light/dark mode + original login page');
+  // ============ THEME + LOGIN (2026-10-15): light/dark mode; the REDESIGNED login page with the same sign-in ============
+  console.log('--- THEME. light/dark mode + redesigned login page');
   {
   const CONTRAST = `window.__contrast = el => {
       const parse = c => { const m = /rgba?\\(([^)]+)\\)/.exec(c || ''); if (!m) return null; const p = m[1].split(/[\\s,\\/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
@@ -946,6 +975,7 @@ async function main() {
       if (els.length) out[s] = Math.round(Math.min(...els.map(window.__contrast)) * 100) / 100; } return out; }; true`;
   const toLogin = async () => {
     mock.reset(SEED);
+    try { await ev(`(()=>{ try { sessionStorage.clear(); } catch (e) {} return true; })()`); } catch (e) {}   // no tab session from earlier steps
     await B.send('Page.navigate', { url: 'about:blank' }); await sleep(200);
     await B.send('Storage.clearDataForOrigin', { origin: `http://127.0.0.1:${SITE_PORT}`, storageTypes: 'local_storage' });
     mock.requests = [];
@@ -961,34 +991,38 @@ async function main() {
   await toLogin();
   let th = await themeState();
   const loginView = () => ev(`(()=>{ const c = document.querySelector('.login-card'), lp = document.querySelector('.login-page');
-      return { cardBg: getComputedStyle(c).backgroundColor, pageBg: getComputedStyle(lp).backgroundColor, title: T.txt(document.querySelector('.login-title')), sub: T.txt(document.querySelector('.login-sub')),
-        labels: [...document.querySelectorAll('.login-field label')].map(T.txt), btn: T.txt(document.querySelector('form button[type=submit]')), divider: !!document.querySelector('hr.login-divider'),
-        redesign: !!document.querySelector('.login-intro, .login-visual, .login-theme, .theme-toggle, .pw-toggle, .login-features'), forgot: T.body().includes('Forgot password'),
+      return { cardBg: getComputedStyle(c).backgroundColor, pageBg: getComputedStyle(lp).backgroundColor, title: T.txt(document.querySelector('.login-title')),
+        labels: [...document.querySelectorAll('.login-field label')].map(T.txt), btn: T.txt(document.querySelector('form button[type=submit]')),
+        circuit: document.querySelectorAll('.login-visual .lc-traces path').length, intro: !!document.querySelector('.login-intro'), toggle: !!document.querySelector('.login-page .theme-toggle'),
+        pwToggle: !!document.querySelector('.pw-toggle'), forgot: T.body().includes('Forgot password'), employeeId: T.body().includes('Employee ID'), maxLen: document.getElementById('login-username').maxLength,
         footer: T.txt(document.querySelector('.login-footer')), overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 }; })()`);
   const lv0 = await loginView();
   t('THEME dark is the default (no stored preference)', th.attr === 'dark' && th.stored === null, th);
-  t('LOGIN original page: centred dark card with the CMMS logo, VHPL TIC title, Username / Password, "→  Sign In", footer; no redesign elements (no intro panel, art, theme toggle, show-password, forgot-password)',
-    lv0.cardBg === 'rgba(15, 32, 68, 0.93)' && lv0.title === 'VHPL TIC' && lv0.sub === 'CMMS — ENGINEERING SOLUTIONS DEPARTMENT' && JSON.stringify(lv0.labels) === '["Username","Password"]'
-    && lv0.btn.replace(/s+/g, ' ') === '→ Sign In' && lv0.divider && !lv0.redesign && !lv0.forgot && lv0.footer.includes('COMPUTERIZED MAINTENANCE MANAGEMENT SYSTEM') && !lv0.overflow, lv0);
+  t('LOGIN redesigned page: circuit board, introduction, theme toggle, show-password; Username / Password; "Sign In"; footer; no Forgot password, no Employee ID, no length limit',
+    lv0.circuit >= 4 && lv0.intro && lv0.toggle && lv0.pwToggle && lv0.title === 'VHPL TIC' && JSON.stringify(lv0.labels) === '["Username","Password"]' && lv0.btn === 'Sign In'
+    && !lv0.forgot && !lv0.employeeId && lv0.maxLen < 0 && lv0.footer.includes('COMPUTERIZED MAINTENANCE MANAGEMENT SYSTEM') && !lv0.overflow, lv0);
   await ev(CONTRAST);
-  const cDark = await ev(`window.__minContrast(['.login-title','.login-sub','.login-field label','.login-btn'])`);
-  t('LOGIN dark: title, labels and button readable (≥ 4.5:1)', Object.keys(cDark).length === 4 && Object.values(cDark).every(v => v >= 4.5), cDark);
-  // the theme preference is applied before render; the original login keeps its dark look in light mode
+  const LOGIN_SELS = ['.login-welcome', '.login-instr', '.login-field label', '.login-btn'];
+  const cDark = await ev(`window.__minContrast(${JSON.stringify(LOGIN_SELS)})`);
+  t('LOGIN dark: heading, instructions, labels and button readable (≥ 4.5:1)', Object.keys(cDark).length === 4 && Object.values(cDark).every(v => v >= 4.5), cDark);
+  // the theme preference is applied before render; the redesigned login follows it
   await ev(`localStorage.setItem('cmms_vg_theme', 'light'); true`);
   await B.send('Page.reload', {}); await waitFor(`!!document.querySelector('.login-card')`, 20000); await sleep(800);
   th = await themeState(); const lv1 = await loginView();
   await ev(CONTRAST);
-  const cLight = await ev(`window.__minContrast(['.login-title','.login-sub','.login-field label','.login-btn'])`);
-  t('LOGIN with light mode stored: the page is in light mode, the original login card and page stay dark and readable (≥ 4.5:1)',
-    th.attr === 'light' && th.stored === 'light' && lv1.cardBg === 'rgba(15, 32, 68, 0.93)' && lv1.pageBg === 'rgb(10, 22, 40)' && Object.values(cLight).every(v => v >= 4.5) && Object.keys(cLight).length === 4, { th, lv1, cLight });
-  // original messages and states
+  const cLight = await ev(`window.__minContrast(${JSON.stringify(LOGIN_SELS)})`);
+  t('LOGIN with light mode stored: the login page is light and readable (≥ 4.5:1)', th.attr === 'light' && th.stored === 'light' && lv1.cardBg !== lv0.cardBg
+    && Object.values(cLight).every(v => v >= 4.5) && Object.keys(cLight).length === 4, { th, card: lv1.cardBg, cLight });
+  // the same messages and sign-in contract
   await login('t_admin', 'Wrong-Password-1');
   const busy = await ev(`(()=>{ const b = document.querySelector('form button[type=submit]'); return { disabled: b.disabled, text: T.txt(b) }; })()`);
   await waitFor(`!!document.querySelector('.login-error')`, 5000);
-  const fail1 = await ev(`({ text: T.txt(document.querySelector('.login-error')), btn: T.txt(document.querySelector('form button[type=submit]')), session: localStorage.getItem('cmms_vg_session') })`);
-  t('LOGIN original busy state ("Authenticating...", disabled) and failure message; nothing stored about the sign-in', busy.disabled && busy.text === 'Authenticating...' && fail1.text === '⚠ Invalid username or password. Please try again.' && fail1.btn.replace(/s+/g, ' ') === '→ Sign In' && fail1.session === null, { busy, fail1 });
+  const fail1 = await ev(`({ text: T.txt(document.querySelector('.login-error')), btn: T.txt(document.querySelector('form button[type=submit]')), session: localStorage.getItem('cmms_vg_session'), tab: sessionStorage.getItem('cmms_vg_tab_session') })`);
+  t('LOGIN busy state ("Signing in…", disabled) and the existing failure message; nothing stored about a failed sign-in',
+    busy.disabled && busy.text === 'Signing in…' && fail1.text === 'Invalid username or password. Please try again.' && fail1.btn === 'Sign In' && fail1.session === null && fail1.tab === null, { busy, fail1 });
   await login('', '');
-  t('LOGIN original empty-field message', await ev(`T.txt(document.querySelector('.login-error')) === '⚠ Please enter your username and password.'`));
+  t('LOGIN existing empty-field message; both fields marked invalid', (await ev(`T.txt(document.querySelector('.login-error')) === 'Please enter your username and password.'`))
+    && (await ev(`document.getElementById('login-username').getAttribute('aria-invalid') === 'true' && document.getElementById('login-password').getAttribute('aria-invalid') === 'true'`)));
   // success: the stored theme is carried into the app
   await login('t_admin', PASS.t_admin);
   await waitFor(`!!document.querySelector('.sidebar') && !T.body().includes('Loading')`, 20000); await sleep(800);
@@ -1298,8 +1332,9 @@ async function main() {
     await ev(`T.prop('setJoModal')({ mode: 'add' }); true`); await sleep(400);
     await ev(`T.prop('onSave')({...${JSON.stringify(SEED.jobOrders[0])}, jobNo: '', problem: 'N1 new JO'}, null); true`); await settle();
     t('N1 the JO counter comes from the stored job orders, not an old browser copy', (mock.store.jobOrders.find(j => j.problem === 'N1 new JO') || {}).jobNo === 'JO-9005');
-    t('N1 after loading, signing in and saving, browser storage holds only the theme and sidebar preferences',
-      await ev(`Object.keys(localStorage).sort().join() === 'cmms_vg_sidebar,cmms_vg_theme' && sessionStorage.length === 0`), await ev('Object.keys(localStorage).join()'));
+    t('N1 after loading, signing in and saving: localStorage holds only the theme and sidebar preferences; sessionStorage only the tab session (no password or hash)',
+      await ev(`Object.keys(localStorage).sort().join() === 'cmms_vg_sidebar,cmms_vg_theme' && Object.keys(sessionStorage).join() === 'cmms_vg_tab_session' && !/password/.test(sessionStorage.getItem('cmms_vg_tab_session'))
+        && !${JSON.stringify(mock.store.users.map(u => u.password))}.some(h => sessionStorage.getItem('cmms_vg_tab_session').includes(h))`), await ev('Object.keys(localStorage).join() + " | " + Object.keys(sessionStorage).join()'));
     await ev(`localStorage.removeItem('cmms_vg_theme'); localStorage.removeItem('cmms_vg_sidebar'); true`);
 
     // 9. print escaping: markup in record values is printed as text, never executed
@@ -1418,9 +1453,12 @@ async function main() {
     const role = () => ev(`T.txt(document.querySelector('.sidebar-user-role'))`);
     const usersTab = () => ev(`T.all('.settings-tab').some(e => T.txt(e).includes('Users'))`);
     const activePage = () => ev(`T.txt(document.querySelector('.nav-item.active') || {textContent:''})`);
-    // Browser storage after this phase: no session, no password hash (64-hex) and no "password" field anywhere; no sessionStorage, no cookies.
+    // Browser storage: no localStorage session, no password hash (64-hex) or "password" field in localStorage; sessionStorage
+    // holds at most the tab-session token, which contains no "password" field and none of the stored hashes; no cookies.
     const storageClean = () => ev(`(()=>{ const vals = Object.keys(localStorage).map(k => localStorage.getItem(k));
-      return localStorage.getItem('cmms_vg_session') === null && !vals.some(v => /[0-9a-f]{64}/i.test(v) || /"password"/.test(v)) && sessionStorage.length === 0 && document.cookie === ''; })()`);
+      const ss = Object.keys(sessionStorage), tok = sessionStorage.getItem('cmms_vg_tab_session') || '';
+      return localStorage.getItem('cmms_vg_session') === null && !vals.some(v => /[0-9a-f]{64}/i.test(v) || /"password"/.test(v))
+        && ss.every(k => k === 'cmms_vg_tab_session') && !/"password"/.test(tok) && !${JSON.stringify(mock.store.users.map(u => u.password))}.some(h => tok.includes(h)) && document.cookie === ''; })()`);
     // A stored-record change made while the user is signed in (as a change arriving from elsewhere would be): the Admin's
     // own save handler is captured on Settings and called later from another page.
     const stashSave = async () => { await nav('Settings'); await ev(`window.__save = T.prop('onSaveUser'); !!window.__save`); };
@@ -1501,7 +1539,7 @@ async function main() {
     t('AUTH forged browser session (Admin id, username and role) is not accepted: still only the login page', await atLogin());
     t('AUTH the old session key is deleted on load (never read)', await ev(`localStorage.getItem('cmms_vg_session') === null`));
     await loginNow('t_admin', SEED.users[0].password); await sleep(1500);
-    t('AUTH the stored password hash typed as the password is refused (no passthrough)', (await atLogin()) && (await errText()) === '⚠ Invalid username or password. Please try again.');
+    t('AUTH the stored password hash typed as the password is refused (no passthrough)', (await atLogin()) && (await errText()) === 'Invalid username or password. Please try again.');
 
     await toLoginPage(SEED);
     await loginNow('t_ae', PASS.t_ae);
@@ -1519,6 +1557,56 @@ async function main() {
     t('AUTH (N1) user data failed to load: no sign-in form at all (no fallback to built-in or other data); the failure screen is shown; nothing written',
       (await ev(`!!document.querySelector('.data-unavailable') && !document.querySelector('.login-card') && !document.querySelector('.sidebar')`)) && mock.writes.length === 0);
     mock.failLoad = false;
+  }
+
+  // ============ FEAT (2026-10-15): categories, dashboard, static chart, sidebar ============
+  console.log('--- FEAT. categories, dashboard, chart, sidebar');
+  {
+    // The production situation: the stored category list holds ONE entry while the assets use other categories.
+    const PRODLIKE = JSON.parse(JSON.stringify(SEED));
+    PRODLIKE.customPlants = ['12 VESSEL'];
+    const assetCats = [...new Set(PRODLIKE.assets.map(a => String(a.plant).toUpperCase()))].sort();
+    const expected = [...new Set([...assetCats, '12 VESSEL'])].sort();
+    await fresh('t_admin', PRODLIKE); await nav('Asset Registry');
+    const registry = await ev(`[...document.querySelector('.main select').options].map(o => o.value).filter(Boolean)`);
+    t('CATEGORIES Asset Registry lists the categories the assets use', JSON.stringify(registry) === JSON.stringify(assetCats), registry);
+    await nav('Settings'); await ev(`T.click('Add User','button'); true`); await sleep(300);
+    await ev(`T.setVal(T.all('.modal select')[0], 'Department User'); true`); await sleep(300);
+    const picker = await ev(`T.all('.modal .cat-picker-list label').map(l => T.txt(l).trim())`);
+    t('CATEGORIES (bug: only "12 VESSEL" appeared) the Department User picker lists every category: the assets\' categories plus the stored list, nothing invented',
+      picker.length === expected.length && expected.every(c => picker.some(p => p.toUpperCase().includes(c.replace(/^\d+\s+/, '')))), { picker, expected });
+    await ev(`T.all('.modal-close')[0].click(); true`); await sleep(200);
+    const n0 = mock.writes.length;
+    const useCat = assetCats.find(c => c !== '12 VESSEL');
+    await ev(`(async()=>{ await T.prop('onSaveUser')({ username: 't_cat_du', fullName: 'Category Test DU', employeeId: 'CT001', role: 'Department User', department: 'Cement Plant', assignedCategories: [${JSON.stringify(useCat)}], password: 'Cat-Test-Pass1!', active: true }, null); return true; })()`); await sleep(1200);
+    t('CATEGORIES a Department User can be assigned a category that is only used by assets (validation uses the same list)', mock.store.users.some(u => u.username === 't_cat_du' && JSON.stringify(u.assignedCategories) === JSON.stringify([useCat])));
+    t('CATEGORIES the stored category list is not rewritten to sync', JSON.stringify(mock.store.customPlants) === JSON.stringify(['12 VESSEL']) && !mock.writes.slice(n0).some(w => w.key === 'customPlants'));
+
+    // Dashboard: five most recent job orders; the two panels have the same height
+    const MANY = JSON.parse(JSON.stringify(SEED));
+    for (let i = 0; i < 9; i++) MANY.jobOrders.push({ ...MANY.jobOrders[0], jobNo: 'JO-95' + String(i).padStart(2, '0'), problem: 'Extra ' + i });
+    await fresh('t_admin', MANY); await nav('Dashboard'); await sleep(500);
+    const dash = await ev(`(()=>{ const r = document.querySelector('.recent-jo-panel'), c = document.querySelector('.cat-panel');
+      return { items: r.querySelectorAll('.jo-item').length, first: T.txt(r.querySelector('.jo-num')), hr: Math.round(r.getBoundingClientRect().height), hc: Math.round(c.getBoundingClientRect().height) }; })()`);
+    t('DASHBOARD Recent Job Orders shows exactly five, newest first', dash.items === 5 && dash.first === 'JO-9508', dash);
+    t('DASHBOARD Recent Job Orders has the same height as Assets by Category', Math.abs(dash.hr - dash.hc) <= 1, dash);
+    // Asset Distribution chart: static (no animation) and NOT rebuilt while the clock ticks
+    const ch0 = await ev(`(()=>{ const c = Chart.getChart(document.querySelector('.main canvas')); return c ? { id: c.id, anim: c.options.animation, off: c.data.datasets[0].hoverOffset } : null; })()`);
+    await sleep(3200);
+    const ch1 = await ev(`(()=>{ const c = Chart.getChart(document.querySelector('.main canvas')); return c ? { id: c.id } : null; })()`);
+    t('CHART static doughnut: animation off, no hover offset', !!ch0 && ch0.anim === false && ch0.off === 0, ch0);
+    t('CHART not rebuilt while the page re-renders every second (same chart instance after 3 s)', !!ch1 && ch1.id === ch0.id, { ch0, ch1 });
+    // Sidebar: no section headers; icons and names kept, aligned, in both modes
+    const sb = async () => ev(`({ headers: document.querySelectorAll('.nav-section').length, items: T.all('.nav-item').length,
+      icons: T.all('.nav-item .nav-icon').length, lefts: [...new Set(T.all('.nav-item .nav-icon').map(e => Math.round(e.getBoundingClientRect().left)))].length,
+      labels: T.all('.nav-item .nav-label').filter(e => e.offsetParent !== null).length })`);
+    const open = await sb();
+    t('SIDEBAR expanded: no section headers; every item keeps its icon and visible name; icons aligned in one column', open.headers === 0 && open.items === 7 && open.icons === 7 && open.labels === 7 && open.lefts === 1, open);
+    await ev(`document.querySelector('.sidebar-toggle').click(); true`); await sleep(400);
+    const shut = await sb();
+    t('SIDEBAR collapsed: no section headers; icons only, aligned in one column', shut.headers === 0 && shut.icons === 7 && shut.labels === 0 && shut.lefts === 1, shut);
+    await ev(`document.querySelector('.sidebar-toggle').click(); true`); await sleep(300);
+    await ev(`localStorage.removeItem('cmms_vg_sidebar'); true`);
   }
 
   // ============ T9 + network ============

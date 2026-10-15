@@ -5,7 +5,7 @@
 'use strict';
 const { spawnSync } = require('child_process'), path = require('path');
 const suites = ['jsx-compile.test.js', 'staging-isolation.test.js', 'permissions.test.js'];
-if (!process.argv.includes('--no-e2e')) suites.push(path.join('e2e', 'run.js'));
+if (!process.argv.includes('--no-e2e')) suites.push(path.join('e2e', 'run.js'), path.join('e2e', 'role-check.js'));   // role-check: test accounts per role, local mock only
 let bad = 0;
 for (const s of suites) {
   const r = spawnSync(process.execPath, [path.join(__dirname, s)], { encoding: 'utf8', timeout: 1500000 });   // E2E alone takes ~15 min (2026-10-13)

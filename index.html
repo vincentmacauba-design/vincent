@@ -339,6 +339,16 @@ function canSeeAsset(user, a) {
   const cats = (Array.isArray(user.assignedCategories) ? user.assignedCategories : []).map(c => String(c).toUpperCase());
   return !!a && cats.includes(String(a.plant || '').toUpperCase());
 }
+// Authoritative asset categories (2026-10-15): every category the assets actually use, plus the stored category list
+// (app_data customPlants). Upper case, de-duplicated, sorted. Built only from existing data: nothing is invented and the
+// stored list is not rewritten. Asset Registry, Dashboard, the asset form, CSV import, category rename and the Department
+// User category picker/validation all use this one list (previously Settings used only the stored list).
+function allCategories(assets, stored) {
+  const out = new Set();
+  (Array.isArray(assets) ? assets : []).forEach(a => { const c = String((a && a.plant) || '').trim().toUpperCase(); if (c) out.add(c); });
+  (Array.isArray(stored) ? stored : []).forEach(c => { const u = String(c == null ? '' : c).trim().toUpperCase(); if (u) out.add(u); });
+  return [...out].sort();
+}
 function canSeeJO(user, j) { return !isDeptUser(user) || (!!j && !!user.department && j.dept === user.department); }
 // Who may open the edit form for this JO (UI) and save it (saveJO).
 function mayEditJO(user, jo) {
@@ -508,6 +518,28 @@ async function authVerify({adapter, loginId, password, users, usersLoaded, hashF
   return {ok: true, state: Object.freeze({status: 'signed-in', subject: Object.freeze({id: u.id, username: u.username}),
                                          adapter: adapter.name, env: adapter.env, since: new Date().toISOString()})};
 }
+// ─── TAB SESSION (2026-10-15) ───────────────────────────────────────────────────────────────────────────────────
+// Keeps the sign-in across a page REFRESH in the same browser tab: sessionStorage (cleared when the tab closes, never
+// shared with other tabs). It holds no password and no hash: the proof is SHA-256 over the account id, username, issue
+// time and the account's CURRENT stored hash, so a password change or reset, deactivation, deletion or username change
+// ends it at the next load; it also expires after TAB_SESSION_MAX_MS. Logout deletes it. Client-side only, like the
+// sign-in itself (not production security: SECURITY_REMEDIATION S2).
+const TAB_SESSION_KEY = 'cmms_vg_tab_session';
+const TAB_SESSION_MAX_MS = 12 * 3600 * 1000;
+function tabSessionProof(id, username, iat, storedHash, hashFn) { return hashFn(['cmms-tab-session-v1', id, username, iat, storedHash].join('\n')); }
+async function makeTabSession(user, hashFn, now = Date.now()) {
+  return {v: 1, id: user.id, username: user.username, iat: now, proof: await tabSessionProof(user.id, user.username, now, user.password, hashFn)};
+}
+async function verifyTabSession(token, users, hashFn, now = Date.now(), maxAge = TAB_SESSION_MAX_MS) {
+  if (!token || typeof token !== 'object' || token.v !== 1 || typeof token.username !== 'string' || !token.username || typeof token.proof !== 'string') return null;
+  if (!Number.isFinite(token.iat) || token.iat > now + 60000 || now - token.iat > maxAge) return null;
+  const u = (Array.isArray(users) ? users : []).find(x => x && x.id === token.id && x.username === token.username);
+  if (!u || u.active === false || typeof u.password !== 'string' || !/^[0-9a-f]{64}$/.test(u.password)) return null;
+  return (await tabSessionProof(u.id, u.username, token.iat, u.password, hashFn)) === token.proof ? u : null;
+}
+function readTabSession() { try { const raw = sessionStorage.getItem(TAB_SESSION_KEY); return raw ? JSON.parse(raw) : null; } catch (_) { return null; } }
+function writeTabSession(t) { try { sessionStorage.setItem(TAB_SESSION_KEY, JSON.stringify(t)); } catch (_) {} }
+function clearTabSession() { try { sessionStorage.removeItem(TAB_SESSION_KEY); } catch (_) {} }
 // Phase 2B-4: only a well-formed signed-in state from THIS environment's adapter counts; anything else is "signed out".
 function isValidAuthState(auth, adapter) {
   if (!auth || typeof auth !== 'object' || auth.status !== 'signed-in' || !adapter) return false;
@@ -656,7 +688,7 @@ body,#root{background:var(--navy);color:var(--white);font-family:var(--fb);font-
 .layout.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);}
 .layout.sidebar-collapsed .nav-section,.layout.sidebar-collapsed .nav-label,.layout.sidebar-collapsed .sidebar-user-text{display:none;}
 .layout.sidebar-collapsed .nav-item{justify-content:center;padding:10px 0;gap:0;}
-.layout.sidebar-collapsed .nav-icon{width:auto;font-size:18px;}
+.layout.sidebar-collapsed .nav-icon{width:24px;font-size:18px;text-align:center;}
 .layout.sidebar-collapsed .sidebar-footer{padding:12px 0;display:flex;justify-content:center;}
 .main{flex:1;padding:28px 32px;min-height:calc(100vh - 58px);overflow-y:auto;margin-left:var(--sidebar-w);}
 .page-title{font-family:var(--fh);font-size:28px;font-weight:700;letter-spacing:1px;}
@@ -845,25 +877,126 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
 /* theme toggle (login page and top bar) */
 .theme-toggle{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border-radius:8px;border:1px solid var(--border);background:var(--hl-05);color:var(--gray);cursor:pointer;transition:color .15s,background .15s,border-color .15s;flex-shrink:0;}
 .theme-toggle:hover,.theme-toggle:focus-visible{color:var(--accent);border-color:var(--accent);outline:none;}
-/* ── Login Page (original design, restored 2026-10-14) */
-.login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--navy);background-image:radial-gradient(ellipse at 20% 20%,rgba(26,86,219,.15) 0%,transparent 60%),radial-gradient(ellipse at 80% 80%,rgba(245,158,11,.08) 0%,transparent 60%);}
-.login-card{background:rgba(15,32,68,0.93);border:1px solid rgba(245,158,11,.22);border-radius:12px;padding:44px 48px;width:440px;max-width:96vw;backdrop-filter:blur(16px);box-shadow:0 24px 80px rgba(0,0,0,.65);}
-.login-logo-wrap{text-align:center;margin-bottom:28px;}
-.login-logo-icon{width:80px;height:60px;background:linear-gradient(135deg,var(--accent),var(--blue));border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:700;font-size:18px;color:var(--navy);margin-bottom:12px;letter-spacing:1px;}
-.login-title{font-family:var(--fh);font-size:22px;font-weight:700;letter-spacing:1.5px;}
-.login-sub{font-size:10px;color:var(--accent);font-family:var(--fm);letter-spacing:2px;margin-top:3px;}
-.login-divider{border:none;border-top:1px solid var(--border);margin:22px 0;}
-.login-field{margin-bottom:16px;}
-.login-field label{display:block;font-size:11px;font-family:var(--fm);letter-spacing:1px;color:var(--gray);margin-bottom:6px;text-transform:uppercase;}
-.login-field input{width:100%;padding:10px 14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);color:var(--white);font-family:var(--fb);font-size:14px;border-radius:6px;outline:none;transition:border-color .15s;}
-.login-field input:focus{border-color:var(--accent);}
-.login-btn{width:100%;padding:11px;background:var(--accent);color:var(--navy);font-family:var(--fh);font-size:16px;font-weight:700;letter-spacing:1px;border:none;border-radius:6px;cursor:pointer;margin-top:8px;transition:background .15s;}
+/* ── Login Page */
+.login-page{position:relative;isolation:isolate;overflow:hidden;min-height:100vh;display:grid;grid-template-columns:minmax(0,54fr) minmax(510px,46fr);background:var(--li-bg);
+  --li-bg:linear-gradient(160deg,#0b1a33 0%,#0f2550 55%,#0b1a33 100%);--li-line:rgba(148,180,230,.16);--li-line-strong:rgba(148,180,230,.28);--li-gear:rgba(245,158,11,.22);--li-text:#f8fafc;--li-muted:#a9b8cf;
+  --card-bg:rgba(10,22,46,.42);--card-bg-solid:rgba(13,28,58,.94);--card-bd:rgba(255,255,255,.16);--card-hl:rgba(255,255,255,.38);--card-sheen:rgba(255,255,255,.07);
+  --card-shadow:0 30px 70px rgba(2,8,20,.5),0 10px 24px rgba(2,8,20,.28),0 1px 2px rgba(2,8,20,.3),inset 0 1px 0 rgba(255,255,255,.1),inset 0 0 0 1px rgba(255,255,255,.02);
+  --li-tint:rgba(8,18,38,.38);--li-packet:rgba(245,158,11,.75);
+  --rs-bg:radial-gradient(ellipse at 75% 20%,rgba(80,130,230,.14) 0%,transparent 60%),linear-gradient(160deg,rgba(28,50,94,.78) 0%,rgba(22,42,82,.78) 100%);
+  --rs-edge:rgba(148,180,230,.18);--rs-shade:-18px 0 40px -24px rgba(0,0,0,.6);}
+:root[data-theme="light"] .login-page{--li-bg:linear-gradient(160deg,#e9eff8 0%,#dfe8f5 55%,#eaf0f8 100%);--li-line:rgba(15,32,68,.08);--li-line-strong:rgba(15,32,68,.14);--li-gear:rgba(180,83,9,.2);--li-text:#0f2044;--li-muted:#46566e;
+  --card-bg:rgba(255,255,255,.5);--card-bg-solid:rgba(255,255,255,.95);--card-bd:rgba(255,255,255,.75);--card-hl:rgba(255,255,255,.95);--card-sheen:rgba(255,255,255,.45);
+  --card-shadow:0 28px 64px rgba(15,32,68,.16),0 8px 20px rgba(15,32,68,.08),0 0 0 1px rgba(15,32,68,.06),inset 0 1px 0 rgba(255,255,255,.9);
+  --li-tint:rgba(255,255,255,.34);--li-packet:rgba(217,119,6,.7);
+  --rs-bg:radial-gradient(ellipse at 75% 20%,rgba(26,86,219,.07) 0%,transparent 60%),linear-gradient(160deg,rgba(246,248,251,.7) 0%,rgba(238,242,247,.7) 100%);
+  --rs-edge:rgba(15,32,68,.10);--rs-shade:-18px 0 40px -26px rgba(15,32,68,.25);}
+.login-page{--lc-trace:rgba(245,158,11,.20);--lc-trace-strong:rgba(245,158,11,.34);--lc-socket:rgba(245,158,11,.38);--lc-pad:rgba(245,158,11,.62);--lc-via:#0b1a33;}
+:root[data-theme="light"] .login-page{--lc-trace:rgba(180,83,9,.16);--lc-trace-strong:rgba(180,83,9,.28);--lc-socket:rgba(180,83,9,.32);--lc-pad:rgba(180,83,9,.55);--lc-via:#eef3fa;}
+.lc-traces path{fill:none;stroke:var(--lc-trace);stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round;}
+.lc-socket{fill:none;stroke:var(--lc-socket);stroke-width:1.2;stroke-dasharray:6 6;}
+.lc-vias circle{fill:var(--lc-via);stroke:var(--lc-trace-strong);stroke-width:1.3;}
+.lc-pads rect{fill:var(--lc-pad);}
+.lc-parts rect,.lc-parts path{fill:none;stroke:var(--lc-trace-strong);stroke-width:1.1;}
+.lc-signal{fill:none;stroke:var(--li-packet);stroke-width:2.2;stroke-linecap:round;stroke-dasharray:26 100000;stroke-dashoffset:26;}   /* moved by Web Animations (LoginCircuit); hidden until then */
+.lc-glow{fill:var(--accent-fill);opacity:.12;}
+.login-caps{font-size:12px;color:var(--accent);margin:-10px 0 12px;}
+:root[data-theme="light"] .login-caps{color:#b45309;}
+.login-input.invalid input{border-color:var(--red) !important;box-shadow:0 0 0 2px rgba(239,68,68,.18);}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+.login-theme{position:absolute;top:16px;right:16px;z-index:5;}
+.login-intro{position:relative;z-index:2;color:var(--li-text);display:flex;align-items:center;padding:56px clamp(32px,5vw,72px);background:linear-gradient(90deg,var(--li-tint) 0%,transparent 100%);}
+.login-visual{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;display:block;}
+/* light layer above the right panel tint (so the trail leaving the card is as bright as the one arriving), below the
+   introduction (z 2, later in the page: left lights stay behind its text). Nothing is ever drawn over the card. */
+.login-visual.lc-anim{z-index:2;}
+.lv-anim{will-change:transform;}
+.lv-grid{stroke:var(--li-line);stroke-width:.6;}.lv-grid-lg{stroke:var(--li-line-strong);stroke-width:.8;}
+.lv-gear path,.lv-gear circle{fill:none;stroke:var(--li-gear);stroke-width:1.4;}
+.lv-gear-svg{position:absolute;z-index:0;pointer-events:none;overflow:visible;display:block;}
+.lv-gear-m{display:none;}
+@media(max-width:1360px){.lv-wo{display:none;}}   /* the sheet would sit behind the feature cards */
+.lv-notes text{fill:var(--li-line-strong);font-family:var(--fm);font-size:9px;letter-spacing:1px;}
+.lv-line path,.lv-line circle{fill:none;stroke:var(--li-line-strong);stroke-width:1.2;}
+.lv-flow{fill:none;stroke:var(--li-line-strong);stroke-width:1.2;stroke-dasharray:4 14;opacity:.9;animation:lv-dash 8s linear infinite;}
+.lv-packet{fill:none;stroke:var(--li-packet);stroke-width:2.2;stroke-linecap:round;stroke-dasharray:14 986;animation:lv-travel 14s linear infinite;}
+.lv-pulse circle{fill:var(--accent-fill);opacity:.5;animation:lv-pulse 3.6s ease-in-out infinite;}
+.lv-spin{transform-origin:50% 50%;will-change:transform;animation-name:lv-rot;animation-timing-function:linear;animation-iteration-count:infinite;}
+.lv-breathe{animation:lv-breathe 7s ease-in-out infinite;}
+.lv-dial path{stroke-linecap:round;}
+@keyframes lv-breathe{0%,100%{opacity:1;}50%{opacity:.45;}}
+@keyframes lv-rot{to{transform:rotate(360deg);}}
+@keyframes lv-dash{to{stroke-dashoffset:-72;}}
+@keyframes lv-travel{from{stroke-dashoffset:0;}to{stroke-dashoffset:-1000;}}
+@keyframes lv-pulse{0%,100%{opacity:.2;}50%{opacity:.75;}}
+.login-intro-inner{position:relative;z-index:1;max-width:520px;}
+.login-brand{display:flex;width:fit-content;max-width:100%;align-items:center;gap:14px;margin-bottom:34px;}
+.login-logo-icon{width:58px;height:44px;background:linear-gradient(135deg,var(--accent-fill),var(--blue));border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:700;font-size:15px;color:var(--on-accent);letter-spacing:1px;flex-shrink:0;box-shadow:0 6px 18px rgba(26,86,219,.25);}
+.login-title{font-family:var(--fh);font-size:22px;font-weight:700;letter-spacing:1.5px;color:var(--li-text);}
+.login-sub{font-size:10px;color:var(--accent);font-family:var(--fm);letter-spacing:2px;margin-top:2px;}
+.login-intro .login-sub{color:var(--accent-fill);}
+:root[data-theme="light"] .login-intro .login-sub{color:#b45309;}
+.login-headline{font-family:var(--fh);font-size:clamp(30px,3.2vw,42px);line-height:1.08;font-weight:700;letter-spacing:.5px;margin-bottom:16px;}
+.login-headline span{display:block;color:var(--accent-fill);}
+:root[data-theme="light"] .login-headline span{color:#b45309;}
+.login-desc{font-size:14px;line-height:1.65;color:var(--li-muted);max-width:460px;margin-bottom:30px;}
+.login-features{list-style:none;display:flex;flex-direction:column;gap:14px;}
+.login-features li{display:flex;gap:14px;align-items:flex-start;padding:12px 14px;border:1px solid var(--li-line-strong);border-radius:10px;background:var(--hl-03);backdrop-filter:blur(2px);}
+.login-features strong{display:block;font-family:var(--fh);font-size:16px;letter-spacing:.5px;margin-bottom:2px;}
+.login-features span{font-size:12.5px;line-height:1.5;color:var(--li-muted);}
+.lf-icon{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;flex-shrink:0;color:var(--accent-fill);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.28);}
+:root[data-theme="light"] .lf-icon{color:#b45309;}
+.login-main{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;padding:72px clamp(20px,4vw,56px) 40px;}
+.login-main::before{content:'';position:absolute;top:0;bottom:0;right:0;left:-80px;z-index:-1;pointer-events:none;background:var(--rs-bg);
+  -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 160px);mask-image:linear-gradient(90deg,transparent 0,#000 160px);}
+.login-card{position:relative;isolation:isolate;background-color:var(--card-bg);background-image:linear-gradient(128deg,var(--card-sheen) 0%,transparent 34%,transparent 70%,var(--card-sheen) 130%);border:1px solid var(--card-bd);border-radius:18px;padding:38px 36px 28px;width:392px;max-width:100%;
+  -webkit-backdrop-filter:blur(10px) saturate(160%);backdrop-filter:blur(10px) saturate(160%);box-shadow:var(--card-shadow);}
+.login-card::before{content:'';position:absolute;top:0;left:18px;right:18px;height:1px;border-radius:1px;pointer-events:none;background:linear-gradient(90deg,transparent,var(--card-hl),transparent);}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){ .login-card{background-color:var(--card-bg-solid);} }
+.login-features li{background:var(--li-tint);}
+.login-card-head{margin-bottom:26px;}
+.login-welcome{font-family:var(--fh);font-size:30px;font-weight:700;letter-spacing:.5px;color:var(--white);}
+.login-instr{font-size:13px;color:var(--gray);margin-top:4px;}
+.login-field{margin-bottom:18px;}
+.login-field label{display:block;font-size:11px;font-family:var(--fm);letter-spacing:1px;color:var(--gray);margin-bottom:7px;text-transform:uppercase;}
+.login-input{position:relative;display:flex;align-items:center;}
+.login-input .li-icon{position:absolute;left:13px;color:var(--gray);pointer-events:none;}
+.login-field input{width:100%;padding:11px 14px 11px 40px;background:var(--input-bg);border:1px solid var(--hl-12);color:var(--white);font-family:var(--fb);font-size:14px;border-radius:9px;outline:none;transition:border-color .15s,box-shadow .15s;}
+.login-field input#login-password{padding-right:44px;}
+.login-field input:focus{border-color:var(--accent-fill);box-shadow:0 0 0 3px rgba(245,158,11,.18);}
+.pw-toggle{position:absolute;right:6px;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border:none;border-radius:7px;background:none;color:var(--gray);cursor:pointer;}
+.pw-toggle:hover,.pw-toggle:focus-visible{color:var(--accent);background:var(--hl-06);outline:none;}
+.login-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:12px;background:var(--accent-fill);color:var(--on-accent);font-family:var(--fh);font-size:17px;font-weight:700;letter-spacing:1px;border:none;border-radius:9px;cursor:pointer;margin-top:10px;transition:background .15s,transform .1s,box-shadow .15s;box-shadow:0 6px 18px rgba(245,158,11,.22);}
 .login-btn:hover{background:var(--accent2);}
-.login-btn:disabled{opacity:.6;cursor:not-allowed;}
-.login-error{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);border-radius:6px;padding:9px 14px;font-size:12px;color:var(--red);font-family:var(--fm);margin-top:12px;text-align:center;}
-.login-footer{text-align:center;margin-top:28px;font-size:10px;color:rgba(148,163,184,.45);font-family:var(--fm);letter-spacing:1px;line-height:1.8;}
-/* light mode: the original login keeps its dark look (it was designed for it); the dark tokens apply inside it */
-:root[data-theme="light"] .login-page{--navy:#0a1628;--navy2:#0f2044;--blue:#1a56db;--accent:#f59e0b;--accent2:#fbbf24;--red:#ef4444;--gray:#94a3b8;--white:#f8fafc;--border:rgba(255,255,255,0.07);color:var(--white);}
+.login-btn:active{transform:translateY(1px);}
+.login-btn:focus-visible{outline:2px solid var(--blue);outline-offset:2px;}
+.login-btn:disabled{opacity:.75;cursor:progress;}
+.login-spinner{width:16px;height:16px;border-radius:50%;border:2px solid rgba(10,22,40,.25);border-top-color:var(--on-accent);animation:lv-rot .8s linear infinite;}
+.login-error{display:flex;gap:8px;align-items:flex-start;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.35);border-left:3px solid var(--red);border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.45;color:var(--red);margin-top:4px;margin-bottom:6px;}
+.login-error::before{content:'!';display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--red);color:#fff;font-weight:700;font-size:12px;flex-shrink:0;margin-top:1px;}
+:root[data-theme="light"] .login-error{color:#b91c1c;}
+.login-footer{text-align:center;margin-top:26px;font-size:10px;color:var(--gray);opacity:.7;font-family:var(--fm);letter-spacing:1px;line-height:1.8;}
+@media(max-width:960px){
+  .login-page{grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr;}
+  .login-intro{padding:28px 60px 24px 20px;background:linear-gradient(180deg,var(--li-tint) 0%,transparent 100%);}
+  .lv-gear-d{display:none;}.lv-gear-m{display:block;}
+  .login-brand{margin-bottom:14px;}
+  .login-headline{font-size:24px;margin-bottom:6px;}
+  .login-headline span{display:inline;}
+  .login-desc{font-size:13px;margin-bottom:0;}
+  .login-features{display:none;}
+  .login-main{align-items:flex-start;padding:24px 16px 32px;}
+  .login-main::before{left:0;top:-40px;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 100px);mask-image:linear-gradient(180deg,transparent 0,#000 100px);}
+  .login-card{padding:28px 22px 22px;}
+  .login-theme{top:12px;right:12px;}
+}
+@media(max-width:480px){ .login-desc{display:none;} .login-welcome{font-size:26px;} }
+@media(prefers-reduced-motion:reduce){
+  .login-visual *,.lv-gear-svg,.lv-gear-svg *,.login-spinner{animation:none !important;}
+  .lv-packet,.lc-signal{display:none;}
+  .lc-glow{opacity:.3;}
+  .login-btn,.login-field input,.theme-toggle{transition:none;}
+}
 /* ── User badge & logout */
 .user-badge{display:flex;align-items:center;gap:8px;padding:4px 12px;background:var(--hl-05);border:1px solid var(--border);border-radius:5px;}
 .user-avatar{width:26px;height:26px;background:linear-gradient(135deg,var(--blue),var(--accent));border-radius:5px;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:700;font-size:12px;color:var(--on-accent);flex-shrink:0;}
@@ -1259,6 +1392,19 @@ function App() {
     if (currentUser && !can(currentUser, PAGE_CAP[page])) setPage('dashboard');
   }, [authzKey]);
 
+  // ── Tab session: after the users have been read, one attempt to restore this tab's sign-in (see TAB SESSION).
+  const restoreTried = useRef(false);
+  useEffect(() => {
+    if (restoreTried.current || auth.status === 'signed-in' || !dbLoaded || !usersFromDb.current || !authAdapter) return;
+    restoreTried.current = true;
+    const tok = readTabSession();
+    if (!tok) return;
+    verifyTabSession(tok, users, sha256Hex).then(u => {
+      if (!u) { clearTabSession(); return; }
+      setAuth(Object.freeze({status: 'signed-in', subject: Object.freeze({id: u.id, username: u.username}), adapter: authAdapter.name, env: authAdapter.env, since: new Date().toISOString()}));
+    });
+  }, [dbLoaded, users]);
+
   // ── While signed in, the subject must still exist and be active in the stored users (deactivated/deleted elsewhere).
   //    Role and section changes need no action: the profile is re-read from the users on every render.
   useEffect(() => {
@@ -1316,7 +1462,11 @@ function App() {
   // never the built-in defaults and never another environment's data.
   async function handleLogin(loginId, password) {
     const r = await authVerify({adapter: authAdapter, loginId, password, users, usersLoaded: usersFromDb.current, hashFn: sha256Hex});
-    if (r.ok) { setPage('dashboard'); setAuth(r.state); return {ok: true}; }
+    if (r.ok) {
+      const u = users.find(x => x && x.id === r.state.subject.id && x.username === r.state.subject.username);
+      if (u) writeTabSession(await makeTabSession(u, sha256Hex));   // refresh keeps this sign-in (same tab only)
+      setPage('dashboard'); setAuth(r.state); return {ok: true};
+    }
     return r;
   }
 
@@ -1325,6 +1475,7 @@ function App() {
     if (forced === true) { clearTimeout(saveTimer.current); const k = Object.keys(pendingSaves.current); pendingSaves.current = {}; if (k.length) addToast(unsavedMsg(k), true); }
     else runBatch();
     writeGate.signedIn = false;
+    clearTabSession();   // logout (normal or forced) ends the tab session
     setAuth(AUTH_SIGNED_OUT);
     setAssetModal(null); setJoModal(null); setJoViewModal(null); setAssetImport(null);   // nothing opened by this user survives
     setPage('dashboard');
@@ -1334,7 +1485,7 @@ function App() {
   async function saveUser(user, editId) {
     if (!allow(can(currentUser,'users.admin') || (!!editId && !!currentUser && editId === currentUser.id && can(currentUser,'profile.edit')))) return;
     if (can(currentUser,'users.admin')) {
-      const err = validateUserRecord(user, customPlants, {users, editId});
+      const err = validateUserRecord(user, categories, {users, editId});
       if (err) { addToast(err, true); return; }
       if (!editId && !(typeof user.password === 'string' && user.password !== '')) { addToast('A password is required for new accounts.', true); return; }
       user = normalizeUserRecord(user);
@@ -1373,6 +1524,7 @@ function App() {
     const saveErr = await dbSave('users', next);
     if (saveErr) { addToast('Your password was not changed: it could not be saved. Please try again.', true); return false; }
     setUsers(prev => prev.map(u => u.id === me.id ? updatedMe : u));
+    writeTabSession(await makeTabSession(updatedMe, sha256Hex));   // own change: this tab stays signed in after a refresh
     addToast('Password changed.');
     return true;
   }
@@ -1716,6 +1868,7 @@ function App() {
 
   // ── Custom Plants
   const [customPlants, setCustomPlants] = useState([...PLANTS].sort());
+  const categories = useMemo(() => allCategories(assets, customPlants), [assets, customPlants]);
   function addCustomPlant(name) {
     if (!allow(can(currentUser,'asset.category.manage'))) return;
     const upper = name.trim().toUpperCase();
@@ -1731,22 +1884,24 @@ function App() {
     if (!allow(can(currentUser,'asset.category.manage'))) return;
     const upper = newName.trim().toUpperCase();
     if (!upper || upper === oldName) return;
-    if (!customPlants.includes(oldName)) { addToast(`Category "${oldName}" not found — rename cancelled.`, true); return; }
-    if (customPlants.some(p => p !== oldName && p.toUpperCase() === upper)) { addToast(`Category "${upper}" already exists — rename cancelled.`, true); return; }
+    const same = x => String(x == null ? '' : x).toUpperCase() === String(oldName).toUpperCase();
+    if (!categories.some(same)) { addToast(`Category "${oldName}" not found — rename cancelled.`, true); return; }
+    if (categories.some(p => !same(p) && p === upper)) { addToast(`Category "${upper}" already exists — rename cancelled.`, true); return; }
     const syncWarn = what => e => { if (e) addToast(`⚠ Cloud sync failed for ${what} — the rename is NOT stored. Reload and try again.`, true); };
     setCustomPlants(prev => {
-      const next = prev.map(p => p===oldName ? upper : p);
+      if (!prev.some(same)) return prev;   // a category used only by assets: the stored list does not change
+      const next = prev.map(p => same(p) ? upper : p);
       dbSave('customPlants', next).then(syncWarn('categories'));
       return next;
     });
     // One renamed JO list for both state and the debounced save. (Previously the combined save wrote the PRE-rename
     // jobOrders ~800 ms later, overwriting the renamed JOs in the database.)
     // Deliberately two datasets (assets AND job orders): both are queued into the same save batch.
-    const nextJOs = jobOrders.map(j => j.assetCategory===oldName ? {...j, assetCategory:upper} : j);
+    const nextJOs = jobOrders.map(j => same(j.assetCategory) ? {...j, assetCategory:upper} : j);
     setJobOrders(nextJOs);
     queueSave('jobOrders', nextJOs);
     setAssets(prev => {
-      const next = prev.map(a => a.plant===oldName ? {...a, plant:upper} : a);
+      const next = prev.map(a => same(a.plant) ? {...a, plant:upper} : a);
       queueSave('assets', next);
       return next;
     });
@@ -1763,7 +1918,7 @@ function App() {
   function importAssetsFromCSV(file) {
     if (!allow(can(currentUser,'asset.import'))) return;
     // Nothing is saved here: the file is checked and a preview is shown first (applyAssetImport saves after confirmation).
-    importCSVFile(file, rows => setAssetImport({plan: planAssetImport(rows, assets, customPlants), rows, fileName: (file && file.name) || 'CSV file'}));
+    importCSVFile(file, rows => setAssetImport({plan: planAssetImport(rows, assets, categories), rows, fileName: (file && file.name) || 'CSV file'}));
   }
   function applyAssetImport(selectedNums) {
     if (!allow(can(currentUser,'asset.import'))) return false;
@@ -1771,7 +1926,7 @@ function App() {
     if (!imp) return false;
     if (imp.plan.invalid.length) { addToast('Import blocked: fix the invalid rows and import the file again. Nothing was saved.', true); return false; }
     // The asset list may have changed since the preview: re-check, and save nothing if the plan is no longer the same.
-    if (JSON.stringify(planAssetImport(imp.rows, assets, customPlants)) !== JSON.stringify(imp.plan)) { setAssetImport(null); addToast('The asset list changed since the preview. Import the file again. Nothing was saved.', true); return false; }
+    if (JSON.stringify(planAssetImport(imp.rows, assets, categories)) !== JSON.stringify(imp.plan)) { setAssetImport(null); addToast('The asset list changed since the preview. Import the file again. Nothing was saved.', true); return false; }
     let next;
     try { next = applyAssetPlan(assets, imp.plan, selectedNums); }
     catch (e) { setAssetImport(null); addToast(`Import failed (${e.message}). Nothing was saved.`, true); return false; }
@@ -1862,18 +2017,12 @@ function App() {
         <div className={`layout${sidebarCollapsed?' sidebar-collapsed':''}`}>
           {/* SIDEBAR */}
           <div className="sidebar">
-            <div className="nav-section">Main</div>
             {can(currentUser,'nav.dashboard')&&<NavItem active={page==='dashboard'} onClick={()=>setPage('dashboard')} icon="🏠" label="Dashboard"/>}
-            {can(currentUser,'nav.assets')&&<div className="nav-section">Assets</div>}
             {can(currentUser,'nav.assets')&&<NavItem active={page==='assets'} onClick={()=>setPage('assets')} icon="🗂️" label="Asset Registry"/>}
-            <div className="nav-section">Maintenance</div>
             {can(currentUser,'nav.jobOrders')&&<NavItem active={page==='joborders'} onClick={()=>setPage('joborders')} icon="📋" label="Job Orders"/>}
             {can(currentUser,'nav.pm')&&<NavItem active={page==='pmschedule'} onClick={()=>setPage('pmschedule')} icon="🔩" label="PM Schedule"/>}
-            {can(currentUser,'nav.employees')&&<div className="nav-section">Manpower</div>}
             {can(currentUser,'nav.employees')&&<NavItem active={page==='employees'} onClick={()=>setPage('employees')} icon="👷" label="Employees"/>}
-            {can(currentUser,'nav.reports')&&<div className="nav-section">Reports</div>}
             {can(currentUser,'nav.reports')&&<NavItem active={page==='reports'} onClick={()=>setPage('reports')} icon="📊" label="Reports"/>}
-            <div className="nav-section">System</div>
             <NavItem active={page==='settings'} onClick={()=>setPage('settings')} icon="👥" label="Settings"/>
             <div className="sidebar-footer">
               <div style={{display:'flex',alignItems:'center',gap:10}}>
@@ -1897,7 +2046,7 @@ function App() {
             {page==='pmschedule' && can(currentUser,'nav.pm') && <PMSchedulePage pm={pm} assets={assets} setJoModal={setJoModal} onSavePM={savePMItem} onRecordService={recordPMService} onImportPM={importPMFromCSV} onExportPM={()=>exportPMCSV(pm, currentUser)} currentUser={currentUser}/>}
             {page==='employees' && can(currentUser,'nav.employees') && <EmployeesPage employees={employees} onSaveEmployee={saveEmployee} onUpdateStatus={updateEmployeeStatus} onImportEmployees={importEmployeesFromData} onDeleteEmployee={deleteEmployee} onFixStatus={fixEmployeeStatusFromDates} currentUser={currentUser}/>}
             {page==='reports'   && can(currentUser,'nav.reports') && <ReportsPage assets={visibleAssets} jobOrders={visibleJobOrders} currentUser={currentUser}/>}
-            {page==='settings'  && can(currentUser,'settings.profile') && <SettingsPage users={users} customPlants={customPlants} currentUser={currentUser} onSaveUser={saveUser} onChangePassword={changeOwnPassword} onDeleteUser={deleteUser} onResetData={resetData}/>}
+            {page==='settings'  && can(currentUser,'settings.profile') && <SettingsPage users={users} customPlants={categories} currentUser={currentUser} onSaveUser={saveUser} onChangePassword={changeOwnPassword} onDeleteUser={deleteUser} onResetData={resetData}/>}
           </div>
         </div>
 
@@ -1911,7 +2060,7 @@ function App() {
                 onJO={a=>{setAssetModal(null);setJoModal({mode:'add',preAsset:a.num});}} />
             : <AssetFormModal mode={assetModal.mode} asset={assetModal.asset}
                 assets={assets} onClose={()=>setAssetModal(null)} onSave={saveAsset}
-                customPlants={customPlants} onAddPlant={addCustomPlant} onRenameCategory={renameCustomPlant}/>
+                customPlants={categories} onAddPlant={addCustomPlant} onRenameCategory={renameCustomPlant}/>
         )}
         {joModal && (
           <JOFormModal mode={joModal.mode} jo={joModal.jo} preAsset={joModal.preAsset}
@@ -1968,16 +2117,177 @@ function ThemeToggle({className=''}) {
   </button>;
 }
 
+// ─── LOGIN CIRCUIT (2026-10-14) ─────────────────────────────────────────────────
+// Pure layout of the login background: circuit traces from the page edges that converge on a "socket" around the login
+// card (45° bends, vias, pads, a few components). Coordinates are CSS pixels of the login page; card = {l,t,r,b} of the
+// card relative to the page. Deterministic for a seed. Decorative only (aria-hidden).
+function circuitTraces(w, h, card, seed = 7, opts = {}) {
+  // Board routing: horizontal/vertical runs with short 45° corners, fanned so that NO two traces cross (the trace that
+  // ends farther from the card's centre turns closer to the card). opts.topBound: keep everything below this y (the
+  // stacked layout's introduction); no top traces then.
+  let st = seed >>> 0; const rnd = () => { st = (Math.imul(st, 1664525) + 1013904223) >>> 0; return st / 4294967296; };
+  const r1 = v => Math.round(v * 10) / 10, clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const top = Math.max(0, opts.topBound || 0), g = 16, S = {l: card.l - g, t: card.t - g, r: card.r + g, b: card.b + g}, traces = [];
+  const spread = (a, b, n) => Array.from({length: n}, (_, i) => a + (b - a) * (i + 1) / (n + 1));
+  const count = len => Math.max(2, Math.min(8, Math.round(len / 60)));
+  const cy = (S.t + S.b) / 2, cx = (S.l + S.r) / 2;
+  // one side: pads along the side, starts fanned out, jog positions nested (outermost jog nearest the card)
+  function side(name, pads, centre, fanLo, fanHi, room, jogFrom, dir) {
+    if (room <= 50 || !pads.length) return;
+    const half = Math.max(1, Math.max(...pads.map(p => Math.abs(p - centre))));
+    const k = Math.min(1.9, Math.max(0, (Math.min(centre - fanLo, fanHi - centre) - 14) / half - 1));   // outermost start stays 14px inside the bounds
+    const order = pads.map(p => Math.abs(p - centre));
+    const ranks = order.map(d => order.filter(e => e > d + 0.01).length);          // 0 = outermost
+    const gap = Math.max(6, Math.min(26, (room - 44) / Math.max(1, pads.length / 2 + 1)));
+    pads.forEach((p, i) => {
+      const s = clamp(centre + (p - centre) * (1 + k), fanLo + 6, fanHi - 6);
+      const dlt = s - p, c = Math.min(10, Math.abs(dlt) / 2), sg = Math.sign(dlt);
+      const lo = (name === 'top' ? top : 0) + 8 + c, hi = (name === 'left' || name === 'right' ? w : h) - 8 - c;
+      const jog = clamp(jogFrom + dir * (30 + ranks[i] * gap + (rnd() - 0.5) * 4), lo, hi);   // dir: -1 = towards the page edge on left/top
+      if (name === 'left' || name === 'right') {
+        const edge = name === 'left' ? 0 : w, inX = name === 'left' ? 1 : -1;   // inX: direction towards the card
+        const d = c ? `M${r1(edge)} ${r1(s)}H${r1(jog - inX * c)}L${r1(jog)} ${r1(s - sg * c)}V${r1(p + sg * c)}L${r1(jog + inX * c)} ${r1(p)}H${r1(name === 'left' ? S.l : S.r)}`
+                    : `M${r1(edge)} ${r1(p)}H${r1(name === 'left' ? S.l : S.r)}`;
+        traces.push({side: name, d, start: [r1(edge), r1(c ? s : p)], pad: [r1(name === 'left' ? S.l : S.r), r1(p)], vias: c ? [[r1(jog), r1(s - sg * c)], [r1(jog), r1(p + sg * c)]] : [],
+                     part: name === 'right' && w - jog > 170 ? {x: r1(jog + (w - jog) * 0.55), y: r1(c ? s : p), horizontal: true} : null});
+      } else {
+        const edge = name === 'top' ? top : h, inY = name === 'top' ? 1 : -1;
+        const d = c ? `M${r1(s)} ${r1(edge)}V${r1(jog - inY * c)}L${r1(s - sg * c)} ${r1(jog)}H${r1(p + sg * c)}L${r1(p)} ${r1(jog + inY * c)}V${r1(name === 'top' ? S.t : S.b)}`
+                    : `M${r1(p)} ${r1(edge)}V${r1(name === 'top' ? S.t : S.b)}`;
+        traces.push({side: name, d, start: [r1(c ? s : p), r1(edge)], pad: [r1(p), r1(name === 'top' ? S.t : S.b)], vias: c ? [[r1(s - sg * c), r1(jog)], [r1(p + sg * c), r1(jog)]] : [],
+                     part: name === 'bottom' && h - jog > 170 ? {x: r1(c ? s : p), y: r1(jog + (h - jog) * 0.55), horizontal: false} : null});
+      }
+    });
+  }
+  const vPads = spread(S.t, S.b, count(S.b - S.t)), hPads = spread(S.l + 18, S.r - 18, count(S.r - S.l));
+  side('left', vPads, cy, top, h, S.l, S.l, -1);
+  side('right', vPads, cy, top, h, w - S.r, S.r, 1);
+  if (!top) side('top', hPads, cx, S.l, S.r, S.t, S.t, -1);   // stays within the card's width: never crosses the side traces
+  side('bottom', hPads, cx, S.l, S.r, h - S.b, S.b, 1);
+  return {socket: {l: r1(S.l), t: r1(S.t), r: r1(S.r), b: r1(S.b)}, traces};
+}
+
+// Pure: timing of the light signals on the circuit (all values in seconds / px). ONE constant speed everywhere. A left
+// trace and the right trace that ends on the SAME pad row form a pair: the light runs IN along the left trace, passes
+// hidden behind the card for the socket width (same speed, nothing is drawn over the card), then runs OUT along the
+// right trace to the page edge. Pairs share duration and delay, so in and out are one connected flow. Traces without a
+// partner (top, bottom, or left when there is no room on the right) run in only. lengths[i] = length of traces[i].
+function signalSchedule(traces, lengths, socketWidth, opts = {}) {
+  const v = opts.speed || 260, pause = opts.pause == null ? 1.4 : opts.pause, out = traces.map(() => null);
+  const rightByRow = new Map();
+  traces.forEach((t, i) => { if (t.side === 'right') rightByRow.set(t.pad[1], i); });
+  traces.forEach((t, i) => {
+    if (t.side === 'right') return;
+    const j = t.side === 'left' && rightByRow.has(t.pad[1]) ? rightByRow.get(t.pad[1]) : null;
+    const tin = lengths[i] / v, tc = j === null ? 0 : socketWidth / v, tout = j === null ? 0 : lengths[j] / v;
+    const T = tin + tc + tout + pause + (i % 5) * 0.4, delay = -((i * 1.7) % T);
+    out[i] = {duration: T, delay, from: 0, to: tin / T, dir: 'in', pair: j, speed: v};
+    if (j !== null) out[j] = {duration: T, delay, from: (tin + tc) / T, to: (tin + tc + tout) / T, dir: 'out', pair: i, speed: v};
+  });
+  traces.forEach((t, i) => {   // a right trace without a left partner (not produced by circuitTraces) still runs out
+    if (out[i]) return;
+    const T = lengths[i] / v + pause;
+    out[i] = {duration: T, delay: -((i * 1.7) % T), from: 0, to: (lengths[i] / v) / T, dir: 'out', pair: null, speed: v};
+  });
+  return out;
+}
+// Keyframes (Web Animations) for one signal: a dash of `dash` px on a path of `len` px. The trace path runs from the
+// page edge to the pad: 'in' moves the dash edge -> pad, 'out' moves it pad -> edge. Outside [from, to] the dash sits
+// beyond an end of the path, i.e. it is invisible (no flash anywhere, in particular never over the card).
+function signalKeyframes(s, len, dash = 26) {
+  const a = s.dir === 'in' ? dash : -len, b = s.dir === 'in' ? -len : dash;
+  return [{offset: 0, strokeDashoffset: a}, {offset: s.from, strokeDashoffset: a}, {offset: s.to, strokeDashoffset: b}, {offset: 1, strokeDashoffset: b}];
+}
+// Pad glow: peaks when the light ARRIVES at a left/top/bottom pad and when it LEAVES a right pad.
+function glowKeyframes(s, base = 0.12, peak = 0.85) {
+  const p = s.dir === 'in' ? s.to : s.from, r = Math.min(0.45 / s.duration, 0.2);
+  const lo = Math.max(0, p - r), hi = Math.min(1, p + 1.6 * r);
+  return [{offset: 0, opacity: base}, {offset: lo, opacity: base}, {offset: p, opacity: peak}, {offset: hi, opacity: base}, {offset: 1, opacity: base}];
+}
+
+function LoginCircuit({pageRef, cardRef}) {
+  const [box, setBox] = useState(null);
+  const [reduced, setReduced] = useState(() => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { return false; } });
+  const sigRefs = useRef([]), glowRefs = useRef([]);
+  useEffect(() => {
+    const measure = () => {
+      const p = pageRef.current, c = cardRef.current;
+      if (!p || !c) return;
+      const pr = p.getBoundingClientRect(), cr = c.getBoundingClientRect();
+      const intro = p.querySelector('.login-intro'), ir = intro ? intro.getBoundingClientRect() : null;
+      const top = ir && ir.bottom <= cr.top + 1 ? Math.round(ir.bottom - pr.top) : 0;   // stacked layout: stay below the introduction
+      const nb = {w: Math.round(pr.width), h: Math.round(pr.height), top, card: {l: Math.round(cr.left - pr.left), t: Math.round(cr.top - pr.top), r: Math.round(cr.right - pr.left), b: Math.round(cr.bottom - pr.top)}};
+      setBox(prev => prev && JSON.stringify(prev) === JSON.stringify(nb) ? prev : nb);
+    };
+    measure();
+    let ro = null;
+    try { ro = new ResizeObserver(measure); ro.observe(pageRef.current); ro.observe(cardRef.current); } catch (_) { /* resize listener below */ }
+    window.addEventListener('resize', measure);
+    return () => { window.removeEventListener('resize', measure); if (ro) ro.disconnect(); };
+  }, []);
+  useEffect(() => {   // follow the reduced-motion preference live
+    let mq; try { mq = window.matchMedia('(prefers-reduced-motion: reduce)'); } catch (_) { return; }
+    const h = () => setReduced(mq.matches);
+    if (mq.addEventListener) mq.addEventListener('change', h); else if (mq.addListener) mq.addListener(h);
+    return () => { if (mq.removeEventListener) mq.removeEventListener('change', h); else if (mq.removeListener) mq.removeListener(h); };
+  }, []);
+  const w = box ? box.w : 1440, h = box ? box.h : 900;
+  const boxKey = box ? JSON.stringify(box) : '';
+  const lay = useMemo(() => box ? circuitTraces(w, h, box.card, 7, {topBound: box.top}) : {socket: null, traces: []}, [boxKey]);
+  const vias = lay.traces.flatMap(t => t.vias);
+  // Light signals (Web Animations, no dependency): one schedule for the whole board, recomputed when the layout
+  // changes; not started at all when the user prefers reduced motion (the static board stays).
+  useEffect(() => {
+    if (reduced || !lay.socket || !lay.traces.length || typeof Element === 'undefined' || !Element.prototype.animate) return;
+    const lens = lay.traces.map((_, i) => { const el = sigRefs.current[i]; try { return el ? el.getTotalLength() : 0; } catch (_) { return 0; } });
+    const sched = signalSchedule(lay.traces, lens, lay.socket.r - lay.socket.l);
+    const anims = [];
+    sched.forEach((s, i) => {
+      const el = sigRefs.current[i], g = glowRefs.current[i];
+      if (!s || !el || !lens[i]) return;
+      const timing = {duration: s.duration * 1000, delay: s.delay * 1000, iterations: Infinity, easing: 'linear'};
+      el.style.strokeDasharray = `26 ${Math.ceil(lens[i] + 60)}`;
+      anims.push(el.animate(signalKeyframes(s, lens[i]), timing));
+      if (g) anims.push(g.animate(glowKeyframes(s), timing));
+    });
+    return () => anims.forEach(a => { try { a.cancel(); } catch (_) {} });
+  }, [boxKey, reduced]);
+  return <>
+    <svg className="login-visual lc-board" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMinYMin meet" aria-hidden="true" focusable="false">
+      <defs><pattern id="lv-grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" className="lv-grid"/></pattern></defs>
+      <rect width={w} height={h} fill="url(#lv-grid)"/>
+      <g className="lc-traces">{lay.traces.map((t, i) => <path key={i} d={t.d}/>)}</g>
+      {lay.socket && <rect className="lc-socket" x={lay.socket.l} y={lay.socket.t} width={lay.socket.r - lay.socket.l} height={lay.socket.b - lay.socket.t} rx="20"/>}
+      <g className="lc-parts">{lay.traces.filter(t => t.part).map((t, i) => t.part.horizontal
+        ? <g key={i}><rect x={t.part.x - 11} y={t.part.y - 5} width="22" height="10" rx="2"/><path d={`M${t.part.x - 5} ${t.part.y - 5}v10M${t.part.x + 5} ${t.part.y - 5}v10`}/></g>
+        : <g key={i}><rect x={t.part.x - 5} y={t.part.y - 11} width="10" height="22" rx="2"/><path d={`M${t.part.x - 5} ${t.part.y - 5}h10M${t.part.x - 5} ${t.part.y + 5}h10`}/></g>)}</g>
+      <g className="lc-vias">{vias.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="3.2"/>)}</g>
+      <g className="lc-pads">{lay.traces.map((t, i) => <rect key={i} x={t.pad[0] - 3.5} y={t.pad[1] - 3.5} width="7" height="7" rx="1.5"/>)}</g>
+    </svg>
+    <svg className="login-visual lc-anim" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMinYMin meet" aria-hidden="true" focusable="false">
+      <g className="lc-signals">{lay.traces.map((t, i) => <path key={boxKey + i} ref={el => { sigRefs.current[i] = el; }} d={t.d} className="lc-signal" data-side={t.side} data-row={t.side === 'left' || t.side === 'right' ? t.pad[1] : undefined}/>)}</g>
+      <g className="lc-glows">{lay.traces.map((t, i) => <circle key={boxKey + i} ref={el => { glowRefs.current[i] = el; }} cx={t.pad[0]} cy={t.pad[1]} r="5" className="lc-glow" data-side={t.side}/>)}</g>
+    </svg>
+  </>;
+}
+
 function LoginPage({onLogin}) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPw, setShowPw] = useState(false);
+  const [missing, setMissing] = useState({id: false, pw: false});   // field-level validation state
+  const [caps, setCaps] = useState(false);
+  const pageRef = useRef(null), cardRef = useRef(null);
 
+  function capsFrom(e) { try { setCaps(!!(e.getModifierState && e.getModifierState('CapsLock'))); } catch (_) {} }
   function handleSubmit(e) {
     e.preventDefault();
     setError('');
-    if (!username.trim() || !password) { setError('Please enter your username and password.'); return; }
+    const miss = {id: !username.trim(), pw: !password};
+    setMissing(miss);
+    if (miss.id || miss.pw) { setError('Please enter your username and password.'); return; }
     setLoading(true);
     setTimeout(async () => {
       const res = await onLogin(username.trim(), password);
@@ -1986,48 +2296,93 @@ function LoginPage({onLogin}) {
   }
 
   return (
-    <div className="login-page">
-      <div className="login-card">
-        <div className="login-logo-wrap">
-          <div className="login-logo-icon">CMMS</div>
-          <div className="login-title">VHPL TIC</div>
-          <div className="login-sub">CMMS — ENGINEERING SOLUTIONS DEPARTMENT</div>
-        </div>
-        <hr className="login-divider"/>
-        <form onSubmit={handleSubmit} autoComplete="on">
-          <div className="login-field">
-            <label htmlFor="login-username">Username</label>
-            <input
-              id="login-username"
-              type="text"
-              value={username}
-              onChange={e=>setUsername(e.target.value)}
-              placeholder="Enter your username"
-              autoFocus
-              autoComplete="username"
-            />
+    <div className="login-page" ref={pageRef}>
+      <LoginCircuit pageRef={pageRef} cardRef={cardRef}/>
+      <ThemeToggle className="login-theme"/>
+      <section className="login-intro" aria-label="About the CMMS">
+        <div className="login-intro-inner">
+          <div className="login-brand">
+            <div className="login-logo-icon">CMMS</div>
+            <div>
+              <div className="login-title">VHPL TIC</div>
+              <div className="login-sub">ENGINEERING SOLUTIONS DEPARTMENT</div>
+            </div>
           </div>
-          <div className="login-field">
-            <label htmlFor="login-password">Password</label>
-            <input
-              id="login-password"
-              type="password"
-              value={password}
-              onChange={e=>setPassword(e.target.value)}
-              placeholder="Enter your password"
-              autoComplete="current-password"
-            />
-          </div>
-          {error && <div className="login-error">⚠ {error}</div>}
-          <button type="submit" className="login-btn" disabled={loading}>
-            {loading ? 'Authenticating...' : '→  Sign In'}
-          </button>
-        </form>
-        <div className="login-footer">
-          COMPUTERIZED MAINTENANCE MANAGEMENT SYSTEM<br/>
-          © VHPL TIC · MALE', MALDIVES
+          <h1 className="login-headline">Computerized Maintenance <span>Management System</span></h1>
+          <p className="login-desc">One workspace for the Engineering Solutions Department to raise and follow job cards, keep the asset registry current and plan preventive maintenance across every plant.</p>
+          <ul className="login-features">
+            <li>
+              <span className="lf-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2.8h6V4M8.5 10h7M8.5 14h7M8.5 18h4"/></svg></span>
+              <div><strong>Job Card Management</strong><span>Raise, assign, approve and close job orders with a complete history.</span></div>
+            </li>
+            <li>
+              <span className="lf-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21V9l6 4V9l6 4V5h6v16z"/><path d="M7 17h2M13 17h2M18 9v2"/></svg></span>
+              <div><strong>Asset Management</strong><span>Equipment registry by category, location and operating status.</span></div>
+            </li>
+            <li>
+              <span className="lf-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg></span>
+              <div><strong>Maintenance Tracking</strong><span>Preventive maintenance schedules, service records and breakdown follow-up.</span></div>
+            </li>
+          </ul>
         </div>
-      </div>
+      </section>
+      <main className="login-main">
+        <div className="login-card" ref={cardRef}>
+          <div className="login-card-head">
+            <h2 className="login-welcome">Welcome back</h2>
+            <p className="login-instr">Sign in with your username and password.</p>
+          </div>
+          <form onSubmit={handleSubmit} autoComplete="on" noValidate>
+            <div className="login-field">
+              <label htmlFor="login-username">Username</label>
+              <div className={`login-input${missing.id ? ' invalid' : ''}`}>
+                <svg className="li-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
+                <input
+                  id="login-username"
+                  type="text"
+                  value={username}
+                  onChange={e=>{ setUsername(e.target.value); if (missing.id) setMissing(m => ({...m, id: false})); }}
+                  placeholder="Enter your username"
+                  autoFocus
+                  autoComplete="username"
+                  aria-invalid={missing.id}
+                />
+              </div>
+            </div>
+            <div className="login-field">
+              <label htmlFor="login-password">Password</label>
+              <div className={`login-input${missing.pw ? ' invalid' : ''}`}>
+                <svg className="li-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                <input
+                  id="login-password"
+                  type={showPw ? 'text' : 'password'}
+                  value={password}
+                  onChange={e=>{ setPassword(e.target.value); if (missing.pw) setMissing(m => ({...m, pw: false})); }}
+                  onKeyDown={capsFrom} onKeyUp={capsFrom}
+                  placeholder="Enter your password"
+                  autoComplete="current-password"
+                  aria-invalid={missing.pw}
+                  aria-describedby={caps ? 'login-caps' : undefined}
+                />
+                <button type="button" className="pw-toggle" onClick={()=>setShowPw(v=>!v)} aria-controls="login-password" aria-pressed={showPw} aria-label={showPw ? 'Hide password' : 'Show password'} title={showPw ? 'Hide password' : 'Show password'}>
+                  {showPw
+                    ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 4.2A10 10 0 0 1 12 4c7 0 11 8 11 8a18 18 0 0 1-3.2 4.2M6.1 6.1C3 8.1 1 12 1 12s4 8 11 8a10 10 0 0 0 5.9-1.9"/></svg>
+                    : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>}
+                </button>
+              </div>
+            </div>
+            {caps && <div className="login-caps" id="login-caps" role="status">Caps Lock is on.</div>}
+            {error && <div className="login-error" role="alert">{error}</div>}
+            <button type="submit" className="login-btn" disabled={loading} aria-busy={loading}>
+              {loading ? <><span className="login-spinner" aria-hidden="true"/>Signing in…</> : 'Sign In'}
+            </button>
+          </form>
+          <div className="login-footer">
+            COMPUTERIZED MAINTENANCE MANAGEMENT SYSTEM<br/>
+            © VHPL TIC · MALE', MALDIVES
+          </div>
+        </div>
+      </main>
     </div>
   );
 }
@@ -2039,10 +2394,14 @@ function AssetDoughnutChart({assets}) {
   const theme = useTheme();
   const palette = ['#f59e0b','#3b82f6','#10b981','#f97316','#8b5cf6','#06b6d4','#facc15','#ef4444','#14b8a6','#6366f1','#ec4899','#84cc16'];
 
+  // The page re-renders every second (top-bar clock), so the chart is rebuilt ONLY when the counted data or the theme
+  // changes; previously every render rebuilt it and replayed its entrance animation (a constant motion loop).
+  const chartKey = JSON.stringify((() => { const m = {}; assets.forEach(a => { if (a.plant) m[a.plant] = (m[a.plant] || 0) + 1; }); return Object.keys(m).sort().map(k => [k, m[k]]); })());
   useEffect(()=>{
     if (!canvasRef.current || typeof Chart==='undefined') return;
-    const cats   = [...new Set(assets.map(a=>a.plant).filter(Boolean))].sort();
-    const counts = cats.map(c=>assets.filter(a=>a.plant===c).length);
+    const pairs  = JSON.parse(chartKey);
+    const cats   = pairs.map(p=>p[0]);
+    const counts = pairs.map(p=>p[1]);
     const total  = counts.reduce((a,b)=>a+b,0);
     if (chartRef.current) chartRef.current.destroy();
     const cssv = (n, d) => { try { return getComputedStyle(document.documentElement).getPropertyValue(n).trim() || d; } catch(e) { return d; } };
@@ -2077,13 +2436,13 @@ function AssetDoughnutChart({assets}) {
           borderColor:      cats.map((_,i)=>palette[i%palette.length]),
           borderWidth:2,
           hoverBackgroundColor: cats.map((_,i)=>palette[i%palette.length]),
-          hoverBorderWidth:3,
-          hoverOffset:10,
+          hoverBorderWidth:2,
+          hoverOffset:0,
         }]
       },
       options:{
         responsive:true, maintainAspectRatio:false,
-        animation:{animateRotate:true,animateScale:true,duration:900,easing:'easeInOutQuart'},
+        animation:false,   // static chart: no entrance or hover motion
         plugins:{
           legend:{
             position:'right',
@@ -2121,7 +2480,7 @@ function AssetDoughnutChart({assets}) {
       }
     });
     return ()=>{ if(chartRef.current){chartRef.current.destroy();chartRef.current=null;} };
-  },[assets, theme]);
+  },[chartKey, theme]);
 
   const opCount = assets.filter(a=>a.status==='OPERATIONAL').length;
   const brCount = assets.filter(a=>a.status==='BREAKDOWN').length;
@@ -2160,7 +2519,7 @@ function DashboardPage({assets, jobOrders, setPage, setJoModal, customPlants=[],
       openJOs:     jobOrders.filter(j=>{ const a=assets.find(x=>x.num===j.assetNum); return a&&a.plant===cat&&j.status!=='CLOSED'; }).length,
     };
   });
-  const recent = [...jobOrders].reverse();
+  const recent = [...jobOrders].reverse().slice(0, 5);   // the five most recent
   return (
     <div>
       <div className="page-header">
@@ -2177,12 +2536,13 @@ function DashboardPage({assets, jobOrders, setPage, setJoModal, customPlants=[],
 
       {/* Side-by-side: Recent JOs | Assets by Category */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20,marginBottom:0,alignItems:'stretch'}}>
-        <div className="panel" style={{display:'flex',flexDirection:'column'}}>
+        {/* contain:size — the Assets by Category panel sets the row height; this panel matches it (never taller) */}
+        <div className="panel recent-jo-panel" style={{display:'flex',flexDirection:'column',contain:'size',minHeight:260}}>
           <div className="panel-head">
             <div className="panel-title">Recent Job Orders</div>
             <button className="btn btn-accent btn-sm" onClick={()=>setPage('joborders')}>View All</button>
           </div>
-          <div className="panel-body" style={{overflowY:'auto',flex:1}}>
+          <div className="panel-body" style={{overflowY:'auto',flex:1,minHeight:0}}>
             {recent.length ? recent.map(jo=>(
               <div key={jo.jobNo} className="jo-item">
                 <div>
@@ -2196,7 +2556,7 @@ function DashboardPage({assets, jobOrders, setPage, setJoModal, customPlants=[],
           </div>
         </div>
 
-        <div className="panel" style={{display:'flex',flexDirection:'column'}}>
+        <div className="panel cat-panel" style={{display:'flex',flexDirection:'column'}}>
           <div className="panel-head"><div className="panel-title">Assets by Category</div></div>
           <div className="tbl-wrap" style={{flex:1}}>
             <table>

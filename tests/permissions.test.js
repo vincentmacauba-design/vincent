@@ -12,7 +12,7 @@ t('permission/scope block present', a > 0 && b > a && html.slice(a, b).includes(
 const ctx = {}; vm.createContext(ctx);
 vm.runInContext("var DESIGNATIONS = {'Admin':'Admin Designation','Senior Engineer':'SE Designation'};", ctx);   // defined earlier in index.html
 vm.runInContext((html.match(/^const DATA_KEYS = .*$/m) || ['var DATA_KEYS_MISSING = 1;'])[0], ctx);              // N1: real line from index.html
-vm.runInContext(html.slice(a, b) + '\nthis.X = {validateNewPassword, authVerify, profileFor, AUTH_SIGNED_OUT, findLoginCandidates, authAdapterFor, can, ROLE_CAPS, DEPARTMENTS, canSeeAsset, canSeeJO, mayEditJO, isDeptUser, validateUserRecord, normalizeUserRecord, pickFields, JO_REQUEST_FIELDS, JO_WORK_FIELDS, isApproved, canApproveJO, canCloseJO, normWork, workChanged, withStoredFields, withoutApprover, approvalEvent, resetApprovalIfChanged, JO_CONTROL_FIELDS, isJobCardEditor, isEligibleEditor, DU_REPAIR_TYPE, JCE_SECTIONS, jceSectionAllows, planAssetImport, applyAssetPlan, isValidAuthState, authzFingerprint, planDataLoad, escHtml, stableJson, realtimeAction};', ctx);
+vm.runInContext(html.slice(a, b) + '\nthis.X = {allCategories, makeTabSession, verifyTabSession, validateNewPassword, authVerify, profileFor, AUTH_SIGNED_OUT, findLoginCandidates, authAdapterFor, can, ROLE_CAPS, DEPARTMENTS, canSeeAsset, canSeeJO, mayEditJO, isDeptUser, validateUserRecord, normalizeUserRecord, pickFields, JO_REQUEST_FIELDS, JO_WORK_FIELDS, isApproved, canApproveJO, canCloseJO, normWork, workChanged, withStoredFields, withoutApprover, approvalEvent, resetApprovalIfChanged, JO_CONTROL_FIELDS, isJobCardEditor, isEligibleEditor, DU_REPAIR_TYPE, JCE_SECTIONS, jceSectionAllows, planAssetImport, applyAssetPlan, isValidAuthState, authzFingerprint, planDataLoad, escHtml, stableJson, realtimeAction};', ctx);
 vm.runInContext('function sortByAssetNum(arr){return [...arr].sort((a,b)=>(parseInt(a.num)||0)-(parseInt(b.num)||0));}', ctx);
 const { can, ROLE_CAPS, DEPARTMENTS, canSeeAsset, canSeeJO, mayEditJO, isDeptUser, validateUserRecord, normalizeUserRecord } = ctx.X;
 const ROLES = ['Admin', 'Assistant Engineer', 'Senior Engineer', 'Job Card Editor', 'Department User'];
@@ -326,7 +326,28 @@ t('IMPORT-APPLY does not mutate the input list', EX.find(e => e.num === '5002').
 let threw = false; try { Z.applyAssetPlan([...EX, { num: '5100', plant: '02 CEMENT PLANT', desc: 'already there' }], P, []); } catch (e) { threw = /already exists/.test(e.message); }
 t('IMPORT-APPLY refuses (throws, nothing returned) if a planned new asset appeared meanwhile', threw);
 const imp = app.slice(app.indexOf('  function importAssetsFromCSV('), app.indexOf('  function importJOsFromCSV('));
-t('IMPORT save layer: CSV parse only previews (no save); apply blocks invalid files, re-checks the plan, writes once', !/queueSave\(|dbSave\(|setAssets\(/.test(imp.slice(0, imp.indexOf('  function applyAssetImport('))) && /if \(imp\.plan\.invalid\.length\)/.test(imp) && /JSON\.stringify\(planAssetImport\(imp\.rows, assets, customPlants\)\) !== JSON\.stringify\(imp\.plan\)/.test(imp) && (imp.match(/queueSave\('assets', next\)/g) || []).length === 1 && !/queueSave\('jobOrders'/.test(imp));
+t('IMPORT save layer: CSV parse only previews (no save); apply blocks invalid files, re-checks the plan, writes once', !/queueSave\(|dbSave\(|setAssets\(/.test(imp.slice(0, imp.indexOf('  function applyAssetImport('))) && /if \(imp\.plan\.invalid\.length\)/.test(imp) && /JSON\.stringify\(planAssetImport\(imp\.rows, assets, categories\)\) !== JSON\.stringify\(imp\.plan\)/.test(imp) && (imp.match(/queueSave\('assets', next\)/g) || []).length === 1 && !/queueSave\('jobOrders'/.test(imp));
+
+// ---- 2026-10-15: authoritative categories and tab session (pure functions, synthetic data) ----
+(async () => {
+  const { allCategories, makeTabSession, verifyTabSession } = ctx.X;
+  const sha256Hex = async s => require('crypto').createHash('sha256').update(String(s)).digest('hex');   // same algorithm as the app's sha256Hex
+  const A = [{plant: '01 FUEL FARM'}, {plant: '12 vessel'}, {plant: ''}, {plant: '01 FUEL FARM'}, {}];
+  t('CATEGORIES union of the categories assets use and the stored list; upper case, de-duplicated, sorted; nothing invented',
+    JSON.stringify(allCategories(A, ['12 VESSEL'])) === JSON.stringify(['01 FUEL FARM', '12 VESSEL'])
+    && JSON.stringify(allCategories([], ['12 Vessel'])) === JSON.stringify(['12 VESSEL']) && JSON.stringify(allCategories(null, null)) === '[]');
+  const U = [{id: 1, username: 'u_a', password: await sha256Hex('Pw-A-123!'), role: 'Admin'}, {id: 2, username: 'u_b', password: await sha256Hex('Pw-B-123!'), role: 'Viewer', active: false}];
+  const now = 1.8e12, tok = await makeTabSession(U[0], sha256Hex, now);
+  t('SESSION token holds no password or hash', !JSON.stringify(tok).includes(U[0].password) && !('password' in tok) && Object.keys(tok).sort().join() === 'iat,id,proof,username,v');
+  t('SESSION valid token is accepted (same tab, within the age limit)', (await verifyTabSession(tok, U, sha256Hex, now + 3600e3)) === U[0]);
+  t('SESSION expired after 12 h; a future issue time is refused', (await verifyTabSession(tok, U, sha256Hex, now + 12 * 3600e3 + 1)) === null && (await verifyTabSession({...tok, iat: now + 3600e3}, U, sha256Hex, now)) === null);
+  t('SESSION forged or altered token refused (other id, other username, edited proof, wrong version)',
+    (await verifyTabSession({...tok, id: 2}, U, sha256Hex, now)) === null && (await verifyTabSession({...tok, username: 'u_b'}, U, sha256Hex, now)) === null
+    && (await verifyTabSession({...tok, proof: '0'.repeat(64)}, U, sha256Hex, now)) === null && (await verifyTabSession({...tok, v: 2}, U, sha256Hex, now)) === null);
+  const changed = [{...U[0], password: await sha256Hex('Pw-A-NEW-1!')}];
+  t('SESSION a password change or reset ends it; a deactivated or deleted account ends it', (await verifyTabSession(tok, changed, sha256Hex, now)) === null
+    && (await verifyTabSession(tok, [{...U[0], active: false}], sha256Hex, now)) === null && (await verifyTabSession(tok, [], sha256Hex, now)) === null);
+})();
 
 // ---- AUTH (Phase 2B-1): authentication state, verification and profile, offline with synthetic records ----
 (async () => {
@@ -389,10 +410,10 @@ t('IMPORT save layer: CSV parse only previews (no save); apply blocks invalid fi
   t('USERNAME checks run after the existing role/assignment checks (earlier messages unchanged)', /valid role/.test(validateUserRecord({ role: 'x', username: 'u_two' }, [], { users: EU })));
   t('NORM role-only fields removed for other roles; every other field kept', (n => !('department' in n) && !('section' in n) && n.id === 9 && n.fullName === 'X')(normalizeUserRecord({ role: 'Admin', department: 'HR', section: 'Electrical', id: 9, fullName: 'X' })));
   const appS = html.slice(html.indexOf('\nfunction App() {'), html.indexOf('\nfunction NavItem('));
-  t('RELEASE no temporary passwords, forced password change, Employee ID login, password-reset tool, recovery or notification code in the app',
-    !/must_change_password|mustChangePassword|generateTempPassword|LOCAL_ACCOUNT_TOOLS|resetUserPassword|ForcePasswordChange|TempPasswordNotice|employeeId|EMPLOYEE_ID_RE|PASSWORD_RULES|recoveryStep|RecoveryLanding|NotificationBell|notificationMode|local_mock_notifications|LoginCircuit|circuitTraces|signalSchedule/.test(html));
+  t('RELEASE no temporary passwords, forced password change, Employee ID login, password-reset tool, recovery or notification code in the app (the redesigned login visuals are included)',
+    !/must_change_password|mustChangePassword|generateTempPassword|LOCAL_ACCOUNT_TOOLS|resetUserPassword|ForcePasswordChange|TempPasswordNotice|employeeId|EMPLOYEE_ID_RE|PASSWORD_RULES|recoveryStep|RecoveryLanding|NotificationBell|notificationMode|local_mock_notifications|Forgot password|login-temp-note/.test(html));
   t('WIRING saveUser: role/assignment + unique username validated; new accounts need a password; admin-set passwords hashed with plain SHA-256 (no passthrough)',
-    /validateUserRecord\(user, customPlants, \{users, editId\}\)/.test(appS) && /if \(!editId && !\(typeof user\.password === 'string' && user\.password !== ''\)\)/.test(appS) && /await sha256Hex\(user\.password\)/.test(appS));
+    /validateUserRecord\(user, categories, \{users, editId\}\)/.test(appS) && /if \(!editId && !\(typeof user\.password === 'string' && user\.password !== ''\)\)/.test(appS) && /await sha256Hex\(user\.password\)/.test(appS));
   // ---- Phase 2B-4: session lifecycle (offline, synthetic) ----
   const { isValidAuthState, authzFingerprint } = ctx.X;
   const AP = authAdapterFor('staging'), good = { status: 'signed-in', subject: { id: 2, username: 'u_ae' }, adapter: 'appdata', env: 'staging', since: 'x' };
@@ -418,13 +439,15 @@ t('IMPORT save layer: CSV parse only previews (no save); apply blocks invalid fi
   t('STORAGE (N1) every legacy data copy (session, users, assets/JOs, PM, employees, categories) is deleted on load',
     /\[SESSION_KEY, USERS_KEY, STORE_KEY, PM_KEY, EMPLOYEES_KEY, CUSTOM_PLANTS_KEY\]\.forEach\(k => localStorage\.removeItem\(k\)\)/.test(appS)
     && ["STORE_KEY = 'cmms_vg_state'", "PM_KEY = 'cmms_vg_pm'", "EMPLOYEES_KEY = 'cmms_vg_employees'", "USERS_KEY = 'cmms_vg_users'", "CUSTOM_PLANTS_KEY = 'cmms_vg_plants'"].every(k => html.includes(k)));
-  t('WIRING logout closes every App-level form and returns to the dashboard',
-    /function handleLogout\(forced\) \{[^]*?writeGate\.signedIn = false;\s+setAuth\(AUTH_SIGNED_OUT\);\s+setAssetModal\(null\); setJoModal\(null\); setJoViewModal\(null\); setAssetImport\(null\);[^\n]*\s+setPage\('dashboard'\);/.test(appS));
+  t('WIRING logout ends the tab session, closes every App-level form and returns to the dashboard',
+    /function handleLogout\(forced\) \{[^]*?writeGate\.signedIn = false;\s+clearTabSession\(\);[^\n]*\s+setAuth\(AUTH_SIGNED_OUT\);\s+setAssetModal\(null\); setJoModal\(null\); setJoViewModal\(null\); setAssetImport\(null\);[^\n]*\s+setPage\('dashboard'\);/.test(appS));
   t('WIRING an authorization change closes forms, leaves pages the role cannot see, and re-mounts the page area',
     /const authzKey = authzFingerprint\(currentUser\);/.test(appS) && /\}, \[authzKey\]\);/.test(appS) && /<div className="main" key=\{authzKey\}>/.test(appS));
   t('WIRING the Users tab renders only while the CURRENT user may administer users', /\{tab==='users' && canAdminUsers && \(/.test(html));
-  t('WIRING no browser storage of passwords anywhere: no sessionStorage, no cookies, no IndexedDB',
-    !/sessionStorage\.setItem|document\.cookie\s*=|indexedDB\.open/.test(html));
+  t('WIRING no browser storage of passwords anywhere: sessionStorage only for the tab-session token (id, username, time, proof; no password or hash), no localStorage session, no cookies, no IndexedDB',
+    (html.match(/sessionStorage\.setItem\(/g) || []).length === 1 && /function writeTabSession\(t\) \{ try \{ sessionStorage\.setItem\(TAB_SESSION_KEY, JSON\.stringify\(t\)\); \} catch \(_\) \{\} \}/.test(html)
+    && /return \{v: 1, id: user\.id, username: user\.username, iat: now, proof: await tabSessionProof\(/.test(html) && !/localStorage\.setItem\(SESSION_KEY/.test(html)
+    && !/document\.cookie\s*=|indexedDB\.open/.test(html));
   // ---- N1: safe initialization (planDataLoad), per-dataset saves, print escaping (offline, synthetic) ----
   const { planDataLoad, escHtml } = ctx.X;
   const R = (k, v) => ({ key: k, value: v });
@@ -478,14 +501,28 @@ t('IMPORT save layer: CSV parse only previews (no save); apply blocks invalid fi
     /const act = realtimeAction\(row\.value, row\.key in pendingSaves\.current, recentWrites\[row\.key\]\);\s+if \(act === 'echo'\) return;\s+if \(act === 'conflict'\) \{\s+delete pendingSaves\.current\[row\.key\];/.test(appS) && /\(recentWrites\[key\] = \(recentWrites\[key\] \|\| \[\]\)\.slice\(-4\)\)\.push\(stableJson\(value\)\);/.test(html));
   // ---- release 2026-10-14: the original login page is restored ----
   const lp = html.slice(html.indexOf('function LoginPage({onLogin}) {'), html.indexOf('// ─── DASHBOARD'));
-  t('LOGIN original page: logo, title, divider, Username + Password, original messages and button texts, original footer',
-    /<div className="login-logo-wrap">/.test(lp) && /<hr className="login-divider"\/>/.test(lp) && /<label htmlFor="login-username">Username<\/label>/.test(lp) && /<label htmlFor="login-password">Password<\/label>/.test(lp)
-    && /setError\('Please enter your username and password\.'\)/.test(lp) && /'Invalid username or password\. Please try again\.'/.test(lp) && /'Authenticating\.\.\.' : '→  Sign In'/.test(lp)
-    && /\{error && <div className="login-error">⚠ \{error\}<\/div>\}/.test(lp) && /COMPUTERIZED MAINTENANCE MANAGEMENT SYSTEM<br\/>/.test(lp));
-  t('LOGIN no redesign elements: no introduction panel, background art, theme toggle, forgot-password link or extra states on the login page',
-    !/login-intro|login-visual|login-theme|ThemeToggle|Forgot password|login-connecting|login-caps|login-temp-note|pw-toggle/.test(lp));
-  t('LOGIN original CSS restored (dark card) and kept dark when the app is in light mode', /\.login-card\{background:rgba\(15,32,68,0\.93\);/.test(html) && /\.login-logo-wrap\{text-align:center;margin-bottom:28px;\}/.test(html)
-    && /:root\[data-theme="light"\] \.login-page\{--navy:#0a1628;[^}]*--white:#f8fafc;[^}]*color:var\(--white\);\}/.test(html) && !/\.login-intro\{|\.lc-|\.lv-|\.notif-/.test(html));
+  t('LOGIN redesigned page (circuit board, introduction, theme toggle) with the SAME sign-in: Username + Password, onLogin(username, password), original messages',
+    /<LoginCircuit pageRef=\{pageRef\} cardRef=\{cardRef\}\/>/.test(lp) && /<label htmlFor="login-username">Username<\/label>/.test(lp) && /<label htmlFor="login-password">Password<\/label>/.test(lp)
+    && /const res = await onLogin\(username\.trim\(\), password\);/.test(lp) && /setError\('Please enter your username and password\.'\)/.test(lp)
+    && /'Invalid username or password\. Please try again\.'/.test(lp) && /COMPUTERIZED MAINTENANCE MANAGEMENT SYSTEM<br\/>/.test(lp));
+  t('LOGIN no Employee ID, recovery or temporary-password elements; no length limit on the username',
+    !/Employee ID|Forgot password|recover|login-temp-note|maxLength=\{5\}/.test(lp));
+  t('LOGIN redesign CSS present (both themes, reduced motion) and no notification styles', /\.login-intro\{/.test(html) && /\.lc-signal/.test(html)
+    && /:root\[data-theme="light"\] \.login-page\{--li-bg:/.test(html) && /@media\(prefers-reduced-motion:reduce\)\{\s*\.login-visual \*/.test(html) && !/\.notif-/.test(html));
+  // ---- 2026-10-15 feature branch: categories, dashboard, chart, sidebar, tab session ----
+  t('CATEGORIES one authoritative list (assets in use + stored list) feeds Settings, the asset form, import and rename',
+    /const categories = useMemo\(\(\) => allCategories\(assets, customPlants\), \[assets, customPlants\]\);/.test(appS)
+    && /<SettingsPage users=\{users\} customPlants=\{categories\}/.test(appS) && /customPlants=\{categories\} onAddPlant=\{addCustomPlant\}/.test(appS)
+    && /planAssetImport\(rows, assets, categories\)/.test(appS) && /if \(!categories\.some\(same\)\)/.test(appS));
+  t('DASHBOARD five most recent job orders; Recent panel matches the Assets by Category height', /const recent = \[\.\.\.jobOrders\]\.reverse\(\)\.slice\(0, 5\);/.test(html)
+    && /className="panel recent-jo-panel" style=\{\{display:'flex',flexDirection:'column',contain:'size',minHeight:260\}\}/.test(html));
+  t('CHART static: animation off, no hover offset, rebuilt only when the counted data or the theme changes', /animation:false,/.test(html) && /hoverOffset:0,/.test(html)
+    && /\},\[chartKey, theme\]\);/.test(html) && !/animateRotate|animateScale/.test(html));
+  t('SIDEBAR no section headers (icons and names kept)', !/className="nav-section"/.test(html) && /icon="🏠" label="Dashboard"/.test(html) && /icon="👥" label="Settings"/.test(html));
+  t('SESSION restore runs once after the users were read, only through verifyTabSession; logout and own password change handled',
+    /if \(restoreTried\.current \|\| auth\.status === 'signed-in' \|\| !dbLoaded \|\| !usersFromDb\.current \|\| !authAdapter\) return;/.test(appS)
+    && /verifyTabSession\(tok, users, sha256Hex\)\.then\(u => \{\s*if \(!u\) \{ clearTabSession\(\); return; \}/.test(appS)
+    && /writeTabSession\(await makeTabSession\(updatedMe, sha256Hex\)\);/.test(appS));
   t('WIRING (N2) a change before the data is loaded is never dropped silently', /if \(!isLoaded\.current\) \{ addToast\(unsavedMsg\(\[key\]\), true\); return; \}/.test(appS));
   t('WIRING realtime never fills in a dataset that was not loaded', /if \(!isLoaded\.current \|\| !row \|\| !writableKeys\.has\(row\.key\) \|\| !Array\.isArray\(row\.value\)\) return;/.test(appS));
   t('WIRING no persist() left; asset handlers save only assets, JO handlers only job orders', !/\bpersist\(/.test(appS)
