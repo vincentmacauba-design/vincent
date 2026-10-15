@@ -329,13 +329,20 @@ function can(user, cap) {
 }
 // ─── SCOPE (FEATURE_PLAN §2.2, §3.2, D7) ──────────────────────────────────────
 // Display filters only: saves always use the full arrays (§7 gate 1). Department match is exact (D21: no alias map yet).
-const DEPARTMENTS = Object.freeze(['Cement Plant','LPG / Oxygen Plant','Fuel Plant','Roofing Plant','General Store','Accounts','HR','Housekeeping','F&B']);
+// The authoritative department list (owner, 2026-10-15). Stored records are never rewritten to match it.
+const DEPARTMENTS = Object.freeze(['Cement Plant','LPG / Oxygen Plant','Fuel Farm','Roofing Plant','General Store','Accounts','HR','Housekeeping','F&B','Loss Prevention']);
 const JO_REQUEST_FIELDS = Object.freeze(['date','requester','dept','assetNum','assetDesc','assetCategory','location','eqcode','problem','priority','repairType']);
 const JO_WORK_FIELDS = Object.freeze(['recvName','section','target','manpower','parts','workDone','workStatus','eval','downtime','accept','completionDate']);
 const JO_WORK_BLANK = Object.freeze({recvName:'',section:'',target:'',manpower:[],parts:[],workDone:'',workStatus:'',eval:'',downtime:'',accept:'Accepted',completionDate:''});
 function isDeptUser(user) { return !!user && user.role === 'Department User'; }
+// Department User "All" asset categories: assignedCategories EXACTLY ['*'] = every category, including ones added later.
+// Anything else (missing, empty, malformed, '*' mixed with other values) is NOT "All": it restricts to the listed
+// categories only, so no user is ever widened by accident. '*' is reserved and can never be a real category name.
+const ALL_CATEGORIES = '*';
+function isAllCategories(list) { return Array.isArray(list) && list.length === 1 && list[0] === ALL_CATEGORIES; }
 function canSeeAsset(user, a) {
   if (!isDeptUser(user)) return true;
+  if (isAllCategories(user.assignedCategories)) return !!a;
   const cats = (Array.isArray(user.assignedCategories) ? user.assignedCategories : []).map(c => String(c).toUpperCase());
   return !!a && cats.includes(String(a.plant || '').toUpperCase());
 }
@@ -345,8 +352,8 @@ function canSeeAsset(user, a) {
 // User category picker/validation all use this one list (previously Settings used only the stored list).
 function allCategories(assets, stored) {
   const out = new Set();
-  (Array.isArray(assets) ? assets : []).forEach(a => { const c = String((a && a.plant) || '').trim().toUpperCase(); if (c) out.add(c); });
-  (Array.isArray(stored) ? stored : []).forEach(c => { const u = String(c == null ? '' : c).trim().toUpperCase(); if (u) out.add(u); });
+  (Array.isArray(assets) ? assets : []).forEach(a => { const c = String((a && a.plant) || '').trim().toUpperCase(); if (c && c !== ALL_CATEGORIES) out.add(c); });
+  (Array.isArray(stored) ? stored : []).forEach(c => { const u = String(c == null ? '' : c).trim().toUpperCase(); if (u && u !== ALL_CATEGORIES) out.add(u); });
   return [...out].sort();
 }
 function canSeeJO(user, j) { return !isDeptUser(user) || (!!j && !!user.department && j.dept === user.department); }
@@ -464,6 +471,7 @@ function validateUserRecord(u, categories, opts = {}) {
     if (!DEPARTMENTS.includes(u.department)) return 'A Department User needs a department from the list.';
     const cats = Array.isArray(u.assignedCategories) ? u.assignedCategories : [];
     if (!cats.length) return 'A Department User needs at least one asset category.';
+    if (cats.includes(ALL_CATEGORIES)) return isAllCategories(cats) ? null : 'Choose either All or individual asset categories, not both.';
     const known = (categories || []).map(c => String(c).toUpperCase()), up = cats.map(c => String(c).toUpperCase());
     if (up.some(c => !known.includes(c))) return 'Unknown asset category.';
     if (new Set(up).size !== up.length) return 'Duplicate asset category.';
@@ -1014,6 +1022,7 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
 .cat-count{font-size:11px;font-family:var(--fm);color:var(--accent);white-space:nowrap;}
 .cat-picker-list{max-height:180px;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px 16px;}
 .cat-empty{font-size:12px;color:var(--gray);}
+.cat-all{grid-column:1 / -1;font-weight:600;gap:6px;}.cat-all-note{font-weight:400;font-size:11px;color:var(--gray);margin-left:6px;}
 .cat-chips{display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px;border-top:1px solid var(--border);}
 .cat-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;background:rgba(245,158,11,.14);color:var(--accent);font-size:11px;font-family:var(--fm);}
 .cat-chip button{background:none;border:none;color:inherit;cursor:pointer;font-size:13px;line-height:1;padding:0 2px;}
@@ -1873,6 +1882,7 @@ function App() {
     if (!allow(can(currentUser,'asset.category.manage'))) return;
     const upper = name.trim().toUpperCase();
     if (!upper) return;
+    if (upper === ALL_CATEGORIES) { addToast('"*" is reserved and cannot be a category name.', true); return; }
     setCustomPlants(prev => {
       if (prev.includes(upper)) return prev;
       const next = [...prev, upper].sort();
@@ -3232,7 +3242,7 @@ function ReportsPage({assets, jobOrders, currentUser=null}) {
 // ─── SETTINGS PAGE ────────────────────────────────────────────────────────────
 // Settings → Users: compact assignment summary. Display only; reads the stored fields, never changes them.
 // Short labels: display only (tooltips and the View dialog always show the full names).
-const DEPT_ABBR = Object.freeze({'Cement Plant':'CEM','LPG / Oxygen Plant':'LPG/OXY','Fuel Plant':'FUEL','Roofing Plant':'ROOF','General Store':'STORE','Accounts':'ACC','HR':'HR','Housekeeping':'HK','F&B':'F&B'});
+const DEPT_ABBR = Object.freeze({'Cement Plant':'CEM','LPG / Oxygen Plant':'LPG/OXY','Fuel Farm':'FUEL','Roofing Plant':'ROOF','General Store':'STORE','Accounts':'ACC','HR':'HR','Housekeeping':'HK','F&B':'F&B','Loss Prevention':'LP'});
 const SECTION_ABBR = Object.freeze({electrical:'ELE',mechanical:'MEC',maintenance:'MNT'});   // keyed by normSection()
 function deptAbbr(d) { return DEPT_ABBR[d] || String(d); }
 function sectionAbbr(sec) { return SECTION_ABBR[normSection(sec)] || String(sec); }
@@ -3250,10 +3260,10 @@ function assignmentSummary(u, onView) {
     // "Cat: 02, 04 +3": up to 2 real codes; the rest (and any category without a stored code) counted in +N
     const depts = userDepartments(u), cats = userCategories(u), SHOW = 2;
     const codes = cats.map(catCode).filter(Boolean), shown = codes.slice(0, SHOW), more = cats.length - shown.length;
-    const catText = cats.length ? `Cat: ${shown.join(', ')}${more ? (shown.length ? ' ' : '') + '+' + more : ''}` : 'Cat: —';
+    const catText = isAllCategories(u.assignedCategories) ? 'Cat: All' : cats.length ? `Cat: ${shown.join(', ')}${more ? (shown.length ? ' ' : '') + '+' + more : ''}` : 'Cat: —';
     return <span className="assign-sum">
       {depts.length ? depts.map(d=><span key={d} className="assign-badge abbr" title={d}>{deptAbbr(d)}</span>) : <span className="assign-badge">No dept</span>}
-      <span className="assign-badge" title={`${cats.length} categor${cats.length===1?'y':'ies'} assigned`}>{catText}</span>
+      <span className="assign-badge" title={isAllCategories(u.assignedCategories) ? 'All asset categories, including new ones' : `${cats.length} categor${cats.length===1?'y':'ies'} assigned`}>{catText}</span>
       <ViewAssignBtn u={u} onView={onView}/>
     </span>;
   }
@@ -3354,7 +3364,7 @@ function SettingsPage({users, currentUser, onSaveUser, onDeleteUser, onResetData
                 {[['Full Name',currentUser.fullName],['Username',currentUser.username],
                   ['Email',currentUser.email||'—'],['Role',currentUser.role],
                   ['Account Status',currentUser.active!==false?'Active':'Inactive'],
-                  ...(isDeptUser(currentUser)?[['Department',currentUser.department||'—'],['Asset Categories',(currentUser.assignedCategories||[]).join(', ')||'—']]:[]),
+                  ...(isDeptUser(currentUser)?[['Department',currentUser.department||'—'],['Asset Categories',isAllCategories(currentUser.assignedCategories) ? 'All' : (currentUser.assignedCategories||[]).join(', ')||'—']]:[]),
                   ...(isJobCardEditor(currentUser)?[['Section',currentUser.section||'—']]:[]),
                   ['What this role can do',ROLE_SUMMARY[currentUser.role]||'—'],
                 ].map(([l,v])=>(
@@ -3422,8 +3432,10 @@ function SettingsPage({users, currentUser, onSaveUser, onDeleteUser, onResetData
               {isDeptUser(assignView) && <>
                 <h4>Department{userDepartments(assignView).length===1?'':'s'} ({userDepartments(assignView).length})</h4>
                 {userDepartments(assignView).length ? <ul className="assign-list dept-list">{userDepartments(assignView).map(d=><li key={d}><span className="assign-code">{deptAbbr(d)}</span><span>{d}</span></li>)}</ul> : <div className="assign-empty">None assigned</div>}
+                {isAllCategories(assignView.assignedCategories) ? <><h4>Asset Categories</h4><ul className="assign-list cat-list"><li><span className="assign-code">—</span><span>All (every category, including new ones)</span></li></ul></> : <>
                 <h4>Asset Categories ({userCategories(assignView).length})</h4>
                 {userCategories(assignView).length ? <ul className="assign-list cat-list">{userCategories(assignView).map(c=><li key={c}><span className="assign-code">{catCode(c)||'—'}</span><span>{catName(c)}</span></li>)}</ul> : <div className="assign-empty">None assigned</div>}
+                </>}
               </>}
               {isJobCardEditor(assignView) && <>
                 <h4>Section</h4>
@@ -4144,17 +4156,21 @@ function ChangePasswordModal({onClose, onSubmit}) {
 // Compact, searchable category selection (fixed height, scrolls) with the selected categories shown as chips.
 function CategoryPicker({categories=[], selected=[], disabled=false, onChange}) {
   const [q, setQ] = useState('');
-  const sel = new Set(selected.map(c => String(c).toUpperCase()));
+  const all = isAllCategories(selected);   // "All" and individual categories are never selected together
+  const sel = new Set(all ? [] : selected.map(c => String(c).toUpperCase()));
   const shown = categories.filter(c => !q || c.toLowerCase().includes(q.toLowerCase()));
-  const toggle = c => onChange(sel.has(String(c).toUpperCase()) ? selected.filter(x => String(x).toUpperCase() !== String(c).toUpperCase()) : [...selected, c]);
+  const toggle = c => { if (all) return; onChange(sel.has(String(c).toUpperCase()) ? selected.filter(x => String(x).toUpperCase() !== String(c).toUpperCase()) : [...selected, c]); };
+  const toggleAll = () => onChange(all ? [] : [ALL_CATEGORIES]);   // choosing All clears individual selections
   return (
     <div className="cat-picker">
-      <div className="cat-picker-head"><input className="cat-search" value={q} onChange={e=>setQ(e.target.value)} placeholder="Search categories…" disabled={disabled}/><span className="cat-count">{sel.size} selected</span></div>
+      <div className="cat-picker-head"><input className="cat-search" value={q} onChange={e=>setQ(e.target.value)} placeholder="Search categories…" disabled={disabled || all}/><span className="cat-count">{all ? 'All categories' : `${sel.size} selected`}</span></div>
       <div className="cat-picker-list" role="group" aria-label="Asset categories">
-        {shown.map(c=><label key={c} className="checkbox-item"><input type="checkbox" checked={sel.has(c.toUpperCase())} disabled={disabled} onChange={()=>toggle(c)}/>{c}</label>)}
+        <label className="checkbox-item cat-all"><input type="checkbox" checked={all} disabled={disabled} onChange={toggleAll}/><strong>All</strong><span className="cat-all-note">every category, including new ones</span></label>
+        {shown.map(c=><label key={c} className="checkbox-item"><input type="checkbox" checked={!all && sel.has(c.toUpperCase())} disabled={disabled || all} onChange={()=>toggle(c)}/>{c}</label>)}
         {shown.length===0&&<div className="cat-empty">No category matches “{q}”.</div>}
       </div>
-      {sel.size>0&&<div className="cat-chips">{selected.map(c=><span key={c} className="cat-chip">{c}{!disabled&&<button type="button" aria-label={`Remove ${c}`} onClick={()=>toggle(c)}>×</button>}</span>)}</div>}
+      {all ? <div className="cat-chips"><span className="cat-chip">All</span></div>
+        : sel.size>0&&<div className="cat-chips">{selected.map(c=><span key={c} className="cat-chip">{c}{!disabled&&<button type="button" aria-label={`Remove ${c}`} onClick={()=>toggle(c)}>×</button>}</span>)}</div>}
     </div>
   );
 }
