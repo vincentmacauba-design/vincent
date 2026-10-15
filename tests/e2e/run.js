@@ -27,6 +27,7 @@ async function main() {
   const san = buildSite();
   const plants = eval(san.match(/const PLANTS = (\[[^\]]*\]);/)[1]);
   const SEED = seed(plants), SEED2 = seed2(plants);
+  const assetPlantsOf = st => [...new Set(st.assets.map(a => String(a.plant).toUpperCase()))]; // Department User assignment offers only these
   const mock = new Mock(); await mock.start();
   const site = await startSite();
   const B = await launch(); BROWSER = B;
@@ -79,7 +80,9 @@ async function main() {
     await waitFor(`document.readyState === 'complete' && !!document.getElementById('root') && document.getElementById('root').children.length > 0`, 20000);
     await waitFor(`!!document.querySelector('.login-card input[type=password]') || (!!document.querySelector('.sidebar') && !T.body().includes('Loading'))`, 20000);
     if (await ev(`!!document.querySelector('.sidebar')`)) { await ev(`document.querySelector('.btn-logout').click(); true`); await sleep(600); }
-    if (!(await waitFor(`!!document.querySelector('.login-card input[type=password]')`, 20000))) throw new Error('login form not shown after reload');
+    // harness robustness: a logout click that lands during a re-render is retried (the logout itself is tested elsewhere)
+    for (let k = 0; k < 3 && !(await waitFor(`!!document.querySelector('.login-card input[type=password]')`, 7000)); k++) await ev(`(()=>{ const b = document.querySelector('.btn-logout'); if (b) b.click(); return true; })()`);
+    if (!(await waitFor(`!!document.querySelector('.login-card input[type=password]')`, 5000))) throw new Error('login form not shown after reload: ' + JSON.stringify(await ev(`({ sidebar: !!document.querySelector('.sidebar'), logout: !!document.querySelector('.btn-logout'), text: T.body().slice(0, 160) })`)));
     await sleep(1500);
     for (let i = 0; i < (opt.expectFail ? 1 : 5); i++) {
       await ev(`(()=>{ T.setVal(document.getElementById('login-username'), ${JSON.stringify(user)}); T.setVal(document.getElementById('login-password'), ${JSON.stringify(opt.password || PASS[user])}); document.querySelector('form button[type=submit]').click(); return true; })()`);
@@ -463,7 +466,7 @@ async function main() {
   await ev(`T.click('Add User','button'); true`); await sleep(300);
   await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'New DU Person'); T.setVal(ins[1],'t_newdu'); T.setVal(ins[2],'Synthetic-New-1'); T.setVal(T.all('select',m)[0],'Department User'); return true; })()`); await sleep(250);
   const uf = await ev(`({ dept: !!T.field('Department'), cats: T.all('.modal .cat-picker-list label:not(.cat-all) input[type=checkbox]').length, all: !!document.querySelector('.modal .cat-picker-list > label:first-child.cat-all'), bundle: T.body().includes('Job Card Editor capability') })`);
-  t('Admin form: choosing Department User shows Department, "All" first, then one checkbox per category; hides the editor bundle', uf.dept && uf.all && uf.cats === plants.length && !uf.bundle, uf);
+  t('Admin form: choosing Department User shows Department, "All" first, then one checkbox per category; hides the editor bundle', uf.dept && uf.all && uf.cats === assetPlantsOf(mock.store).length && !uf.bundle, uf);
   const cp = await ev("(()=>{ const l=document.querySelector('.modal .cat-picker-list'); const cs=getComputedStyle(l); return { maxH: cs.maxHeight, oy: cs.overflowY, search: !!document.querySelector('.modal .cat-search'), count: T.txt(document.querySelector('.modal .cat-count')) }; })()");
   t('Admin form: categories in a compact fixed-height scrolling list with search and a selected count', cp.maxH === '180px' && cp.oy === 'auto' && cp.search && cp.count === '0 selected', cp);
   await ev("T.setVal(document.querySelector('.modal .cat-search'), 'cement'); true"); await sleep(150);
@@ -471,7 +474,7 @@ async function main() {
   await ev("(()=>{ T.all('.modal .cat-picker-list label:not(.cat-all) input[type=checkbox]')[0].click(); return true; })()"); await sleep(150);
   t('Admin form: selected categories are shown as chips and counted', await ev("T.all('.modal .cat-chip').length === 1 && T.txt(T.all('.modal .cat-chip')[0]).includes('CEMENT') && T.txt(document.querySelector('.modal .cat-count')) === '1 selected'"));
   await ev("(()=>{ T.all('.modal .cat-chip button')[0].click(); T.setVal(document.querySelector('.modal .cat-search'), ''); return true; })()"); await sleep(150);
-  t('Admin form: removing a chip unselects it; clearing the search shows all categories again', await ev("T.all('.modal .cat-chip').length === 0 && T.all('.modal .cat-picker-list label:not(.cat-all) input[type=checkbox]').length === " + plants.length));
+  t('Admin form: removing a chip unselects it; clearing the search shows all categories again', await ev("T.all('.modal .cat-chip').length === 0 && T.all('.modal .cat-picker-list label:not(.cat-all) input[type=checkbox]').length === " + assetPlantsOf(mock.store).length));
   n2 = mock.writes.length;
   await ev(`(()=>{ window.__alerts=[]; T.click('Add User','.modal button'); return true; })()`); await settle();
   t('Admin form: DU without department/category is rejected before saving (alert, no write)', (await ev('window.__alerts.join("|")')).includes('department') && writesSince(n2).length === 0);
@@ -753,15 +756,17 @@ async function main() {
   await fresh('t_admin');
   const lay = await ev("(()=>{ const sb=document.querySelector('.sidebar'), first=sb.firstElementChild, ni=document.querySelector('.nav-item'), cs=getComputedStyle(ni), tg=document.querySelector('.sidebar-toggle');"
     + " return { count: T.all('.sidebar-toggle').length, inTopbar: !!document.querySelector('.topbar .sidebar-toggle'), inSidebar: !!document.querySelector('.sidebar .sidebar-toggle'),"
-    + " inMainTop: !!tg && tg.parentElement.classList.contains('main-toolbar') && tg.parentElement.parentElement === document.querySelector('.main') && document.querySelector('.main').firstElementChild === tg.parentElement,"
+    + " inMainTop: !!tg && tg.parentElement.classList.contains('main-toolbar') && tg.parentElement.parentElement.classList.contains('main-content') && tg.parentElement.parentElement.parentElement === document.querySelector('.main') && tg.parentElement.parentElement.firstElementChild === tg.parentElement,"
     + " firstIsSection: first.classList.contains('nav-section') && T.txt(first) === 'Main',"
-    + " padTop: getComputedStyle(sb).paddingTop, itemPad: cs.paddingTop + ' ' + cs.paddingLeft, gap: cs.columnGap, label: T.txt(ni.querySelector('.nav-label')) }; })()");
+    + " padTop: getComputedStyle(sb).paddingTop, itemPad: cs.paddingTop + ' ' + cs.paddingLeft, gap: cs.columnGap, height: cs.height, label: T.txt(ni.querySelector('.nav-label')) }; })()");
   t('R4 sidebar: exactly one toggle, first in the content area; not in the top bar, not in the sidebar', lay.count === 1 && lay.inMainTop && !lay.inTopbar && !lay.inSidebar, lay);
   t('R5 sidebar: toggle is the smaller 26px size (was 30px)', await ev("(()=>{ const b=document.querySelector('.sidebar-toggle').getBoundingClientRect(); return Math.round(b.width)===26 && Math.round(b.height)===26; })()"));
-  t('R3 sidebar (2026-10-15): no section headers — the first entry is the Dashboard item; 20px top padding, items 10px/20px, 10px gap', !lay.firstIsSection && lay.padTop === '20px' && lay.itemPad === '10px 20px' && lay.gap === '10px' && lay.label === 'Dashboard', lay);
+  t('R3 sidebar: no section headers — the first entry is the Dashboard item; 20px top padding; items 42px high, 15px inset (+3px marker), 10px gap', !lay.firstIsSection && lay.padTop === '20px' && lay.itemPad === '0px 15px' && lay.height === '42px' && lay.gap === '10px' && lay.label === 'Dashboard', lay);
   // geometry on each page, expanded and collapsed: below the top bar, next to the sidebar edge, above the page header, no overlap, no horizontal overflow
   const geo = () => ev("(()=>{ const r=e=>e.getBoundingClientRect(), tb=r(document.querySelector('.topbar')), sb=r(document.querySelector('.sidebar')), tg=r(document.querySelector('.sidebar-toggle')), ph=document.querySelector('.main .page-header'), p=ph&&r(ph), ni=r(document.querySelector('.nav-item'));"
-    + " return { belowTopbar: tg.top >= tb.bottom - 0.5, nearSidebar: tg.left >= sb.right - 0.5 && tg.left - sb.right <= 24, abovePage: !!p && tg.bottom <= p.top + 0.5, headerLeft: p ? Math.round(p.left - sb.right) : null,"
+    + " const ti=document.querySelector('.main .page-title'), t2=ti&&r(ti), kids=ph?[...ph.querySelectorAll('*')].filter(e=>e.offsetParent!==null&&e.children.length===0).map(r):[];"
+    + " return { belowTopbar: tg.top >= tb.bottom - 0.5, nearSidebar: tg.left >= sb.right - 0.5 && tg.left - sb.right <= 36, besideTitle: !!t2 && Math.abs((tg.top + tg.bottom) / 2 - (t2.top + t2.bottom) / 2) <= 2,"
+    + " noOverlap: kids.every(k => k.right <= tg.left + 0.5 || k.left >= tg.right + 8 - 0.5 || k.bottom <= tg.top + 0.5 || k.top >= tg.bottom - 0.5), headerTop: !!p && tg.top >= p.top - 0.5 && tg.bottom <= p.bottom + 0.5 && p.top - tg.top <= 0.5 && tg.top - p.top <= 24, headerLeft: p ? Math.round(p.left - sb.right) : null,"
     + " navTop: Math.round(ni.top), w: Math.round(sb.width), overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1, label: document.querySelector('.sidebar-toggle').getAttribute('aria-label') }; })()");
   // nav baseline per state (collapsed hides section headers, so items sit higher there by design)
   const navTop0 = { expanded: (await geo()).navTop };
@@ -769,15 +774,21 @@ async function main() {
   navTop0.collapsed = (await geo()).navTop;
   await ev("document.querySelector('.sidebar-toggle').click(); true"); await sleep(300);
   t('R4 sidebar: first nav item directly under the sidebar padding in both modes (78px = 58px top bar + 20px; no section header above it)', navTop0.collapsed === 78 && navTop0.expanded === 78, navTop0);
-  for (const pg of ['Dashboard', 'Asset Registry', 'Job Orders', 'Reports', 'Settings']) {
+  for (const pg of ['Dashboard', 'Asset Registry', 'Job Orders', 'PM Schedule', 'Employees', 'Reports', 'Settings']) {
     await nav(pg);
     for (const state of ['expanded', 'collapsed']) {
       const g = await geo();
-      t('R4 sidebar ' + pg + ' ' + state + ': toggle below top bar, beside the sidebar, above the page header; nav items not shifted; no overflow',
-        g.belowTopbar && g.nearSidebar && g.abovePage && g.navTop === navTop0[state] && !g.overflow && g.w === (state === 'expanded' ? 210 : 60) && g.label === (state === 'expanded' ? 'Collapse sidebar' : 'Expand sidebar'), g);
+      t('HEADER ' + pg + ' ' + state + ': the page header starts on the toggle line (title vertically centred with the toggle, beside it, no overlap); nav items not shifted; no overflow',
+        g.belowTopbar && g.nearSidebar && g.besideTitle && g.headerTop && g.noOverlap && g.navTop === navTop0[state] && !g.overflow && g.w === (state === 'expanded' ? 210 : 60) && g.label === (state === 'expanded' ? 'Collapse sidebar' : 'Expand sidebar'), g);
       await ev("document.querySelector('.sidebar-toggle').click(); true"); await sleep(300);
     }
   }
+  for (const w of [1280, 1100]) {
+    await B.send('Emulation.setDeviceMetricsOverride', { width: w, height: 900, deviceScaleFactor: 1, mobile: false }); await sleep(300);
+    for (const pg of ['Dashboard', 'Job Orders', 'Settings']) { await nav(pg); const g = await geo();
+      t('HEADER ' + w + 'px ' + pg + ': title on the toggle line, no overlap, no overflow', g.besideTitle && g.headerTop && g.noOverlap && !g.overflow, g); }
+  }
+  await B.send('Emulation.clearDeviceMetricsOverride', {}); await sleep(300);
   await nav('Dashboard');
   await ev("document.querySelector('.sidebar-toggle').click(); true"); await sleep(300);
   t('R3 sidebar: control still collapses (60px) and remembers the state', await ev("Math.round(document.querySelector('.sidebar').getBoundingClientRect().width) === 60 && localStorage.getItem('cmms_vg_sidebar') === '1' && document.querySelector('.layout').classList.contains('sidebar-collapsed')"));
@@ -1575,8 +1586,9 @@ async function main() {
     await nav('Settings'); await ev(`T.click('Add User','button'); true`); await sleep(300);
     await ev(`T.setVal(T.all('.modal select')[0], 'Department User'); true`); await sleep(300);
     const picker = await ev(`T.all('.modal .cat-picker-list label:not(.cat-all)').map(l => T.txt(l).trim())`);
-    t('CATEGORIES (bug: only "12 VESSEL" appeared) the Department User picker lists every category: the assets\' categories plus the stored list, nothing invented',
-      picker.length === expected.length && expected.every(c => picker.some(p => p.toUpperCase().includes(c.replace(/^\d+\s+/, '')))), { picker, expected });
+    t('CATEGORIES the Department User picker lists exactly the Asset Registry categories; the stale stored "12 VESSEL" (no asset uses it) is NOT offered',
+      picker.length === assetCats.length && assetCats.every(c => picker.some(p => p.toUpperCase() === c)) && !picker.some(p => /12 VESSEL/i.test(p)), { picker, assetCats });
+    void expected;
     await ev(`T.all('.modal-close')[0].click(); true`); await sleep(200);
     const n0 = mock.writes.length;
     const useCat = assetCats.find(c => c !== '12 VESSEL');
@@ -1630,6 +1642,24 @@ async function main() {
     const seenOne = await ev(`['5001','5002','5003','5004','5005','5006','7777'].filter(n => !!T.row(n))`);
     t('ALL a Department User with individual categories stays restricted (not widened)', JSON.stringify(seenOne) === '["5003"]', seenOne);
 
+    // Dashboard: more than ten categories (isolated dataset): every category listed with correct counts, no inner scrollbar
+    const WIDE = JSON.parse(JSON.stringify(SEED));
+    for (let i = 0; i < 9; i++) WIDE.assets.push({ num: String(8100 + i), plant: (20 + i) + ' TEST CATEGORY ' + i, desc: 'Wide ' + i, status: i % 3 === 0 ? 'BREAKDOWN' : i % 3 === 1 ? 'UNDER MAINTENANCE' : 'OPERATIONAL' });
+    WIDE.jobOrders.push({ ...WIDE.jobOrders[0], jobNo: 'JO-9700', assetNum: '8100', status: 'OPEN' });
+    await fresh('t_admin', WIDE); await nav('Dashboard'); await sleep(500);
+    const wcats = [...new Set(WIDE.assets.map(a => String(a.plant).toUpperCase()))].sort();
+    const dw = await ev(`(()=>{ const c = document.querySelector('.cat-panel'), w = c.querySelector('.cat-table'), r = document.querySelector('.recent-jo-panel');
+      const rows = [...c.querySelectorAll('tbody tr')].map(tr => [...tr.children].map(td => T.txt(td)));
+      const cr = c.getBoundingClientRect(), rr = r.getBoundingClientRect();
+      return { rows, innerScroll: w.scrollHeight > w.clientHeight + 1 || ['auto', 'scroll'].includes(getComputedStyle(w).overflowY), overlap: cr.left < rr.right - 0.5 && cr.right > rr.left + 0.5,
+               hc: Math.round(cr.height), hr: Math.round(rr.height), pageScroll: document.querySelector('.main').scrollHeight >= document.querySelector('.main').clientHeight }; })()`);
+    const expRow = cat => { const as = WIDE.assets.filter(a => String(a.plant).toUpperCase() === cat);
+      return [cat, String(as.filter(a => a.status === 'OPERATIONAL').length), String(as.filter(a => a.status === 'BREAKDOWN').length), String(as.filter(a => a.status === 'UNDER MAINTENANCE').length),
+              String(WIDE.jobOrders.filter(j => { const a = WIDE.assets.find(x => x.num === j.assetNum); return a && String(a.plant).toUpperCase() === cat && j.status !== 'CLOSED'; }).length)]; };
+    t('DASHBOARD ' + wcats.length + ' categories (more than ten): every category listed, in order', JSON.stringify(dw.rows.map(r => r[0])) === JSON.stringify(wcats), dw.rows.map(r => r[0]));
+    t('DASHBOARD counts per category correct (operational, breakdown, maintenance, open job orders)', wcats.every((c, i) => JSON.stringify(dw.rows[i]) === JSON.stringify(expRow(c))), { got: dw.rows.slice(-3), exp: wcats.slice(-3).map(expRow) });
+    t('DASHBOARD Assets by Category has no inner vertical scrollbar; panels side by side without overlap and equal height', !dw.innerScroll && !dw.overlap && Math.abs(dw.hc - dw.hr) <= 1, dw);
+
     // Dashboard: five most recent job orders; the two panels have the same height
     const MANY = JSON.parse(JSON.stringify(SEED));
     for (let i = 0; i < 9; i++) MANY.jobOrders.push({ ...MANY.jobOrders[0], jobNo: 'JO-95' + String(i).padStart(2, '0'), problem: 'Extra ' + i });
@@ -1648,6 +1678,18 @@ async function main() {
     const sb = async () => ev(`({ headers: document.querySelectorAll('.nav-section').length, items: T.all('.nav-item').length,
       icons: T.all('.nav-item .nav-icon').length, lefts: [...new Set(T.all('.nav-item .nav-icon').map(e => Math.round(e.getBoundingClientRect().left)))].length,
       labels: T.all('.nav-item .nav-label').filter(e => e.offsetParent !== null).length })`);
+    const geomNav = () => ev(`(()=>{ const sbl = document.querySelector('.sidebar').getBoundingClientRect().left;
+      return { centres: [...new Set(T.all('.nav-item .nav-icon').map(e => { const r = e.getBoundingClientRect(); return Math.round((r.left + r.right) / 2 - sbl); }))],
+        labelStarts: [...new Set(T.all('.nav-item .nav-label').filter(e => e.offsetParent !== null).map(e => Math.round(e.getBoundingClientRect().left - sbl)))],
+        heights: [...new Set(T.all('.nav-item').map(e => Math.round(e.getBoundingClientRect().height)))], tops: T.all('.nav-item').map(e => Math.round(e.getBoundingClientRect().top)),
+        active: T.all('.nav-item.active').length, w: Math.round(document.querySelector('.sidebar').getBoundingClientRect().width) }; })()`);
+    const gOpen = await geomNav();
+    await ev(`document.querySelector('.sidebar-toggle').click(); true`); await sleep(400);
+    const gShut = await geomNav();
+    await ev(`document.querySelector('.sidebar-toggle').click(); true`); await sleep(400);
+    t('SIDEBAR icons: one centre line in both states (half of the collapsed width), labels start at one x, equal item heights; nothing moves when toggling; one active item',
+      gOpen.centres.length === 1 && gShut.centres.length === 1 && gOpen.centres[0] === gShut.centres[0] && gShut.centres[0] === gShut.w / 2 && gOpen.labelStarts.length === 1
+      && gOpen.heights.length === 1 && JSON.stringify(gOpen.heights) === JSON.stringify(gShut.heights) && JSON.stringify(gOpen.tops) === JSON.stringify(gShut.tops) && gOpen.active === 1 && gShut.active === 1, { gOpen, gShut });
     const open = await sb();
     t('SIDEBAR expanded: no section headers; every item keeps its icon and visible name; icons aligned in one column', open.headers === 0 && open.items === 7 && open.icons === 7 && open.labels === 7 && open.lefts === 1, open);
     await ev(`document.querySelector('.sidebar-toggle').click(); true`); await sleep(400);
