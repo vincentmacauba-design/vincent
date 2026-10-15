@@ -12,7 +12,7 @@ t('permission/scope block present', a > 0 && b > a && html.slice(a, b).includes(
 const ctx = {}; vm.createContext(ctx);
 vm.runInContext("var DESIGNATIONS = {'Admin':'Admin Designation','Senior Engineer':'SE Designation'};", ctx);   // defined earlier in index.html
 vm.runInContext((html.match(/^const DATA_KEYS = .*$/m) || ['var DATA_KEYS_MISSING = 1;'])[0], ctx);              // N1: real line from index.html
-vm.runInContext(html.slice(a, b) + '\nthis.X = {allCategories, makeTabSession, verifyTabSession, validateNewPassword, authVerify, profileFor, AUTH_SIGNED_OUT, findLoginCandidates, authAdapterFor, can, ROLE_CAPS, DEPARTMENTS, canSeeAsset, canSeeJO, mayEditJO, isDeptUser, validateUserRecord, normalizeUserRecord, pickFields, JO_REQUEST_FIELDS, JO_WORK_FIELDS, isApproved, canApproveJO, canCloseJO, normWork, workChanged, withStoredFields, withoutApprover, approvalEvent, resetApprovalIfChanged, JO_CONTROL_FIELDS, isJobCardEditor, isEligibleEditor, DU_REPAIR_TYPE, JCE_SECTIONS, jceSectionAllows, planAssetImport, applyAssetPlan, isValidAuthState, authzFingerprint, planDataLoad, escHtml, stableJson, realtimeAction};', ctx);
+vm.runInContext(html.slice(a, b) + '\nthis.X = {ALL_CATEGORIES, isAllCategories, allCategories, makeTabSession, verifyTabSession, validateNewPassword, authVerify, profileFor, AUTH_SIGNED_OUT, findLoginCandidates, authAdapterFor, can, ROLE_CAPS, DEPARTMENTS, canSeeAsset, canSeeJO, mayEditJO, isDeptUser, validateUserRecord, normalizeUserRecord, pickFields, JO_REQUEST_FIELDS, JO_WORK_FIELDS, isApproved, canApproveJO, canCloseJO, normWork, workChanged, withStoredFields, withoutApprover, approvalEvent, resetApprovalIfChanged, JO_CONTROL_FIELDS, isJobCardEditor, isEligibleEditor, DU_REPAIR_TYPE, JCE_SECTIONS, jceSectionAllows, planAssetImport, applyAssetPlan, isValidAuthState, authzFingerprint, planDataLoad, escHtml, stableJson, realtimeAction};', ctx);
 vm.runInContext('function sortByAssetNum(arr){return [...arr].sort((a,b)=>(parseInt(a.num)||0)-(parseInt(b.num)||0));}', ctx);
 const { can, ROLE_CAPS, DEPARTMENTS, canSeeAsset, canSeeJO, mayEditJO, isDeptUser, validateUserRecord, normalizeUserRecord } = ctx.X;
 const ROLES = ['Admin', 'Assistant Engineer', 'Senior Engineer', 'Job Card Editor', 'Department User'];
@@ -327,6 +327,26 @@ let threw = false; try { Z.applyAssetPlan([...EX, { num: '5100', plant: '02 CEME
 t('IMPORT-APPLY refuses (throws, nothing returned) if a planned new asset appeared meanwhile', threw);
 const imp = app.slice(app.indexOf('  function importAssetsFromCSV('), app.indexOf('  function importJOsFromCSV('));
 t('IMPORT save layer: CSV parse only previews (no save); apply blocks invalid files, re-checks the plan, writes once', !/queueSave\(|dbSave\(|setAssets\(/.test(imp.slice(0, imp.indexOf('  function applyAssetImport('))) && /if \(imp\.plan\.invalid\.length\)/.test(imp) && /JSON\.stringify\(planAssetImport\(imp\.rows, assets, categories\)\) !== JSON\.stringify\(imp\.plan\)/.test(imp) && (imp.match(/queueSave\('assets', next\)/g) || []).length === 1 && !/queueSave\('jobOrders'/.test(imp));
+
+// ---- 2026-10-15: departments (exact owner list) and Department User "All" categories (pure functions, synthetic) ----
+{
+  const { ALL_CATEGORIES, isAllCategories, allCategories } = ctx.X;
+  t('DEPARTMENTS exactly the ten owner-supplied names, in order',
+    JSON.stringify([...DEPARTMENTS]) === JSON.stringify(['Cement Plant','LPG / Oxygen Plant','Fuel Farm','Roofing Plant','General Store','Accounts','HR','Housekeeping','F&B','Loss Prevention']));
+  const du = cats => ({ role: 'Department User', department: 'Cement Plant', assignedCategories: cats });
+  const A = p => ({ num: 'X', plant: p });
+  t('ALL "All" = assignedCategories exactly ["*"]: every asset, including a category added later', ALL_CATEGORIES === '*' && isAllCategories(['*'])
+    && canSeeAsset(du(['*']), A('01 FUEL FARM')) && canSeeAsset(du(['*']), A('99 CATEGORY ADDED LATER')));
+  t('ALL individual categories stay restricted', canSeeAsset(du(['01 FUEL FARM']), A('01 FUEL FARM')) && !canSeeAsset(du(['01 FUEL FARM']), A('02 CEMENT PLANT')));
+  const malformed = [undefined, null, [], '*', ['*', '01 FUEL FARM'], ['ALL'], ['all'], [['*']], ['* '], [' *'], ['*', '*']];
+  t('ALL missing or malformed assignments never grant all categories', malformed.every(c => !isAllCategories(c) && !canSeeAsset(du(c), A('99 OTHER'))));
+  t('ALL other roles unaffected (they see every asset regardless)', ['Admin', 'Assistant Engineer', 'Senior Engineer', 'Job Card Editor', 'Viewer'].every(r => canSeeAsset({ role: r }, A('99 OTHER'))));
+  t('ALL validation: All alone is valid; All mixed with categories is refused; a department is still required',
+    validateUserRecord(du(['*']), ['01 FUEL FARM']) === null && /either All or individual/.test(validateUserRecord(du(['*', '01 FUEL FARM']), ['01 FUEL FARM']) || '')
+    && !!validateUserRecord({ ...du(['*']), department: 'Nowhere' }, []) && !!validateUserRecord({ ...du(['*']), department: undefined }, []));
+  t('ALL "*" is reserved: never listed as a category, even if assets or the stored list contain it', JSON.stringify(allCategories([{ plant: '*' }, { plant: '01 FUEL FARM' }], ['*'])) === '["01 FUEL FARM"]');
+  t('ALL a renamed category does not touch an "All" assignment (only entries equal to the old name change; "*" is never a category)', html.includes('const hit = u => Array.isArray(u.assignedCategories) && u.assignedCategories.some(c => String(c).toUpperCase() === oldName.toUpperCase());'));
+}
 
 // ---- 2026-10-15: authoritative categories and tab session (pure functions, synthetic data) ----
 (async () => {

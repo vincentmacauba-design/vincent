@@ -75,6 +75,8 @@ async function main() {
   // Sign in again on the current page, keeping the mock data. Since 2026-10-15 a reload keeps the same tab signed in (tab
   // session), so a restored session is signed out first. Retries cover a click before the users finished loading.
   const relogin = async (user, opt = {}) => {
+    await sleep(700);   // let a just-requested reload replace the old page before looking at it
+    await waitFor(`document.readyState === 'complete' && !!document.getElementById('root') && document.getElementById('root').children.length > 0`, 20000);
     await waitFor(`!!document.querySelector('.login-card input[type=password]') || (!!document.querySelector('.sidebar') && !T.body().includes('Loading'))`, 20000);
     if (await ev(`!!document.querySelector('.sidebar')`)) { await ev(`document.querySelector('.btn-logout').click(); true`); await sleep(600); }
     if (!(await waitFor(`!!document.querySelector('.login-card input[type=password]')`, 20000))) throw new Error('login form not shown after reload');
@@ -460,20 +462,20 @@ async function main() {
   await fresh('t_admin', SEED2); await nav('Settings');
   await ev(`T.click('Add User','button'); true`); await sleep(300);
   await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'New DU Person'); T.setVal(ins[1],'t_newdu'); T.setVal(ins[2],'Synthetic-New-1'); T.setVal(T.all('select',m)[0],'Department User'); return true; })()`); await sleep(250);
-  const uf = await ev(`({ dept: !!T.field('Department'), cats: T.all('.modal input[type=checkbox]').length, bundle: T.body().includes('Job Card Editor capability') })`);
-  t('Admin form: choosing Department User shows Department + category checkboxes, hides the editor bundle', uf.dept && uf.cats === plants.length && !uf.bundle, uf);
+  const uf = await ev(`({ dept: !!T.field('Department'), cats: T.all('.modal .cat-picker-list label:not(.cat-all) input[type=checkbox]').length, all: !!document.querySelector('.modal .cat-picker-list > label:first-child.cat-all'), bundle: T.body().includes('Job Card Editor capability') })`);
+  t('Admin form: choosing Department User shows Department, "All" first, then one checkbox per category; hides the editor bundle', uf.dept && uf.all && uf.cats === plants.length && !uf.bundle, uf);
   const cp = await ev("(()=>{ const l=document.querySelector('.modal .cat-picker-list'); const cs=getComputedStyle(l); return { maxH: cs.maxHeight, oy: cs.overflowY, search: !!document.querySelector('.modal .cat-search'), count: T.txt(document.querySelector('.modal .cat-count')) }; })()");
   t('Admin form: categories in a compact fixed-height scrolling list with search and a selected count', cp.maxH === '180px' && cp.oy === 'auto' && cp.search && cp.count === '0 selected', cp);
   await ev("T.setVal(document.querySelector('.modal .cat-search'), 'cement'); true"); await sleep(150);
-  t('Admin form: category search filters the list', await ev("T.all('.modal .cat-picker-list input[type=checkbox]').length === 1 && T.txt(T.all('.modal .cat-picker-list label')[0]).includes('CEMENT')"));
-  await ev("(()=>{ T.all('.modal .cat-picker-list input[type=checkbox]')[0].click(); return true; })()"); await sleep(150);
+  t('Admin form: category search filters the list (All stays first)', await ev("T.all('.modal .cat-picker-list label:not(.cat-all) input[type=checkbox]').length === 1 && T.txt(T.all('.modal .cat-picker-list label:not(.cat-all)')[0]).includes('CEMENT')"));
+  await ev("(()=>{ T.all('.modal .cat-picker-list label:not(.cat-all) input[type=checkbox]')[0].click(); return true; })()"); await sleep(150);
   t('Admin form: selected categories are shown as chips and counted', await ev("T.all('.modal .cat-chip').length === 1 && T.txt(T.all('.modal .cat-chip')[0]).includes('CEMENT') && T.txt(document.querySelector('.modal .cat-count')) === '1 selected'"));
   await ev("(()=>{ T.all('.modal .cat-chip button')[0].click(); T.setVal(document.querySelector('.modal .cat-search'), ''); return true; })()"); await sleep(150);
-  t('Admin form: removing a chip unselects it; clearing the search shows all categories again', await ev("T.all('.modal .cat-chip').length === 0 && T.all('.modal .cat-picker-list input[type=checkbox]').length === " + plants.length));
+  t('Admin form: removing a chip unselects it; clearing the search shows all categories again', await ev("T.all('.modal .cat-chip').length === 0 && T.all('.modal .cat-picker-list label:not(.cat-all) input[type=checkbox]').length === " + plants.length));
   n2 = mock.writes.length;
   await ev(`(()=>{ window.__alerts=[]; T.click('Add User','.modal button'); return true; })()`); await settle();
   t('Admin form: DU without department/category is rejected before saving (alert, no write)', (await ev('window.__alerts.join("|")')).includes('department') && writesSince(n2).length === 0);
-  await ev(`(()=>{ T.setVal(T.field('Department'),'Cement Plant'); T.all('.modal input[type=checkbox]')[1].click(); window.__alerts=[]; T.click('Add User','.modal button'); return true; })()`); await settle();
+  await ev(`(()=>{ T.setVal(T.field('Department'),'Cement Plant'); T.all('.modal .cat-picker-list label:not(.cat-all) input[type=checkbox]')[1].click(); window.__alerts=[]; T.click('Add User','.modal button'); return true; })()`); await settle();
   const ndu = mock.store.users.find(u => u.username === 't_newdu');
   t('Admin form: valid DU saved with department, one category, hashed password; existing users untouched',
     !!ndu && ndu.role === 'Department User' && ndu.department === 'Cement Plant' && JSON.stringify(ndu.assignedCategories) === JSON.stringify([[...plants].sort()[1]]) && /^[0-9a-f]{64}$/.test(ndu.password) && SEED2.users.every(s => JSON.stringify(mock.store.users.find(u => u.id === s.id)) === JSON.stringify(s)), ndu && [ndu.department, ndu.assignedCategories]);
@@ -789,7 +791,7 @@ async function main() {
   {
     const cats8 = [...plants].sort().slice(0, 8);
     const sdA = JSON.parse(JSON.stringify(SEED2)); sdA.users.find(u => u.id === 6).assignedCategories = cats8;
-    sdA.users.push({ id: 10, username: 't_du_one', fullName: 'Test DU One', role: 'Department User', email: 'du1@example.invalid', active: true, password: SEED2.users[5].password, department: 'Fuel Plant', assignedCategories: [plants[1]] },
+    sdA.users.push({ id: 10, username: 't_du_one', fullName: 'Test DU One', role: 'Department User', email: 'du1@example.invalid', active: true, password: SEED2.users[5].password, department: 'Fuel Farm', assignedCategories: [plants[1]] },
       { id: 11, username: 't_du_mix', fullName: 'Test DU Mixed', role: 'Department User', email: 'du2@example.invalid', active: true, password: SEED2.users[5].password, department: 'HR', assignedCategories: ['GENERATORS', plants[3]] });
     await fresh('t_admin', sdA); await nav('Settings');
     const w0 = mock.writes.length;
@@ -1572,7 +1574,7 @@ async function main() {
     t('CATEGORIES Asset Registry lists the categories the assets use', JSON.stringify(registry) === JSON.stringify(assetCats), registry);
     await nav('Settings'); await ev(`T.click('Add User','button'); true`); await sleep(300);
     await ev(`T.setVal(T.all('.modal select')[0], 'Department User'); true`); await sleep(300);
-    const picker = await ev(`T.all('.modal .cat-picker-list label').map(l => T.txt(l).trim())`);
+    const picker = await ev(`T.all('.modal .cat-picker-list label:not(.cat-all)').map(l => T.txt(l).trim())`);
     t('CATEGORIES (bug: only "12 VESSEL" appeared) the Department User picker lists every category: the assets\' categories plus the stored list, nothing invented',
       picker.length === expected.length && expected.every(c => picker.some(p => p.toUpperCase().includes(c.replace(/^\d+\s+/, '')))), { picker, expected });
     await ev(`T.all('.modal-close')[0].click(); true`); await sleep(200);
@@ -1581,6 +1583,52 @@ async function main() {
     await ev(`(async()=>{ await T.prop('onSaveUser')({ username: 't_cat_du', fullName: 'Category Test DU', employeeId: 'CT001', role: 'Department User', department: 'Cement Plant', assignedCategories: [${JSON.stringify(useCat)}], password: 'Cat-Test-Pass1!', active: true }, null); return true; })()`); await sleep(1200);
     t('CATEGORIES a Department User can be assigned a category that is only used by assets (validation uses the same list)', mock.store.users.some(u => u.username === 't_cat_du' && JSON.stringify(u.assignedCategories) === JSON.stringify([useCat])));
     t('CATEGORIES the stored category list is not rewritten to sync', JSON.stringify(mock.store.customPlants) === JSON.stringify(['12 VESSEL']) && !mock.writes.slice(n0).some(w => w.key === 'customPlants'));
+
+    // Departments (exact owner list) and Department User "All" asset categories
+    const DEPTS10 = ['Cement Plant','LPG / Oxygen Plant','Fuel Farm','Roofing Plant','General Store','Accounts','HR','Housekeeping','F&B','Loss Prevention'];
+    const CATBOX = '.modal .cat-picker-list label:not(.cat-all) input[type=checkbox]';
+    const ALLPW = 'All-Cat-Pass1!';
+    await fresh('t_admin', SEED2); await nav('Settings');
+    await ev(`T.click('Add User','button'); true`); await sleep(300);
+    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'All Categories DU'); T.setVal(ins[1],'t_alldu'); T.setVal(ins[2],${JSON.stringify(ALLPW)}); T.setVal(T.all('select',m)[0],'Department User'); return true; })()`); await sleep(300);
+    const deptOpts = await ev(`[...T.field('Department').options].map(o => o.value).filter(Boolean)`);
+    t('DEPARTMENTS user creation offers exactly the ten departments, in order', JSON.stringify(deptOpts) === JSON.stringify(DEPTS10), deptOpts);
+    const first = await ev(`(()=>{ const l = document.querySelector('.modal .cat-picker-list > label'); return { all: l.classList.contains('cat-all'), text: T.txt(l) }; })()`);
+    t('ALL the category selector starts with "All"', first.all && first.text.startsWith('All'), first);
+    await ev(`(()=>{ T.all('${CATBOX}')[0].click(); return true; })()`); await sleep(150);
+    await ev(`(()=>{ document.querySelector('.modal .cat-all input').click(); return true; })()`); await sleep(200);
+    const st = await ev(`({ allOn: document.querySelector('.modal .cat-all input').checked, checked: T.all('${CATBOX}').filter(i => i.checked).length,
+      disabled: T.all('${CATBOX}').every(i => i.disabled), count: T.txt(document.querySelector('.modal .cat-count')), chips: T.all('.modal .cat-chip').map(T.txt) })`);
+    t('ALL selecting All clears individual selections and locks them: one unambiguous state', st.allOn && st.checked === 0 && st.disabled && st.count === 'All categories' && JSON.stringify(st.chips) === '["All"]', st);
+    await ev(`(()=>{ T.setVal(T.field('Department'),'Loss Prevention'); window.__alerts=[]; T.click('Add User','.modal button'); return true; })()`); await settle();
+    const allU = mock.store.users.find(u => u.username === 't_alldu');
+    t('ALL saved as assignedCategories ["*"] with the new department "Loss Prevention"', !!allU && JSON.stringify(allU.assignedCategories) === '["*"]' && allU.department === 'Loss Prevention', allU && [allU.department, allU.assignedCategories]);
+    const row = await ev(`(()=>{ const r = T.row('t_alldu'); return r ? T.txt(r.querySelector('.assign-cell') || r) : ''; })()`);
+    t('ALL Settings shows "Cat: All" (not a list of categories)', /Cat: All/.test(row) && !/Cat: \d/.test(row), row);
+    await ev(`T.row('t_alldu').querySelector('.assign-cell button.assign-btn').click(); true`); await sleep(300);
+    t('ALL the assignment details show "All"', await ev(`T.txt(document.querySelector('.modal.assign-detail')).includes('All (every category')`));
+    await ev(`T.click('Close','.modal.assign-detail button'); true`); await sleep(200);
+    await B.send('Page.reload', {}); await waitFor(`!!document.querySelector('.sidebar') && !T.body().includes('Loading')`, 20000); await sleep(800); await nav('Settings');
+    await ev(`T.all('button').filter(b=>T.txt(b).includes('Edit')).find(b=>T.row('t_alldu') && T.row('t_alldu').contains(b)).click(); true`); await sleep(400);
+    const ed = await ev(`({ allOn: !!document.querySelector('.modal .cat-all input') && document.querySelector('.modal .cat-all input').checked, dept: T.field('Department').value,
+      depts: [...T.field('Department').options].map(o => o.value).filter(Boolean) })`);
+    t('ALL survives save and reload: editing shows All selected, the department kept; the edit form offers the same ten departments', ed.allOn && ed.dept === 'Loss Prevention' && JSON.stringify(ed.depts) === JSON.stringify(DEPTS10), ed);
+    await ev(`(()=>{ document.querySelector('.modal .cat-all input').click(); T.all('${CATBOX}')[0].click(); window.__alerts=[]; T.click('Update User','.modal button'); return true; })()`); await settle();
+    const back = mock.store.users.find(u => u.username === 't_alldu');
+    t('ALL can be changed back to individual categories (then restricted again)', JSON.stringify(back.assignedCategories) === JSON.stringify([[...plants].sort()[0]]), back.assignedCategories);
+    await ev(`T.all('button').filter(b=>T.txt(b).includes('Edit')).find(b=>T.row('t_alldu') && T.row('t_alldu').contains(b)).click(); true`); await sleep(400);
+    await ev(`(()=>{ document.querySelector('.modal .cat-all input').click(); window.__alerts=[]; T.click('Update User','.modal button'); return true; })()`); await settle();
+    // access: All sees every asset, also a category added after the assignment; an individual DU stays restricted
+    mock.store.assets = mock.store.assets.concat([{ num: '7777', plant: '88 CATEGORY ADDED LATER', desc: 'Later asset', status: 'OPERATIONAL' }]);
+    await B.send('Page.reload', {});   // the page reads the new asset (the Admin's tab session is restored)
+    t('SESSION logout after a restored session returns to the login form and deletes the token',
+      (await waitFor(`!!document.querySelector('.sidebar') && !T.body().includes('Loading')`, 20000)) && (await (async () => { await ev(`document.querySelector('.btn-logout').click(); true`); return waitFor(`!!document.querySelector('.login-card input[type=password]') && sessionStorage.getItem('cmms_vg_tab_session') === null`, 10000); })()));
+    await relogin('t_alldu', { password: ALLPW }); await nav('Asset Registry');
+    const seenAll = await ev(`['5001','5002','5003','5004','5005','5006','7777'].filter(n => !!T.row(n))`);
+    t('ALL a Department User with All sees every asset, including a category added later', seenAll.length === 7, seenAll);
+    await relogin('t_du'); await nav('Asset Registry');
+    const seenOne = await ev(`['5001','5002','5003','5004','5005','5006','7777'].filter(n => !!T.row(n))`);
+    t('ALL a Department User with individual categories stays restricted (not widened)', JSON.stringify(seenOne) === '["5003"]', seenOne);
 
     // Dashboard: five most recent job orders; the two panels have the same height
     const MANY = JSON.parse(JSON.stringify(SEED));
