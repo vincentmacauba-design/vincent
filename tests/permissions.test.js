@@ -433,7 +433,7 @@ t('IMPORT save layer: CSV parse only previews (no save); apply blocks invalid fi
   t('RELEASE no temporary passwords, forced password change, Employee ID login, password-reset tool, recovery or notification code in the app (the redesigned login visuals are included)',
     !/must_change_password|mustChangePassword|generateTempPassword|LOCAL_ACCOUNT_TOOLS|resetUserPassword|ForcePasswordChange|TempPasswordNotice|employeeId|EMPLOYEE_ID_RE|PASSWORD_RULES|recoveryStep|RecoveryLanding|NotificationBell|notificationMode|local_mock_notifications|Forgot password|login-temp-note/.test(html));
   t('WIRING saveUser: role/assignment + unique username validated; new accounts need a password; admin-set passwords hashed with plain SHA-256 (no passthrough)',
-    /validateUserRecord\(user, categories, \{users, editId\}\)/.test(appS) && /if \(!editId && !\(typeof user\.password === 'string' && user\.password !== ''\)\)/.test(appS) && /await sha256Hex\(user\.password\)/.test(appS));
+    /validateUserRecord\(user, assetCategories, \{users, editId\}\)/.test(appS) && /if \(!editId && !\(typeof user\.password === 'string' && user\.password !== ''\)\)/.test(appS) && /await sha256Hex\(user\.password\)/.test(appS));
   // ---- Phase 2B-4: session lifecycle (offline, synthetic) ----
   const { isValidAuthState, authzFingerprint } = ctx.X;
   const AP = authAdapterFor('staging'), good = { status: 'signed-in', subject: { id: 2, username: 'u_ae' }, adapter: 'appdata', env: 'staging', since: 'x' };
@@ -530,9 +530,9 @@ t('IMPORT save layer: CSV parse only previews (no save); apply blocks invalid fi
   t('LOGIN redesign CSS present (both themes, reduced motion) and no notification styles', /\.login-intro\{/.test(html) && /\.lc-signal/.test(html)
     && /:root\[data-theme="light"\] \.login-page\{--li-bg:/.test(html) && /@media\(prefers-reduced-motion:reduce\)\{\s*\.login-visual \*/.test(html) && !/\.notif-/.test(html));
   // ---- 2026-10-15 feature branch: categories, dashboard, chart, sidebar, tab session ----
-  t('CATEGORIES one authoritative list (assets in use + stored list) feeds Settings, the asset form, import and rename',
+  t('CATEGORIES Department User assignment uses the Asset Registry categories only; the asset form, import and rename keep the full list (assets + stored)',
     /const categories = useMemo\(\(\) => allCategories\(assets, customPlants\), \[assets, customPlants\]\);/.test(appS)
-    && /<SettingsPage users=\{users\} customPlants=\{categories\}/.test(appS) && /customPlants=\{categories\} onAddPlant=\{addCustomPlant\}/.test(appS)
+    && /<SettingsPage users=\{users\} customPlants=\{assetCategories\}/.test(appS) && /const assetCategories = useMemo\(\(\) => allCategories\(assets, \[\]\), \[assets\]\);/.test(appS) && /validateUserRecord\(user, assetCategories, \{users, editId\}\)/.test(appS) && /customPlants=\{categories\} onAddPlant=\{addCustomPlant\}/.test(appS)
     && /planAssetImport\(rows, assets, categories\)/.test(appS) && /if \(!categories\.some\(same\)\)/.test(appS));
   t('DASHBOARD five most recent job orders; Recent panel matches the Assets by Category height', /const recent = \[\.\.\.jobOrders\]\.reverse\(\)\.slice\(0, 5\);/.test(html)
     && /className="panel recent-jo-panel" style=\{\{display:'flex',flexDirection:'column',contain:'size',minHeight:260\}\}/.test(html));

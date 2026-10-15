@@ -639,6 +639,7 @@ const CSS = `
 :root{
   --sidebar-w:210px;           /* U1: one width variable (smaller at 1280/1100px) */
   --sidebar-w-collapsed:60px;
+  --title-lh:34px;
   --navy:#0a1628;--navy2:#0f2044;--steel:#1e3a6e;
   --blue:#1a56db;--accent:#f59e0b;--accent2:#fbbf24;
   --green:#10b981;--red:#ef4444;--yellow:#f59e0b;--orange:#f97316;
@@ -683,23 +684,28 @@ body,#root{background:var(--navy);color:var(--white);font-family:var(--fb);font-
 .layout{display:flex;min-height:calc(100vh - 58px);}
 .sidebar{width:var(--sidebar-w);position:fixed;top:58px;left:0;bottom:0;background:var(--navy2);border-right:1px solid var(--border);padding:20px 0 0;overflow-y:auto;display:flex;flex-direction:column;z-index:50;}
 .nav-section{padding:8px 16px 4px;font-family:var(--fm);font-size:9px;letter-spacing:2px;color:var(--gray);text-transform:uppercase;}
-.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;cursor:pointer;font-family:var(--fh);font-size:15px;font-weight:500;letter-spacing:.5px;color:var(--gray);transition:all .15s;border-left:3px solid transparent;}
+.nav-item{display:flex;align-items:center;gap:10px;height:42px;padding:0 12px 0 15px;overflow:hidden;white-space:nowrap;cursor:pointer;font-family:var(--fh);font-size:15px;font-weight:500;letter-spacing:.5px;color:var(--gray);transition:all .15s;border-left:3px solid transparent;}
 .nav-item:hover{background:var(--hl-04);color:var(--white);}
 .nav-item.active{background:rgba(26,86,219,.15);color:var(--accent);border-left-color:var(--accent);}
-.nav-icon{font-size:16px;width:18px;text-align:center;}
+/* icon box: 24px wide at 15px + 3px border = centre 30px = half the collapsed sidebar; the same in both states, so nothing shifts */
+.nav-icon{flex:0 0 24px;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;line-height:1;}
+.nav-label{overflow:hidden;text-overflow:ellipsis;}
 .sidebar,.main{transition:width .15s,margin-left .15s;}
 .topbar-left{display:flex;align-items:center;min-width:0;}
-.main-toolbar{display:flex;align-items:center;height:26px;margin:-10px 0 8px -12px;}
+/* Page header beside the sidebar toggle (shared layout, every page): the toggle is placed at the top-left of the page
+   content, vertically centred on the title line (--title-lh); page headers leave room for it (26px + 12px gap). */
+.main-content{position:relative;}
+.main-toolbar{position:absolute;top:0;left:0;z-index:2;display:flex;align-items:center;height:var(--title-lh);}
+.main-content .page-header{padding-left:38px;}
 .sidebar-toggle{display:flex;align-items:center;justify-content:center;width:26px;height:26px;flex-shrink:0;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--gray);font-size:13px;cursor:pointer;}
 .sidebar-toggle:hover{color:var(--white);background:var(--hl-06);}
 .layout.sidebar-collapsed .sidebar{width:var(--sidebar-w-collapsed);}
 .layout.sidebar-collapsed .main{margin-left:var(--sidebar-w-collapsed);}
 .layout.sidebar-collapsed .nav-section,.layout.sidebar-collapsed .nav-label,.layout.sidebar-collapsed .sidebar-user-text{display:none;}
-.layout.sidebar-collapsed .nav-item{justify-content:center;padding:10px 0;gap:0;}
-.layout.sidebar-collapsed .nav-icon{width:24px;font-size:18px;text-align:center;}
+.layout.sidebar-collapsed .nav-item{gap:0;padding:0 0 0 15px;}
 .layout.sidebar-collapsed .sidebar-footer{padding:12px 0;display:flex;justify-content:center;}
 .main{flex:1;padding:28px 32px;min-height:calc(100vh - 58px);overflow-y:auto;margin-left:var(--sidebar-w);}
-.page-title{font-family:var(--fh);font-size:28px;font-weight:700;letter-spacing:1px;}
+.page-title{font-family:var(--fh);font-size:28px;font-weight:700;letter-spacing:1px;line-height:var(--title-lh);}
 .page-title span{color:var(--accent);}
 .page-sub{font-size:12px;color:var(--gray);font-family:var(--fm);letter-spacing:1px;margin-top:2px;}
 .page-header{margin-bottom:24px;}
@@ -793,7 +799,7 @@ tr:last-child td{border-bottom:none;}tr:hover td{background:var(--hl-02);}
 .toast-msg{background:var(--navy2);border:1px solid var(--green);border-left:4px solid var(--green);border-radius:8px;padding:12px 18px;font-size:13px;color:var(--white);box-shadow:0 8px 30px rgba(0,0,0,.4);max-width:320px;}
 .toast-msg.err{border-color:var(--red);border-left-color:var(--red);}
 select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2px 8px;}
-@media(max-width:900px){.sidebar{display:none;}.sidebar-toggle,.main-toolbar{display:none;}.main{padding:16px;margin-left:0;}.stats-row{grid-template-columns:1fr 1fr;}.dash-grid{grid-template-columns:1fr;}}
+@media(max-width:900px){.sidebar{display:none;}.sidebar-toggle,.main-toolbar{display:none;}.main-content .page-header{padding-left:0;}.main{padding:16px;margin-left:0;}.stats-row{grid-template-columns:1fr 1fr;}.dash-grid{grid-template-columns:1fr;}}
 .btn-csv{background:rgba(16,185,129,.1);color:#4ade80;border:1px solid rgba(16,185,129,.25);}.btn-csv:hover{background:rgba(16,185,129,.2);color:#6ee7b7;}
 /* ── Table action column: always stays on one line */
 .assets-tbl td:last-child,.assets-tbl th:last-child{white-space:nowrap;width:1%;}
@@ -819,14 +825,14 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
   .stats-row{gap:10px;margin-bottom:16px;}
   .stat-card{padding:12px 14px;}
   .stat-num{font-size:26px;}
-  .page-title{font-size:24px;}
+  .page-title{font-size:24px;} :root{--title-lh:30px;}
   .page-sub{font-size:11px;}
   .page-header{margin-bottom:18px;}
   .panel-head{padding:11px 16px;}
   .panel-body{padding:14px 16px;}
   th{padding:7px 10px;}
   td{padding:7px 10px;font-size:12px;}
-  .nav-item{padding:9px 16px;font-size:14px;}
+  .nav-item{height:40px;font-size:14px;}
   .nav-section{padding:6px 14px 3px;font-size:8px;}
   .modal{width:min(760px,93vw);}
   .btn{font-size:13px;padding:6px 13px;}
@@ -849,11 +855,11 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
   .stats-row{gap:8px;margin-bottom:14px;}
   .stat-card{padding:10px 11px;}
   .stat-num{font-size:22px;}
-  .page-title{font-size:20px;}
+  .page-title{font-size:20px;} :root{--title-lh:26px;}
   .page-sub{display:none;}
   .page-header{margin-bottom:14px;}
-  .nav-item{padding:8px 12px;font-size:13px;gap:8px;}
-  .nav-icon{font-size:14px;width:16px;}
+  .nav-item{height:38px;font-size:13px;gap:8px;}
+  .nav-icon{font-size:14px;}
   .nav-section{padding:5px 12px 2px;font-size:7px;}
   .panel-head{padding:9px 13px;}
   .panel-body{padding:11px 13px;}
@@ -1494,7 +1500,7 @@ function App() {
   async function saveUser(user, editId) {
     if (!allow(can(currentUser,'users.admin') || (!!editId && !!currentUser && editId === currentUser.id && can(currentUser,'profile.edit')))) return;
     if (can(currentUser,'users.admin')) {
-      const err = validateUserRecord(user, categories, {users, editId});
+      const err = validateUserRecord(user, assetCategories, {users, editId});
       if (err) { addToast(err, true); return; }
       if (!editId && !(typeof user.password === 'string' && user.password !== '')) { addToast('A password is required for new accounts.', true); return; }
       user = normalizeUserRecord(user);
@@ -1878,6 +1884,10 @@ function App() {
   // ── Custom Plants
   const [customPlants, setCustomPlants] = useState([...PLANTS].sort());
   const categories = useMemo(() => allCategories(assets, customPlants), [assets, customPlants]);
+  // Department User assignment uses ONLY the Asset Registry categories (those the assets actually use). A stored category
+  // with no asset (production: a stale "12 Vessel" entry) is never offered or accepted for assignment. The asset form and
+  // CSV import keep the full list, so a newly added category can still receive its first asset.
+  const assetCategories = useMemo(() => allCategories(assets, []), [assets]);
   function addCustomPlant(name) {
     if (!allow(can(currentUser,'asset.category.manage'))) return;
     const upper = name.trim().toUpperCase();
@@ -2047,6 +2057,7 @@ function App() {
 
           <div className="main" key={authzKey}>
             {loadIssue && loadIssue.kind === 'partial' && <div className="load-issue" role="alert">⚠ Some data could not be loaded: <strong>{loadIssue.keys.map(k => DATA_LABELS[k] || k).join(', ')}</strong>. It is shown empty and cannot be changed, and nothing stored was overwritten. Reload to try again; if this continues, contact the administrator.</div>}
+            <div className="main-content">
             <div className="main-toolbar">
               <button className="sidebar-toggle" onClick={toggleSidebar} title={sidebarCollapsed?'Expand sidebar':'Collapse sidebar'} aria-label={sidebarCollapsed?'Expand sidebar':'Collapse sidebar'} aria-expanded={!sidebarCollapsed}>{sidebarCollapsed?'☰':'«'}</button>
             </div>
@@ -2056,7 +2067,8 @@ function App() {
             {page==='pmschedule' && can(currentUser,'nav.pm') && <PMSchedulePage pm={pm} assets={assets} setJoModal={setJoModal} onSavePM={savePMItem} onRecordService={recordPMService} onImportPM={importPMFromCSV} onExportPM={()=>exportPMCSV(pm, currentUser)} currentUser={currentUser}/>}
             {page==='employees' && can(currentUser,'nav.employees') && <EmployeesPage employees={employees} onSaveEmployee={saveEmployee} onUpdateStatus={updateEmployeeStatus} onImportEmployees={importEmployeesFromData} onDeleteEmployee={deleteEmployee} onFixStatus={fixEmployeeStatusFromDates} currentUser={currentUser}/>}
             {page==='reports'   && can(currentUser,'nav.reports') && <ReportsPage assets={visibleAssets} jobOrders={visibleJobOrders} currentUser={currentUser}/>}
-            {page==='settings'  && can(currentUser,'settings.profile') && <SettingsPage users={users} customPlants={categories} currentUser={currentUser} onSaveUser={saveUser} onChangePassword={changeOwnPassword} onDeleteUser={deleteUser} onResetData={resetData}/>}
+            {page==='settings'  && can(currentUser,'settings.profile') && <SettingsPage users={users} customPlants={assetCategories} currentUser={currentUser} onSaveUser={saveUser} onChangePassword={changeOwnPassword} onDeleteUser={deleteUser} onResetData={resetData}/>}
+            </div>
           </div>
         </div>
 
@@ -2568,7 +2580,8 @@ function DashboardPage({assets, jobOrders, setPage, setJoModal, customPlants=[],
 
         <div className="panel cat-panel" style={{display:'flex',flexDirection:'column'}}>
           <div className="panel-head"><div className="panel-title">Assets by Category</div></div>
-          <div className="tbl-wrap" style={{flex:1}}>
+          {/* every category, natural height: no inner vertical scrollbar; the page scrolls if the dashboard grows */}
+          <div className="tbl-wrap cat-table" style={{overflow:'visible'}}>
             <table>
               <thead><tr>
                 <th>Category</th>
