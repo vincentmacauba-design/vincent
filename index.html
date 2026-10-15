@@ -252,7 +252,25 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // Owner-confirmed 2026-10-09: the only production hostname staff use (FEATURE_PLAN §13.10). Exact match only; never add guesses.
 const PROD_HOSTS = Object.freeze(['vincent-mauve.vercel.app']); // sole production hostname
 const ENV = window.CMMS_resolveEnv(window.location, {url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY}, window.CMMS_STAGING_CONFIG, PROD_HOSTS);
-const sb = ENV.name === 'blocked' ? null : window.supabase.createClient(ENV.url, ENV.anonKey);
+// ─── REVIEW MODE (branch review/improvements-preview ONLY — never merge into main) ─────────────────────────────
+// Team review on a Vercel Preview: synthetic DEMO data in memory and NO backend. Active only when the environment guard
+// resolved "blocked" (no Supabase project configured) AND the host is not a production hostname. The in-memory client
+// stands in for the one table the app uses; every save is refused; nothing is sent anywhere.
+const REVIEW_BUILD = true;
+const REVIEW_MODE = REVIEW_BUILD && ENV.name === 'blocked' && !PROD_HOSTS.includes(window.location.hostname);
+const REVIEW_MSG = 'Review mode: changes are disabled. This is demo data and nothing is saved.';
+const REVIEW_DATA = Object.freeze({"assets":[{"num":"5001","plant":"01 FUEL FARM","desc":"Demo Pump","code":"C5001","model":"M","cap":"","reg":"","eng":"","serial":"S5001","loc":"Yard","status":"OPERATIONAL"},{"num":"5002","plant":"01 FUEL FARM","desc":"Demo Valve","code":"C5002","model":"M","cap":"","reg":"","eng":"","serial":"S5002","loc":"Yard","status":"OPERATIONAL"},{"num":"5003","plant":"02 CEMENT PLANT","desc":"Demo Mixer","code":"C5003","model":"M","cap":"","reg":"","eng":"","serial":"S5003","loc":"Yard","status":"BREAKDOWN"},{"num":"5004","plant":"03 LPG PLANT","desc":"Demo Tank","code":"C5004","model":"M","cap":"","reg":"","eng":"","serial":"S5004","loc":"Yard","status":"OPERATIONAL"},{"num":"5005","plant":"04 POWER HOUSE","desc":"Demo Generator","code":"C5005","model":"M","cap":"","reg":"","eng":"","serial":"S5005","loc":"Yard","status":"UNDER MAINTENANCE"},{"num":"5006","plant":"05 ROOFING PLANT","desc":"Demo Press","code":"C5006","model":"M","cap":"","reg":"","eng":"","serial":"S5006","loc":"Yard","status":"OPERATIONAL"}],"jobOrders":[{"jobNo":"JO-9001","date":"2026-10-01","assetNum":"5001","assetDesc":"Demo Pump","assetCategory":"01 FUEL FARM","location":"Yard","eqcode":"C5001","dept":"Engineering","requester":"Demo Requester","priority":"High","repairType":"Planned","problem":"Demo problem JO-9001","status":"OPEN","target":"","section":"","parts":[],"legacyField":"keep-JO-9001"},{"jobNo":"JO-9002","date":"2026-10-01","assetNum":"5001","assetDesc":"Demo Pump","assetCategory":"01 FUEL FARM","location":"Yard","eqcode":"C5001","dept":"Engineering","requester":"Demo Requester","priority":"High","repairType":"Planned","problem":"Demo problem JO-9002","status":"IN PROGRESS","target":"","section":"","parts":[],"legacyField":"keep-JO-9002"},{"jobNo":"JO-9003","date":"2026-10-01","assetNum":"5001","assetDesc":"Demo Pump","assetCategory":"01 FUEL FARM","location":"Yard","eqcode":"C5001","dept":"Engineering","requester":"Demo Requester","priority":"High","repairType":"Planned","problem":"Demo problem JO-9003","status":"COMPLETED","target":"","section":"","parts":[],"legacyField":"keep-JO-9003"},{"jobNo":"JO-9004","date":"2026-10-01","assetNum":"5001","assetDesc":"Demo Pump","assetCategory":"01 FUEL FARM","location":"Yard","eqcode":"C5001","dept":"Engineering","requester":"Demo Requester","priority":"High","repairType":"Planned","problem":"Demo problem JO-9004","status":"CLOSED","target":"","section":"","parts":[],"legacyField":"keep-JO-9004","closedBy":"Demo Closer","closerDesignation":"X","closedDate":"2026-10-02"},{"jobNo":"JO-9006","date":"2026-10-01","assetNum":"5003","assetDesc":"Demo Mixer","assetCategory":"02 CEMENT PLANT","location":"Yard","eqcode":"C5001","dept":"Cement Plant","requester":"Demo DU Cement","priority":"High","repairType":"Planned","problem":"Demo problem JO-9006","status":"OPEN","target":"","section":"","parts":[],"legacyField":"keep-JO-9006","requesterId":6},{"jobNo":"JO-9007","date":"2026-10-01","assetNum":"5003","assetDesc":"Demo Mixer","assetCategory":"02 CEMENT PLANT","location":"Yard","eqcode":"C5001","dept":"Cement Plant","requester":"Someone Else","priority":"High","repairType":"Planned","problem":"Demo problem JO-9007","status":"OPEN","target":"","section":"","parts":[],"legacyField":"keep-JO-9007","requesterId":99},{"jobNo":"JO-9008","date":"2026-10-01","assetNum":"5003","assetDesc":"Demo Mixer","assetCategory":"02 CEMENT PLANT","location":"Yard","eqcode":"C5001","dept":"Cement Plant","requester":"Demo DU Cement","priority":"High","repairType":"Planned","problem":"Demo problem JO-9008","status":"IN PROGRESS","target":"","section":"","parts":[],"legacyField":"keep-JO-9008","requesterId":6}],"pm":[{"id":"pm-001","assetNum":"5001","assetDesc":"Demo Pump","category":"01 FUEL FARM","location":"Yard","frequency":"Monthly","lastService":"2026-09-01","nextService":"2026-10-01","notes":"","serviceHistory":[]},{"id":"pm-002","assetNum":"5004","assetDesc":"Demo Tank","category":"03 LPG PLANT","location":"Yard","frequency":"Quarterly","lastService":"2026-08-01","nextService":"2026-11-01","notes":"","serviceHistory":[]}],"employees":[{"empId":"E901","name":"Demo Person A","designation":"Technician","section":"Mech","nationality":"X","siteStatus":"ON DUTY"},{"empId":"E902","name":"Demo Person B","designation":"Electrician","section":"Elec","nationality":"X","siteStatus":"ON DUTY"},{"empId":"E903","name":"Demo Person C","designation":"Helper","section":"Mech","nationality":"X","siteStatus":"ON DUTY"}],"customPlants":["01 FUEL FARM","02 CEMENT PLANT","03 LPG PLANT","04 POWER HOUSE","05 ROOFING PLANT","06 OXYGEN PLANT","07 MOBILE MACHINERY","08 VEHICLES","09 FIRE PUMP SYSTEM","10 BATCHING PLANT"],"users":[{"id":1,"username":"demo_admin","fullName":"Demo Admin","role":"Admin","active":true,"password":"2a97516c354b68848cdbd8f54a226a0a55b21ed138e207ad6c5cbb9c00aa5aea"},{"id":2,"username":"demo_ae","fullName":"Demo AE","role":"Assistant Engineer","active":true,"password":"2a97516c354b68848cdbd8f54a226a0a55b21ed138e207ad6c5cbb9c00aa5aea"},{"id":3,"username":"demo_se","fullName":"Demo SE","role":"Senior Engineer","active":true,"password":"2a97516c354b68848cdbd8f54a226a0a55b21ed138e207ad6c5cbb9c00aa5aea"},{"id":5,"username":"demo_jce","fullName":"Demo JCE","role":"Job Card Editor","active":true,"section":"Mechanical","password":"2a97516c354b68848cdbd8f54a226a0a55b21ed138e207ad6c5cbb9c00aa5aea"},{"id":6,"username":"demo_du","fullName":"Demo DU Cement","role":"Department User","active":true,"password":"2a97516c354b68848cdbd8f54a226a0a55b21ed138e207ad6c5cbb9c00aa5aea","department":"Cement Plant","assignedCategories":["02 CEMENT PLANT"]},{"id":7,"username":"demo_jce_off","fullName":"Demo JCE Inactive","role":"Job Card Editor","active":false,"section":"Electrical","password":"2a97516c354b68848cdbd8f54a226a0a55b21ed138e207ad6c5cbb9c00aa5aea"},{"id":20,"username":"demo_viewer","fullName":"Demo Viewer","role":"Viewer","active":true,"password":"2a97516c354b68848cdbd8f54a226a0a55b21ed138e207ad6c5cbb9c00aa5aea"}]});
+function reviewClient() {
+  const chan = {on() { return chan; }, subscribe() { return chan; }};
+  return {
+    from() { return {
+      select() { return Promise.resolve({data: Object.keys(REVIEW_DATA).map(key => ({key, value: JSON.parse(JSON.stringify(REVIEW_DATA[key]))})), error: null}); },
+      upsert() { return Promise.resolve({error: {message: REVIEW_MSG}}); },
+    }; },
+    channel() { return chan; }, removeChannel() {},
+  };
+}
+const sb = REVIEW_MODE ? reviewClient() : ENV.name === 'blocked' ? null : window.supabase.createClient(ENV.url, ENV.anonKey);
 let envReady = false; // true only after the environment gate passes (production: immediately)
 // N1 (data safety): the datasets in app_data. A dataset may be written only after it was read completely in this
 // page load (or seeded in the explicitly opted-in local mock). A failed, empty or partial read never enables a write to
@@ -495,6 +513,7 @@ const AUTH_SIGNED_OUT = Object.freeze({status: 'signed-out', subject: null, adap
 function authAdapterFor(envName) {
   if (envName === 'production') return Object.freeze({name: 'appdata', env: 'production'});
   if (envName === 'staging') return Object.freeze({name: 'appdata', env: 'staging'});
+  if (envName === 'review' && REVIEW_MODE) return Object.freeze({name: 'appdata', env: 'review'});   // demo accounts, in-memory data
   return null;   // blocked/unknown environment: no adapter, sign-in disabled; never a fallback to another backend
 }
 function normalizeLoginId(raw) { return String(raw == null ? '' : raw).trim(); }
@@ -1274,7 +1293,7 @@ function App() {
   const usersFromDb = useRef(false); // true once `users` came from the database (never the built-in defaults)
 
   // auth & users (Phase 2B-1): authentication state lives in memory only and starts signed out on every load.
-  const authAdapter = useRef(authAdapterFor(ENV.name)).current;
+  const authAdapter = useRef(authAdapterFor(REVIEW_MODE ? 'review' : ENV.name)).current;
   const [auth, setAuth] = useState(AUTH_SIGNED_OUT);
   const [users, setUsers] = useState([]);   // N2: empty until read from the database (no built-in accounts)
   // Profile = the current stored record of the signed-in subject; role/section/etc. never come from the auth state.
@@ -2373,6 +2392,7 @@ function LoginPage({onLogin}) {
             </div>
             {caps && <div className="login-caps" id="login-caps" role="status">Caps Lock is on.</div>}
             {error && <div className="login-error" role="alert">{error}</div>}
+            {REVIEW_MODE && <div className="review-note" role="note" style={{margin:'0 0 14px',padding:'10px 12px',borderRadius:8,border:'1px solid rgba(245,158,11,.45)',background:'rgba(245,158,11,.12)',fontSize:12,lineHeight:1.5}}><strong>Review mode: demo data only, nothing is saved.</strong> Sign in with password <strong>demo</strong> as demo_admin · demo_ae · demo_se · demo_jce · demo_du · demo_viewer.</div>}
             <button type="submit" className="login-btn" disabled={loading} aria-busy={loading}>
               {loading ? <><span className="login-spinner" aria-hidden="true"/>Signing in…</> : 'Sign In'}
             </button>
@@ -5049,6 +5069,9 @@ function EnvNotice({title, reason}) {
     </div>
   );
 }
+function ReviewBanner() {
+  return <div role="status" className="review-banner" style={{position:'fixed',left:0,right:0,bottom:0,height:24,zIndex:10000,background:'#b45309',color:'#fff',font:'700 12px/24px sans-serif',letterSpacing:1,textAlign:'center',pointerEvents:'none'}}>REVIEW MODE · DEMO DATA · NOTHING IS SAVED · NOT CONNECTED TO ANY DATABASE</div>;
+}
 function StagingBanner() {
   return <div role="status" style={{position:'fixed',left:0,right:0,bottom:0,height:24,zIndex:10000,background:'#b91c1c',color:'#fff',font:'700 12px/24px sans-serif',letterSpacing:1,textAlign:'center',pointerEvents:'none'}}>STAGING · SYNTHETIC DATA · NOT PRODUCTION</div>;
 }
@@ -5056,6 +5079,10 @@ const appRoot = ReactDOM.createRoot(document.getElementById('root'));
 if (ENV.name === 'production') {
   envReady = true;
   appRoot.render(<ErrorBoundary><App /></ErrorBoundary>);
+} else if (REVIEW_MODE) {
+  envReady = true;
+  document.title = '[REVIEW · DEMO] ' + document.title;
+  appRoot.render(<><ReviewBanner/><ErrorBoundary><App /></ErrorBoundary></>);
 } else {
   document.title = '[STAGING] ' + document.title;
   appRoot.render(<><StagingBanner/><EnvNotice title="Checking environment…"/></>);
