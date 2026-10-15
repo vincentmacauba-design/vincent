@@ -158,6 +158,50 @@ const PRODUCTION_SIGN_IN_DOMAIN = null;
 const SIGN_IN_DOMAIN = ENV.name === 'production' ? PRODUCTION_SIGN_IN_DOMAIN
   : ENV.name === 'staging' && window.CMMS_STAGING_CONFIG && typeof window.CMMS_STAGING_CONFIG.signInDomain === 'string' ? window.CMMS_STAGING_CONFIG.signInDomain : null;
 let envReady = false; // true only after the environment gate passes (production: immediately)
+// ─── REVIEW MODE (branch review/demo-preview ONLY — never merge into main) ───────────────────────────────────
+// For team review of the interface on a Vercel Preview: synthetic DEMO data held in memory and NO backend at all.
+// Active only when this build flag is set AND the environment guard resolved "blocked" (so no Supabase client exists:
+// sb === null) AND the host is not a production hostname. Every change is refused; nothing is sent anywhere.
+const REVIEW_BUILD = true;
+const REVIEW_MODE = REVIEW_BUILD && ENV.name === 'blocked' && sb === null && !PROD_HOSTS.includes(window.location.hostname);
+const REVIEW_MSG = 'Review mode: changes are disabled. This is demo data and nothing is saved.';
+const REVIEW_PASSWORD = 'demo';
+const REVIEW_DEMO = Object.freeze({"data":{"assets":[{"num":"5001","plant":"01 FUEL FARM","desc":"Demo Pump","code":"C5001","model":"M","cap":"","reg":"","eng":"","serial":"S5001","loc":"Yard","status":"OPERATIONAL"},{"num":"5002","plant":"01 FUEL FARM","desc":"Demo Valve","code":"C5002","model":"M","cap":"","reg":"","eng":"","serial":"S5002","loc":"Yard","status":"OPERATIONAL"},{"num":"5003","plant":"02 CEMENT PLANT","desc":"Demo Mixer","code":"C5003","model":"M","cap":"","reg":"","eng":"","serial":"S5003","loc":"Yard","status":"BREAKDOWN"},{"num":"5004","plant":"03 LPG PLANT","desc":"Demo Tank","code":"C5004","model":"M","cap":"","reg":"","eng":"","serial":"S5004","loc":"Yard","status":"OPERATIONAL"},{"num":"5005","plant":"04 POWER HOUSE","desc":"Demo Generator","code":"C5005","model":"M","cap":"","reg":"","eng":"","serial":"S5005","loc":"Yard","status":"UNDER MAINTENANCE"},{"num":"5006","plant":"05 ROOFING PLANT","desc":"Demo Press","code":"C5006","model":"M","cap":"","reg":"","eng":"","serial":"S5006","loc":"Yard","status":"OPERATIONAL"}],"jobOrders":[{"jobNo":"JO-9001","date":"2026-10-01","assetNum":"5001","assetDesc":"Demo Pump","assetCategory":"01 FUEL FARM","location":"Yard","eqcode":"C5001","dept":"Engineering","requester":"Demo Requester","priority":"High","repairType":"Planned","problem":"Demo problem JO-9001","status":"OPEN","target":"","section":"","parts":[],"legacyField":"keep-JO-9001"},{"jobNo":"JO-9002","date":"2026-10-01","assetNum":"5001","assetDesc":"Demo Pump","assetCategory":"01 FUEL FARM","location":"Yard","eqcode":"C5001","dept":"Engineering","requester":"Demo Requester","priority":"High","repairType":"Planned","problem":"Demo problem JO-9002","status":"IN PROGRESS","target":"","section":"","parts":[],"legacyField":"keep-JO-9002"},{"jobNo":"JO-9003","date":"2026-10-01","assetNum":"5001","assetDesc":"Demo Pump","assetCategory":"01 FUEL FARM","location":"Yard","eqcode":"C5001","dept":"Engineering","requester":"Demo Requester","priority":"High","repairType":"Planned","problem":"Demo problem JO-9003","status":"COMPLETED","target":"","section":"","parts":[],"legacyField":"keep-JO-9003"},{"jobNo":"JO-9004","date":"2026-10-01","assetNum":"5001","assetDesc":"Demo Pump","assetCategory":"01 FUEL FARM","location":"Yard","eqcode":"C5001","dept":"Engineering","requester":"Demo Requester","priority":"High","repairType":"Planned","problem":"Demo problem JO-9004","status":"CLOSED","target":"","section":"","parts":[],"legacyField":"keep-JO-9004","closedBy":"Demo Closer","closerDesignation":"X","closedDate":"2026-10-02"},{"jobNo":"JO-9006","date":"2026-10-01","assetNum":"5003","assetDesc":"Demo Mixer","assetCategory":"02 CEMENT PLANT","location":"Yard","eqcode":"C5001","dept":"Cement Plant","requester":"Demo DU Cement","priority":"High","repairType":"Planned","problem":"Demo problem JO-9006","status":"OPEN","target":"","section":"","parts":[],"legacyField":"keep-JO-9006","requesterId":6},{"jobNo":"JO-9007","date":"2026-10-01","assetNum":"5003","assetDesc":"Demo Mixer","assetCategory":"02 CEMENT PLANT","location":"Yard","eqcode":"C5001","dept":"Cement Plant","requester":"Someone Else","priority":"High","repairType":"Planned","problem":"Demo problem JO-9007","status":"OPEN","target":"","section":"","parts":[],"legacyField":"keep-JO-9007","requesterId":99},{"jobNo":"JO-9008","date":"2026-10-01","assetNum":"5003","assetDesc":"Demo Mixer","assetCategory":"02 CEMENT PLANT","location":"Yard","eqcode":"C5001","dept":"Cement Plant","requester":"Demo DU Cement","priority":"High","repairType":"Planned","problem":"Demo problem JO-9008","status":"IN PROGRESS","target":"","section":"","parts":[],"legacyField":"keep-JO-9008","requesterId":6}],"pm":[{"id":"pm-001","assetNum":"5001","assetDesc":"Demo Pump","category":"01 FUEL FARM","location":"Yard","frequency":"Monthly","lastService":"2026-09-01","nextService":"2026-10-01","notes":"","serviceHistory":[]},{"id":"pm-002","assetNum":"5004","assetDesc":"Demo Tank","category":"03 LPG PLANT","location":"Yard","frequency":"Quarterly","lastService":"2026-08-01","nextService":"2026-11-01","notes":"","serviceHistory":[]}],"employees":[{"empId":"E901","name":"Demo Person A","designation":"Technician","section":"Mech","nationality":"X","siteStatus":"ON DUTY"},{"empId":"E902","name":"Demo Person B","designation":"Electrician","section":"Elec","nationality":"X","siteStatus":"ON DUTY"},{"empId":"E903","name":"Demo Person C","designation":"Helper","section":"Mech","nationality":"X","siteStatus":"ON DUTY"}],"customPlants":["01 FUEL FARM","02 CEMENT PLANT","03 LPG PLANT","04 POWER HOUSE","05 ROOFING PLANT","06 OXYGEN PLANT","07 MOBILE MACHINERY","08 VEHICLES","09 FIRE PUMP SYSTEM","10 BATCHING PLANT"]},"profiles":[{"user_id":"demo-1","legacy_id":1,"employee_id":"TA001","full_name":"Demo Admin","role":"Admin","department":null,"assigned_categories":null,"section":null,"active":true,"must_change_password":false,"recovery_email":null},{"user_id":"demo-2","legacy_id":2,"employee_id":"TA002","full_name":"Demo AE","role":"Assistant Engineer","department":null,"assigned_categories":null,"section":null,"active":true,"must_change_password":false,"recovery_email":null},{"user_id":"demo-3","legacy_id":3,"employee_id":"TS003","full_name":"Demo SE","role":"Senior Engineer","department":null,"assigned_categories":null,"section":null,"active":true,"must_change_password":false,"recovery_email":null},{"user_id":"demo-5","legacy_id":5,"employee_id":"TJ005","full_name":"Demo JCE","role":"Job Card Editor","department":null,"assigned_categories":null,"section":"Mechanical","active":true,"must_change_password":false,"recovery_email":null},{"user_id":"demo-6","legacy_id":6,"employee_id":"TD006","full_name":"Demo DU Cement","role":"Department User","department":"Cement Plant","assigned_categories":["02 CEMENT PLANT"],"section":null,"active":true,"must_change_password":false,"recovery_email":null},{"user_id":"demo-7","legacy_id":7,"employee_id":"TJ007","full_name":"Demo JCE Inactive","role":"Job Card Editor","department":null,"assigned_categories":null,"section":"Electrical","active":false,"must_change_password":false,"recovery_email":null},{"user_id":"demo-20","legacy_id":20,"employee_id":"VW001","full_name":"Demo Viewer","role":"Viewer","department":null,"assigned_categories":null,"section":null,"active":true,"must_change_password":false,"recovery_email":null}]});
+const reviewState = {current: null, notes: []};
+const reviewClone = v => JSON.parse(JSON.stringify(v));
+function reviewScoped(user, key) {   // the same scope the server applies (p2/sql 0005): DU own department / own categories
+  const v = REVIEW_DEMO.data[key];
+  if (!isDeptUser(user)) return v;
+  if (key === 'jobOrders') return v.filter(j => j.dept === user.department);
+  if (key === 'assets') return v.filter(a => (user.assignedCategories || []).includes(a.plant));
+  return v;
+}
+async function reviewDatasets(user, keys) { return {data: keys.map(k => ({key: k, value: reviewClone(reviewScoped(user, k))}))}; }
+function reviewNotesFor(row) {
+  const u = profileFromRow(row);
+  if (!notificationsFor(u)) return [];   // Viewer: none
+  const ev = {OPEN: 'OPEN', 'IN PROGRESS': 'IN_PROGRESS', COMPLETED: 'COMPLETED', CLOSED: 'CLOSED'};
+  return reviewScoped(u, 'jobOrders').filter(j => ev[j.status]).slice(0, 4)
+    .map((j, i) => ({id: i + 1, jobNo: j.jobNo, event: ev[j.status], at: new Date(Date.now() - i * 3600e3).toISOString(), read: i > 1,
+                     assetNum: j.assetNum, assetDesc: j.assetDesc, dept: j.dept}));
+}
+async function reviewCall(fn, args) {
+  const me = reviewState.current ? profileFromRow(reviewState.current) : null;
+  if (!me) return {error: {code: 'review', message: REVIEW_MSG, kind: 'invalid'}};
+  if (fn === 'user_list') {
+    const all = REVIEW_DEMO.profiles.map(profileFromRow).map(u => ({...u, mustChangePassword: false}));
+    return {data: reviewClone(can(me, 'users.admin') ? all : all.filter(u => u.id === me.id || (isJobCardEditor(u) && u.active)))};
+  }
+  if (fn === 'my_notifications') return {data: reviewClone(reviewState.notes)};
+  if (fn === 'notification_mark_read') {   // in memory only (UI state of this page)
+    const ids = args && Array.isArray(args.p_ids) ? args.p_ids : null;
+    reviewState.notes.forEach(n => { if (ids === null || ids.includes(n.id)) n.read = true; });
+    return {data: null};
+  }
+  if (fn === 'jo_list') return {data: reviewClone(reviewScoped(me, 'jobOrders'))};
+  if (fn === 'asset_list') return {data: reviewClone(reviewScoped(me, 'assets'))};
+  return {error: {code: 'review', message: REVIEW_MSG, kind: 'invalid'}};
+}
 // ─── BACKEND ACCESS (P2: Supabase Auth + server-enforced permissions, p2/sql) ───────────────────────────────────
 // Identity: Supabase Auth (Employee ID → derived sign-in address). Authorization: the DATABASE decides every read and
 // change (row-level security + checked server functions). The browser checks (can(), mayEditJO(), ...) only avoid
@@ -175,6 +219,7 @@ const recentWrites = {};   // key -> last few written values (stable JSON), to r
 // Whole-list save of assets, PM or categories: an UPDATE of the existing row (never an insert or upsert, never another
 // key). The database returns the changed row only when the signed-in role may write it; anything else is "not saved".
 async function dbSave(key, value) {
+  if (REVIEW_MODE) return new Error(REVIEW_MSG);
   if (!sb || !envReady) { console.warn('dbSave blocked: environment not ready', key); return new Error('environment not ready'); }
   if (!writeGate.signedIn) { console.warn('dbSave blocked: not signed in', key); return new Error('not signed in'); }
   if (!DIRECT_WRITE_KEYS.includes(key)) { console.warn('dbSave blocked: changed only through server functions', key); return new Error('no direct write: ' + key); }
@@ -195,6 +240,7 @@ function serverError(e) {
 }
 // A checked server operation (p2/sql). Never called before sign-in. Returns {data} or {error}.
 async function serverCall(fn, args) {
+  if (REVIEW_MODE) return reviewCall(fn, args);
   if (!sb || !envReady || !writeGate.signedIn) return {error: {code: 'local', message: 'not signed in', kind: 'failed'}};
   try {
     const {data, error} = await sb.rpc(fn, args || {});
@@ -203,6 +249,7 @@ async function serverCall(fn, args) {
 }
 // Edge Functions (p2/functions). Returns {status, body}; status 0 = unreachable.
 async function serverFunction(name, body) {
+  if (REVIEW_MODE) return {status: 409, body: {error: REVIEW_MSG}};
   if (!sb || !envReady) return {status: 0, body: {}};
   try {
     const {data, error} = await sb.functions.invoke(name, {body});
@@ -447,6 +494,7 @@ const AUTH_SIGNED_OUT = Object.freeze({status: 'signed-out', subject: null, adap
 function authAdapterFor(envName) {
   if (envName === 'production') return Object.freeze({name: 'supabase-auth', env: 'production'});
   if (envName === 'staging') return Object.freeze({name: 'supabase-auth', env: 'staging'});
+  if (envName === 'review' && REVIEW_MODE) return Object.freeze({name: 'review-demo', env: 'review'});   // demo accounts, no backend
   return null;   // blocked/unknown environment: no adapter, sign-in disabled; never a fallback to another backend
 }
 const EMPLOYEE_ID_RE = /^[A-Za-z0-9]{5}$/;   // 5-character company Employee ID (format beyond length: owner decision)
@@ -671,6 +719,7 @@ function planDataLoad(result, opts = {}) {
 // Reads the given datasets for this user. {error} when nothing could be read, else {data: rows} (a dataset that failed is
 // simply absent, so planDataLoad reports it as missing and it stays read-only).
 async function readDatasets(user, keys) {
+  if (REVIEW_MODE) return reviewDatasets(user, keys);
   if (!sb || !writeGate.signedIn) return {error: new Error('not signed in')};
   const scoped = {assets: 'asset_list', jobOrders: 'jo_list'};
   const direct = keys.filter(k => !(isDeptUser(user) && scoped[k])), viaFn = keys.filter(k => isDeptUser(user) && scoped[k]);
@@ -1418,7 +1467,7 @@ function App() {
   // auth: a Supabase Auth session (Employee ID sign-in; memory only; every page load starts signed out). The profile
   // (role, scope, status, forced change) is the SERVER's (public.profiles, own row); `users` = user_list (Admin: all
   // accounts; others: own + active Job Card Editors). No password data ever reaches the browser.
-  const authAdapter = useRef(authAdapterFor(ENV.name)).current;
+  const authAdapter = useRef(authAdapterFor(REVIEW_MODE ? 'review' : ENV.name)).current;
   const [auth, setAuth] = useState(AUTH_SIGNED_OUT);
   const [profile, setProfile] = useState(null);
   const [users, setUsers] = useState([]);
@@ -1496,6 +1545,7 @@ function App() {
   // (the server already refuses its requests). Runs periodically, on focus and after a refusal.
   // The own profile row (RLS: own row only). {profile} | {gone: true} (no active profile any more) | {error: true} (network)
   async function loadProfile() {
+    if (REVIEW_MODE) return reviewState.current ? {profile: profileFromRow(reviewState.current)} : {gone: true};
     try {
       const {data: u, error: ue} = await sb.auth.getUser();
       if (ue || !u || !u.user) return {gone: true};
@@ -1614,6 +1664,15 @@ function App() {
   // Returns {ok:true} or {ok:false, reason:'invalid'|'unavailable', message?}. Supabase Auth checks the password; the app
   // then reads the server profile; data is read only after a forced change (if any) has been completed.
   async function handleLogin(loginId, password) {
+    if (REVIEW_MODE) {   // demo accounts only; nothing is sent anywhere
+      const row = REVIEW_DEMO.profiles.find(p => p.active && p.employee_id === String(loginId == null ? '' : loginId).trim().toUpperCase());
+      if (!row || password !== REVIEW_PASSWORD) return {ok: false, reason: 'invalid', message: SIGN_IN_FAILED};
+      reviewState.current = row; reviewState.notes = reviewNotesFor(row);
+      writeGate.signedIn = true; signedInRef.current = true;
+      const p = profileFromRow(row);
+      setLoadIssue(null); setProfile(p); setPage('dashboard'); setAuth(signedInState(authAdapter, p)); loadAll(p);
+      return {ok: true};
+    }
     if (!authAdapter || !sb || !envReady) return {ok: false, reason: 'unavailable', message: 'Sign-in is not available in this environment.'};
     if (!SIGN_IN_DOMAIN) return {ok: false, reason: 'unavailable', message: SIGN_IN_NOT_CONFIGURED};
     const email = signInEmailFor(loginId, SIGN_IN_DOMAIN);
@@ -2482,6 +2541,7 @@ function LoginPage({onLogin, recoveryService=RECOVERY_SERVICE}) {
             <button type="submit" className="login-btn" disabled={loading} aria-busy={loading}>
               {loading ? <><span className="login-spinner" aria-hidden="true"/>Signing in…</> : 'Sign In'}
             </button>
+            {REVIEW_MODE && <div className="login-info review-note" role="note" style={{marginTop:12}}><strong>Review mode: demo data only, nothing is saved.</strong> Sign in with a demo Employee ID and the password <strong>demo</strong>: TA001 Admin · TA002 Assistant Engineer · TS003 Senior Engineer · TJ005 Job Card Editor · TD006 Department User · VW001 Viewer.</div>}
             <p className="login-temp-note">First sign-in or password reset by an administrator? Use the temporary password you were given: you will be asked to choose a new password straight away.</p>
           </form>
           </>}
@@ -5251,6 +5311,9 @@ function EnvNotice({title, reason}) {
     </div>
   );
 }
+function ReviewBanner() {
+  return <div role="status" className="review-banner" style={{position:'fixed',left:0,right:0,bottom:0,height:24,zIndex:10000,background:'#b45309',color:'#fff',font:'700 12px/24px sans-serif',letterSpacing:1,textAlign:'center',pointerEvents:'none'}}>REVIEW MODE · DEMO DATA · NOTHING IS SAVED · NOT CONNECTED TO ANY DATABASE</div>;
+}
 function StagingBanner() {
   return <div role="status" style={{position:'fixed',left:0,right:0,bottom:0,height:24,zIndex:10000,background:'#b91c1c',color:'#fff',font:'700 12px/24px sans-serif',letterSpacing:1,textAlign:'center',pointerEvents:'none'}}>STAGING · SYNTHETIC DATA · NOT PRODUCTION</div>;
 }
@@ -5258,6 +5321,9 @@ const appRoot = ReactDOM.createRoot(document.getElementById('root'));
 if (ENV.name === 'production') {
   envReady = true;
   appRoot.render(<ErrorBoundary><App /></ErrorBoundary>);
+} else if (REVIEW_MODE) {
+  document.title = '[REVIEW · DEMO] ' + document.title;
+  appRoot.render(<><ReviewBanner/><ErrorBoundary><App /></ErrorBoundary></>);
 } else {
   document.title = '[STAGING] ' + document.title;
   appRoot.render(<><StagingBanner/><EnvNotice title="Checking environment…"/></>);
