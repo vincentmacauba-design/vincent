@@ -9,10 +9,10 @@ const t = (n, c, info) => { c ? pass++ : fail++; if (!c || process.env.V) consol
 // ---- load the real PERMISSIONS + SCOPE blocks (pure code before sortByAssetNum) ----
 const a = html.indexOf('// ─── PERMISSIONS'), b = html.indexOf('function sortByAssetNum(arr){');
 t('permission/scope block present', a > 0 && b > a && html.slice(a, b).includes('// ─── SCOPE'));
-const ctx = {}; vm.createContext(ctx);
+const ctx = { TextEncoder }; vm.createContext(ctx);
 vm.runInContext("var DESIGNATIONS = {'Admin':'Admin Designation','Senior Engineer':'SE Designation'};", ctx);   // defined earlier in index.html
 vm.runInContext((html.match(/^const DATA_KEYS = .*$/m) || ['var DATA_KEYS_MISSING = 1;'])[0], ctx);              // N1: real line from index.html
-vm.runInContext(html.slice(a, b) + '\nthis.X = {ALL_CATEGORIES, isAllCategories, allCategories, makeTabSession, verifyTabSession, validateNewPassword, authVerify, profileFor, AUTH_SIGNED_OUT, findLoginCandidates, authAdapterFor, can, ROLE_CAPS, DEPARTMENTS, canSeeAsset, canSeeJO, mayEditJO, isDeptUser, validateUserRecord, normalizeUserRecord, pickFields, JO_REQUEST_FIELDS, JO_WORK_FIELDS, isApproved, canApproveJO, canCloseJO, normWork, workChanged, withStoredFields, withoutApprover, approvalEvent, resetApprovalIfChanged, JO_CONTROL_FIELDS, isJobCardEditor, isEligibleEditor, DU_REPAIR_TYPE, JCE_SECTIONS, jceSectionAllows, planAssetImport, applyAssetPlan, isValidAuthState, authzFingerprint, planDataLoad, escHtml, stableJson, realtimeAction};', ctx);
+vm.runInContext(html.slice(a, b) + '\nthis.X = {ALL_CATEGORIES, isAllCategories, allCategories, isEmailAddress, validatePassword, pageFromHash, hashForPage, PAGE_IDS, PAGE_CAP, makeTabSession, verifyTabSession, validateNewPassword, authVerify, profileFor, AUTH_SIGNED_OUT, findLoginCandidates, authAdapterFor, can, ROLE_CAPS, DEPARTMENTS, canSeeAsset, canSeeJO, mayEditJO, isDeptUser, validateUserRecord, normalizeUserRecord, pickFields, JO_REQUEST_FIELDS, JO_WORK_FIELDS, isApproved, canApproveJO, canCloseJO, normWork, workChanged, withStoredFields, withoutApprover, approvalEvent, resetApprovalIfChanged, JO_CONTROL_FIELDS, isJobCardEditor, isEligibleEditor, DU_REPAIR_TYPE, JCE_SECTIONS, jceSectionAllows, planAssetImport, applyAssetPlan, isValidAuthState, authzFingerprint, planDataLoad, escHtml, stableJson, realtimeAction};', ctx);
 vm.runInContext('function sortByAssetNum(arr){return [...arr].sort((a,b)=>(parseInt(a.num)||0)-(parseInt(b.num)||0));}', ctx);
 const { can, ROLE_CAPS, DEPARTMENTS, canSeeAsset, canSeeJO, mayEditJO, isDeptUser, validateUserRecord, normalizeUserRecord } = ctx.X;
 const ROLES = ['Admin', 'Assistant Engineer', 'Senior Engineer', 'Job Card Editor', 'Department User'];
@@ -283,7 +283,7 @@ t('R2/2B-3 user form offers exactly the six roles (five + Viewer) and no capabil
 t('R2 isEligibleEditor: active Job Card Editor with one of the three sections only', Y.isEligibleEditor({ role: 'Job Card Editor', section: 'Mechanical' }) && Y.isEligibleEditor({ role: 'Job Card Editor', section: 'Electrical', active: true })
   && !Y.isEligibleEditor({ role: 'Job Card Editor', section: 'Mechanical', active: false }) && !Y.isEligibleEditor({ role: 'Job Card Editor', section: ' ' }) && !Y.isEligibleEditor({ role: 'Job Card Editor' }) && !Y.isEligibleEditor({ role: 'Job Card Editor', section: 'Mech' })
   && !Y.isEligibleEditor({ role: 'Assistant Engineer', section: 'Mechanical' }) && !Y.isEligibleEditor({ role: 'Senior Engineer', section: 'Mechanical', extraBundles: ['JOB_CARD_EDITOR'] }) && !Y.isEligibleEditor(undefined) && !Y.isEligibleEditor({ role: 'job card editor', section: 'Mechanical' }));
-t('R2 validateNewPassword: ≥8 chars, ≤128, not 64-hex, differs from current', Y.validateNewPassword('Abcdefgh', 'old') === null && !!Y.validateNewPassword('Abcdefg', 'old') && !!Y.validateNewPassword('short', 'old') && !!Y.validateNewPassword('x'.repeat(129), 'old') && !!Y.validateNewPassword('a'.repeat(64), 'old') && !!Y.validateNewPassword('SamePass1', 'SamePass1') && !!Y.validateNewPassword(undefined, 'x'));
+t('R2 validateNewPassword: the agreed policy (8-72 bytes; upper, lower, digit, special), not 64-hex, differs from current', Y.validateNewPassword('Abcdef-1', 'old') === null && !!Y.validateNewPassword('Abcde-1', 'old') && !!Y.validateNewPassword('abcdefgh', 'old') && !!Y.validateNewPassword('Abcdefgh', 'old') && !!Y.validateNewPassword('Abcdefg1', 'old') && !!Y.validateNewPassword('A-1' + 'x'.repeat(70), 'old') && !!Y.validateNewPassword('a'.repeat(64), 'old') && !!Y.validateNewPassword('Same-Pass1', 'Same-Pass1') && !!Y.validateNewPassword(undefined, 'old'));
 t('R2 DU repair type constant is Unplanned', Y.DU_REPAIR_TYPE === 'Unplanned');
 t('R2 assignment fields are workflow-only (edit/create cannot set them)', ['assignedTo', 'assignedToId'].every(k => Y.JO_CONTROL_FIELDS.includes(k)));
 const sj = app.slice(app.indexOf('  function saveJO('), app.indexOf('  function updateJOStatus('));
@@ -421,9 +421,9 @@ t('IMPORT save layer: CSV parse only previews (no save); apply blocks invalid fi
     && /const currentUser = isValidAuthState\(auth, authAdapter\) \? profileFor\(auth, users\) : null;/.test(appSrc) && !/setCurrentUser/.test(html));
   // ---- release 2026-10-14: own-password rule, unique usernames, no temporary passwords / forced change / Employee ID ----
   const { validateNewPassword } = ctx.X;
-  t('PASSWORD own change: at least 8 characters, at most 128, not a 64-hex string, different from the current one (no other policy)',
-    validateNewPassword('short1', 'x') !== null && validateNewPassword('abcdefgh', 'x') === null && validateNewPassword('a'.repeat(129), 'x') !== null
-    && validateNewPassword('a'.repeat(64), 'x') !== null && validateNewPassword('Same-Pass-1', 'Same-Pass-1') !== null && validateNewPassword(undefined, 'x') !== null);
+  t('PASSWORD own change and admin-set passwords: the agreed policy with clear messages; a 64-hex string or the current password refused',
+    /needs an uppercase letter, a number, a special character/.test(validateNewPassword('abcdefgh', 'x')) && /at least 8 characters/.test(validateNewPassword('Ab-1', 'x')) && validateNewPassword('Abcdef-1', 'x') === null
+    && /too long/.test(validateNewPassword('Aa-1' + 'x'.repeat(69), 'x')) && validateNewPassword('a'.repeat(64), 'x') !== null && /must differ/.test(validateNewPassword('Same-Pass-1', 'Same-Pass-1')) && /required/.test(validateNewPassword(undefined, 'x')));
   const EU = [{ id: 1, username: 'u_admin' }, { id: 2, username: 'u_two' }];
   t('USERNAME duplicate rejected for new accounts and edits; an account keeps its own username', /username is already used/.test(validateUserRecord({ role: 'Admin', username: 'u_two' }, [], { users: EU }))
     && /username is already used/.test(validateUserRecord({ role: 'Admin', username: 'u_two' }, [], { users: EU, editId: 1 })) && validateUserRecord({ role: 'Admin', username: 'u_two' }, [], { users: EU, editId: 2 }) === null);
@@ -431,9 +431,9 @@ t('IMPORT save layer: CSV parse only previews (no save); apply blocks invalid fi
   t('NORM role-only fields removed for other roles; every other field kept', (n => !('department' in n) && !('section' in n) && n.id === 9 && n.fullName === 'X')(normalizeUserRecord({ role: 'Admin', department: 'HR', section: 'Electrical', id: 9, fullName: 'X' })));
   const appS = html.slice(html.indexOf('\nfunction App() {'), html.indexOf('\nfunction NavItem('));
   t('RELEASE no temporary passwords, forced password change, Employee ID login, password-reset tool, recovery or notification code in the app (the redesigned login visuals are included)',
-    !/must_change_password|mustChangePassword|generateTempPassword|LOCAL_ACCOUNT_TOOLS|resetUserPassword|ForcePasswordChange|TempPasswordNotice|employeeId|EMPLOYEE_ID_RE|PASSWORD_RULES|recoveryStep|RecoveryLanding|NotificationBell|notificationMode|local_mock_notifications|Forgot password|login-temp-note/.test(html));
-  t('WIRING saveUser: role/assignment + unique username validated; new accounts need a password; admin-set passwords hashed with plain SHA-256 (no passthrough)',
-    /validateUserRecord\(user, assetCategories, \{users, editId\}\)/.test(appS) && /if \(!editId && !\(typeof user\.password === 'string' && user\.password !== ''\)\)/.test(appS) && /await sha256Hex\(user\.password\)/.test(appS));
+    !/must_change_password|mustChangePassword|generateTempPassword|LOCAL_ACCOUNT_TOOLS|resetUserPassword|ForcePasswordChange|TempPasswordNotice|employeeId|EMPLOYEE_ID_RE|recoveryStep|RecoveryLanding|NotificationBell|notificationMode|local_mock_notifications|Forgot password|login-temp-note/.test(html));
+  t('WIRING saveUser: role/assignment + unique username + mandatory email (new) validated; new accounts need a password that meets the policy; admin-set passwords hashed with plain SHA-256 (no passthrough)',
+    /validateUserRecord\(user, assetCategories, \{users, editId: editId \|\| undefined, isNew: !editId\}\)/.test(appS) && /if \(!editId && !\(typeof user\.password === 'string' && user\.password !== ''\)\)/.test(appS) && /const pe = validatePassword\(user\.password\); if \(pe\) \{ addToast\(pe, true\); return; \}/.test(appS) && /await sha256Hex\(user\.password\)/.test(appS));
   // ---- Phase 2B-4: session lifecycle (offline, synthetic) ----
   const { isValidAuthState, authzFingerprint } = ctx.X;
   const AP = authAdapterFor('staging'), good = { status: 'signed-in', subject: { id: 2, username: 'u_ae' }, adapter: 'appdata', env: 'staging', since: 'x' };
@@ -532,16 +532,16 @@ t('IMPORT save layer: CSV parse only previews (no save); apply blocks invalid fi
   // ---- 2026-10-15 feature branch: categories, dashboard, chart, sidebar, tab session ----
   t('CATEGORIES Department User assignment uses the Asset Registry categories only; the asset form, import and rename keep the full list (assets + stored)',
     /const categories = useMemo\(\(\) => allCategories\(assets, customPlants\), \[assets, customPlants\]\);/.test(appS)
-    && /<SettingsPage users=\{users\} customPlants=\{assetCategories\}/.test(appS) && /const assetCategories = useMemo\(\(\) => allCategories\(assets, \[\]\), \[assets\]\);/.test(appS) && /validateUserRecord\(user, assetCategories, \{users, editId\}\)/.test(appS) && /customPlants=\{categories\} onAddPlant=\{addCustomPlant\}/.test(appS)
+    && /<SettingsPage users=\{users\} customPlants=\{assetCategories\}/.test(appS) && /const assetCategories = useMemo\(\(\) => allCategories\(assets, \[\]\), \[assets\]\);/.test(appS) && /validateUserRecord\(user, assetCategories, \{users, editId: editId \|\| undefined, isNew: !editId\}\)/.test(appS) && /customPlants=\{categories\} onAddPlant=\{addCustomPlant\}/.test(appS)
     && /planAssetImport\(rows, assets, categories\)/.test(appS) && /if \(!categories\.some\(same\)\)/.test(appS));
   t('DASHBOARD five most recent job orders; Recent panel matches the Assets by Category height', /const recent = \[\.\.\.jobOrders\]\.reverse\(\)\.slice\(0, 5\);/.test(html)
     && /className="panel recent-jo-panel" style=\{\{display:'flex',flexDirection:'column',contain:'size',minHeight:260\}\}/.test(html));
   t('CHART static: animation off, no hover offset, rebuilt only when the counted data or the theme changes', /animation:false,/.test(html) && /hoverOffset:0,/.test(html)
     && /\},\[chartKey, theme\]\);/.test(html) && !/animateRotate|animateScale/.test(html));
   t('SIDEBAR no section headers (icons and names kept)', !/className="nav-section"/.test(html) && /icon="🏠" label="Dashboard"/.test(html) && /icon="👥" label="Settings"/.test(html));
-  t('SESSION restore runs once after the users were read, only through verifyTabSession; logout and own password change handled',
-    /if \(restoreTried\.current \|\| auth\.status === 'signed-in' \|\| !dbLoaded \|\| !usersFromDb\.current \|\| !authAdapter\) return;/.test(appS)
-    && /verifyTabSession\(tok, users, sha256Hex\)\.then\(u => \{\s*if \(!u\) \{ clearTabSession\(\); return; \}/.test(appS)
+  t('SESSION restore runs once after the users were read (or are known to be unavailable), only through verifyTabSession, and always ends the restoring state; logout and own password change handled',
+    /if \(restoreTried\.current \|\| !restoring\) return;/.test(appS) && /if \(!dbLoaded \|\| !usersSettled\) return;/.test(appS) && /if \(!tok \|\| !usersFromDb\.current\) \{ setRestoring\(false\); return; \}/.test(appS)
+    && /verifyTabSession\(tok, users, sha256Hex\)\.then\(u => \{\s*if \(!u\) clearTabSession\(\);/.test(appS) && /setRestoring\(false\);\s*\}, \(\) => setRestoring\(false\)\);/.test(appS) && /\}, RESTORE_MAX_MS\);/.test(appS)
     && /writeTabSession\(await makeTabSession\(updatedMe, sha256Hex\)\);/.test(appS));
   t('WIRING (N2) a change before the data is loaded is never dropped silently', /if \(!isLoaded\.current\) \{ addToast\(unsavedMsg\(\[key\]\), true\); return; \}/.test(appS));
   t('WIRING realtime never fills in a dataset that was not loaded', /if \(!isLoaded\.current \|\| !row \|\| !writableKeys\.has\(row\.key\) \|\| !Array\.isArray\(row\.value\)\) return;/.test(appS));
@@ -558,6 +558,39 @@ t('IMPORT save layer: CSV parse only previews (no save); apply blocks invalid fi
     const bad = [...body.matchAll(/\$\{([^}]*)\}/g)].map(m => m[1].trim()).filter(x => !allowed.test(x));
     return (bad.length === 0 || (console.log('   unescaped:', bad.slice(0, 8)), false)) && /function openPrintWindow\(title, bodyHtml\) \{[^]*?title = escHtml\(title\);[^]*?<title>\$\{title\}<\/title>/.test(pr);
   })());
+  // ---- 2026-10-17: audit fixes (email, "All" validation, admin-set password policy, refresh keeps sign-in and page) ----
+  { const { validateUserRecord, isEmailAddress, validatePassword, pageFromHash, hashForPage, PAGE_IDS, PAGE_CAP, can } = ctx.X;
+    const EU = [{ id: 1, username: 'u_admin', email: 'admin.one@example.invalid' }, { id: 2, username: 'u_two', email: 'dup@example.invalid' }, { id: 3, username: 'u_three', email: 'DUP@example.invalid' }, { id: 4, username: 'u_four', email: 'not an email' }];
+    const V = (u, o) => validateUserRecord({ role: 'Viewer', username: 'n_new', ...u }, ['PUMP'], { users: EU, ...o });
+    t('EMAIL a new account needs a valid email: missing, blank or malformed refused; a valid one accepted',
+      /valid email address is required/.test(V({}, { isNew: true })) && /valid email address is required/.test(V({ email: '  ' }, { isNew: true }))
+      && ['x', 'a@b', 'a b@example.com', 'a@@example.com'].every(e => /valid email address \(for example/.test(V({ email: e }, { isNew: true }))) && V({ email: 'New.User@Example.com' }, { isNew: true }) === null);
+    t('EMAIL unique (case-insensitive) for a new or changed address; an existing record is never blocked by what it already holds',
+      /already used by another account/.test(V({ email: 'ADMIN.ONE@example.invalid' }, { isNew: true })) && /already used/.test(V({ username: 'u_admin', email: 'dup@example.invalid' }, { editId: 1 }))
+      && V({ username: 'u_two', email: 'dup@example.invalid' }, { editId: 2 }) === null && V({ username: 'u_four', email: 'not an email' }, { editId: 4 }) === null && V({ username: 'u_two' }, { editId: 2 }) === null);
+    t('EMAIL isEmailAddress: same rule as the server (one @, no spaces, a dot in the domain, ≤ 254)', isEmailAddress('a@b.co') && !isEmailAddress('a@b') && !isEmailAddress('a@b.c d') && !isEmailAddress('x'.repeat(250) + '@b.co'));
+    const allDu = { role: 'Department User', department: 'HR', assignedCategories: ['*'], email: 'du.all@example.invalid' };
+    t('ALL a Department User with "All" still gets the later checks (fixed early return): a duplicate username is refused (it would lock both accounts out), and so is a missing email',
+      /username is already used/.test(validateUserRecord({ ...allDu, username: 'u_two' }, ['PUMP'], { users: EU, isNew: true }))
+      && /valid email address is required/.test(validateUserRecord({ ...allDu, username: 'n_du', email: '' }, ['PUMP'], { users: EU, isNew: true }))
+      && validateUserRecord({ ...allDu, username: 'n_du' }, ['PUMP'], { users: EU, isNew: true }) === null && /either All or individual/.test(validateUserRecord({ ...allDu, username: 'n_du', assignedCategories: ['*', 'PUMP'] }, ['PUMP'], { users: EU, isNew: true })));
+    t('PASSWORD admin-set (new account / reset) uses the policy in the form and in saveUser', /if \(f\.password\) \{ const pe = validatePassword\(f\.password\); if \(pe\) \{ alert\(pe\); return; \} \}/.test(html) && validatePassword('Abcdef-1') === null && validatePassword('abc') !== null);
+    t('ROUTE pageFromHash: only #/<known page>; anything else (incl. junk and unknown pages) is not a page',
+      PAGE_IDS.every(p => pageFromHash('#/' + p) === p && hashForPage(p) === '#/' + p) && ['', '#', '#/', '#/admin', '#/JOBORDERS', '#joborders', '#/joborders/1', null, undefined].every(h => pageFromHash(h) === null));
+    t('ROUTE every page has a capability; a page the role may not see falls back to the dashboard (Department User: no PM/Employees)',
+      PAGE_IDS.every(p => typeof PAGE_CAP[p] === 'string') && /if \(currentUser && !can\(currentUser, PAGE_CAP\[page\]\)\) setPage\('dashboard'\);\s+\}, \[page, authzFingerprint\(currentUser\)\]\);/.test(appS)
+      && ['pmschedule', 'employees'].every(p => !can({ role: 'Department User' }, PAGE_CAP[p])));
+    t('RESTORE render order: data failure, then the restoring screen (never the sign-in form while a tab session is checked), then sign-in',
+      /if \(!currentUser && restoring\) return \(\s+<><style>\{CSS\}<\/style><SplashScreen text="Restoring your session…"\/><\/>/.test(appS)
+      && appS.indexOf("if (loadIssue && loadIssue.kind !== 'partial') return (") < appS.indexOf('if (!currentUser && restoring) return (') && appS.indexOf('if (!currentUser && restoring) return (') < appS.indexOf('if (!currentUser) return (')
+      && /const \[restoring, setRestoring\] = useState\(\(\) => !!authAdapter && !!readTabSession\(\)\);/.test(appS));
+    t('RESTORE the users list always settles (loaded, empty, failed, seeded, hashing done or failed), so restoring always ends',
+      (appS.match(/setUsersSettled\(true\)/g) || []).length >= 5 && /setUsers\(hashed\); setDeferredFix\(f => \(\{\.\.\.f, users: true\}\)\); setUsersSettled\(true\); \}, \(\) => setUsersSettled\(true\)\);/.test(appS));
+    t('RESTORE page: initial page from the address; kept in the address while signed in; normal logout clears it, forced keeps it; sign-in opens the requested page',
+      /const \[page, setPage\] = useState\(\(\) => \{ try \{ return pageFromHash\(window\.location\.hash\) \|\| 'dashboard'; \}/.test(appS)
+      && /if \(h && window\.location\.hash !== h\) history\.replaceState\(null, '', window\.location\.pathname \+ window\.location\.search \+ h\);/.test(appS)
+      && /if \(forced !== true && window\.location\.hash\) history\.replaceState/.test(appS) && /setPage\(\(\) => \{ try \{ return pageFromHash\(window\.location\.hash\) \|\| 'dashboard'; \}/.test(appS));
+  }
   console.log(`\nPermission tests: ${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

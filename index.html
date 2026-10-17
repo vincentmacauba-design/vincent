@@ -429,11 +429,40 @@ const ROLE_SUMMARY = Object.freeze({
   'Department User': 'Raise Unplanned job orders for your department\'s asset categories; edit your own OPEN job orders; download job order PDFs.',
   'Viewer': 'View all pages and records: assets, job orders, PM schedules, employees and reports. No editing, approvals, status changes, downloads, exports or administration.',
 });
+// ─── PASSWORD POLICY (2026-10-17) ─────────────────────────────────────────────────
+// The agreed policy (same rules and messages as the Supabase Auth release, p2/functions/_shared/policy.mjs): 8-72 bytes,
+// an uppercase and a lowercase letter, a number and a special character. Applied to every NEW password (own change and
+// passwords an Admin sets); existing passwords keep working for sign-in.
+const PASSWORD_MIN = 8, PASSWORD_MAX_BYTES = 72;
+const PASSWORD_RULES = Object.freeze([
+  Object.freeze({id: 'length',  text: 'at least 8 characters',   test: p => p.length >= PASSWORD_MIN}),
+  Object.freeze({id: 'upper',   text: 'an uppercase letter',     test: p => /[A-Z]/.test(p)}),
+  Object.freeze({id: 'lower',   text: 'a lowercase letter',      test: p => /[a-z]/.test(p)}),
+  Object.freeze({id: 'digit',   text: 'a number',                test: p => /[0-9]/.test(p)}),
+  Object.freeze({id: 'special', text: 'a special character',     test: p => /[^A-Za-z0-9\s]/.test(p)}),
+]);
+const PASSWORD_HINT = 'At least 8 characters, with an uppercase letter, a lowercase letter, a number and a special character.';
+function passwordProblems(pw) {
+  if (typeof pw !== 'string' || pw === '') return ['empty'];
+  if (new TextEncoder().encode(pw).length > PASSWORD_MAX_BYTES) return ['tooLong'];
+  return PASSWORD_RULES.filter(r => !r.test(pw)).map(r => r.id);
+}
+// Returns an error message, or null when the password satisfies the policy. A 64-hex string is never accepted (it looks
+// like a stored hash).
+function validatePassword(pw) {
+  const bad = passwordProblems(pw);
+  if (bad.length) {
+    if (bad[0] === 'empty') return 'A password is required.';
+    if (bad[0] === 'tooLong') return 'The password is too long (maximum 72 characters).';
+    return 'The password needs ' + PASSWORD_RULES.filter(r => bad.includes(r.id)).map(r => r.text).join(', ') + '.';
+  }
+  if (/^[0-9a-f]{64}$/i.test(pw)) return 'Choose a different password.';
+  return null;
+}
 // Own password change (every role): returns an error message or null.
 function validateNewPassword(pw, current) {
-  if (typeof pw !== 'string' || pw.length < 8) return 'The new password must have at least 8 characters.';
-  if (pw.length > 128) return 'The new password is too long.';
-  if (/^[0-9a-f]{64}$/i.test(pw)) return 'Choose a different password.';
+  const err = validatePassword(pw);
+  if (err) return err;
   if (pw === current) return 'The new password must differ from the current one.';
   return null;
 }
@@ -471,18 +500,34 @@ function validateUserRecord(u, categories, opts = {}) {
     if (!DEPARTMENTS.includes(u.department)) return 'A Department User needs a department from the list.';
     const cats = Array.isArray(u.assignedCategories) ? u.assignedCategories : [];
     if (!cats.length) return 'A Department User needs at least one asset category.';
-    if (cats.includes(ALL_CATEGORIES)) return isAllCategories(cats) ? null : 'Choose either All or individual asset categories, not both.';
-    const known = (categories || []).map(c => String(c).toUpperCase()), up = cats.map(c => String(c).toUpperCase());
-    if (up.some(c => !known.includes(c))) return 'Unknown asset category.';
-    if (new Set(up).size !== up.length) return 'Duplicate asset category.';
+    // "All" is valid only on its own. No early return (fixed 2026-10-17): the uniqueness and email checks below still apply,
+    // otherwise a duplicate username would make sign-in ambiguous and lock BOTH accounts out.
+    if (cats.includes(ALL_CATEGORIES)) { if (!isAllCategories(cats)) return 'Choose either All or individual asset categories, not both.'; }
+    else {
+      const known = (categories || []).map(c => String(c).toUpperCase()), up = cats.map(c => String(c).toUpperCase());
+      if (up.some(c => !known.includes(c))) return 'Unknown asset category.';
+      if (new Set(up).size !== up.length) return 'Duplicate asset category.';
+    }
   }
   if (u.role === 'Job Card Editor' && !JCE_SECTIONS.includes(u.section)) return 'A Job Card Editor needs one section: Electrical, Mechanical or Maintenance.';
-  // Usernames are unique: sign-in needs exactly one matching account. opts: {users, editId (excluded from the check)}
+  // Usernames are unique: sign-in needs exactly one matching account. opts: {users, editId (excluded from the check), isNew}
   const others = (Array.isArray(opts.users) ? opts.users : []).filter(x => x && x.id !== opts.editId);
   const un = typeof u.username === 'string' ? u.username.trim() : '';
   if (un && others.some(x => x.username === un)) return 'This username is already used by another account.';
+  // Email (owner requirement 2026-10-17): mandatory and valid for a NEW account; when given, valid and unique. Existing
+  // accounts without one stay editable (no address is invented); an UNCHANGED stored address is not re-checked, so an
+  // existing record is never blocked by data it already holds.
+  const em = u.email == null ? '' : String(u.email).trim();
+  if (opts.isNew && !em) return 'A valid email address is required for a new account.';
+  const prev = opts.editId === undefined ? null : (Array.isArray(opts.users) ? opts.users : []).find(x => x && x.id === opts.editId);
+  const unchanged = !!prev && String(prev.email == null ? '' : prev.email).trim().toLowerCase() === em.toLowerCase();
+  if (em && !unchanged) {
+    if (!isEmailAddress(em)) return 'Enter a valid email address (for example name@example.com).';
+    if (others.some(x => typeof x.email === 'string' && x.email.trim().toLowerCase() === em.toLowerCase())) return 'This email address is already used by another account.';
+  }
   return null;
 }
+function isEmailAddress(v) { const s = String(v == null ? '' : v).trim(); return s.length <= 254 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s); }
 // Fields that only mean something for some roles are removed for the others; every other field is kept.
 function normalizeUserRecord(u) {
   const out = {...u};
@@ -602,6 +647,14 @@ function realtimeAction(incoming, hasPending, recent) {
 }
 // HTML-escape any value placed into generated HTML (print/PDF popup). Fixes S12.
 function escHtml(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// ─── PAGE ROUTE (2026-10-17) ─────────────────────────────────────────────────
+// The current page is kept in the address (#/joborders), so a refresh or a direct link opens the same page. It is only a
+// navigation hint: what a user may see is still decided by can() (App falls back to the dashboard).
+const PAGE_IDS = Object.freeze(['dashboard','assets','joborders','pmschedule','employees','reports','settings']);
+function pageFromHash(hash) { const m = /^#\/([a-z]+)$/.exec(String(hash == null ? '' : hash)); return m && PAGE_IDS.includes(m[1]) ? m[1] : null; }
+function hashForPage(p) { return PAGE_IDS.includes(p) ? '#/' + p : ''; }
+const PAGE_CAP = Object.freeze({dashboard: 'nav.dashboard', assets: 'nav.assets', joborders: 'nav.jobOrders', pmschedule: 'nav.pm', employees: 'nav.employees', reports: 'nav.reports', settings: 'settings.profile'});
+const RESTORE_MAX_MS = 15000;   // session restore: after this the sign-in form is shown (slow or unreachable server)
 function sortByAssetNum(arr){return [...arr].sort((a,b)=>(parseInt(a.num)||0)-(parseInt(b.num)||0));}
 function applyStatusFromDates(emps) {
   const today = new Date().toISOString().split('T')[0];
@@ -800,6 +853,22 @@ tr:last-child td{border-bottom:none;}tr:hover td{background:var(--hl-02);}
 .toast-msg.err{border-color:var(--red);border-left-color:var(--red);}
 select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2px 8px;}
 @media(max-width:900px){.sidebar{display:none;}.sidebar-toggle,.main-toolbar{display:none;}.main-content .page-header{padding-left:0;}.main{padding:16px;margin-left:0;}.stats-row{grid-template-columns:1fr 1fr;}.dash-grid{grid-template-columns:1fr;}}
+/* Mobile navigation (2026-10-17): below 900px the sidebar opens as a drawer from the menu button; the top bar is compact. */
+.mobile-nav-btn{display:none;align-items:center;justify-content:center;width:36px;height:36px;margin-right:10px;flex-shrink:0;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--white);font-size:18px;line-height:1;cursor:pointer;}
+.mobile-nav-btn:hover,.mobile-nav-btn[aria-expanded="true"]{border-color:var(--accent);color:var(--accent);}
+.mobile-nav-backdrop{display:none;}
+@media(max-width:900px){
+  .mobile-nav-btn{display:flex;}
+  .topbar{padding:0 12px;}
+  .topbar .badge,.logo-sub{display:none;}
+  .sidebar.mobile-open,.layout.sidebar-collapsed .sidebar.mobile-open{display:flex;width:min(270px,82vw);z-index:300;box-shadow:0 18px 40px rgba(0,0,0,.45);}
+  .layout.sidebar-collapsed .sidebar.mobile-open .nav-label{display:inline;}
+  .layout.sidebar-collapsed .sidebar.mobile-open .sidebar-user-text{display:block;}
+  .layout.sidebar-collapsed .sidebar.mobile-open .nav-item{gap:10px;padding:0 12px 0 15px;}
+  .layout.sidebar-collapsed .sidebar.mobile-open .sidebar-footer{padding:14px 18px 18px;display:block;}
+  .mobile-nav-backdrop{display:block;position:fixed;top:58px;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:250;}
+}
+@media(max-width:480px){.logo-icon{display:none;}.logo-text{font-size:17px;}.topbar-right{gap:6px;}}
 .btn-csv{background:rgba(16,185,129,.1);color:#4ade80;border:1px solid rgba(16,185,129,.25);}.btn-csv:hover{background:rgba(16,185,129,.2);color:#6ee7b7;}
 /* ── Table action column: always stays on one line */
 .assets-tbl td:last-child,.assets-tbl th:last-child{white-space:nowrap;width:1%;}
@@ -1273,9 +1342,18 @@ class ErrorBoundary extends React.Component {
 
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
 function App() {
-  const [page, setPage] = useState('dashboard');
+  const [page, setPage] = useState(() => { try { return pageFromHash(window.location.hash) || 'dashboard'; } catch (_) { return 'dashboard'; } });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === '1'; } catch(e) { return false; } });
   function toggleSidebar() { setSidebarCollapsed(c => { const n = !c; try { localStorage.setItem(SIDEBAR_KEY, n ? '1' : '0'); } catch(e) {} return n; }); }
+  // Mobile navigation (2026-10-17): below 900px the sidebar is a drawer; choosing a page closes it (also Escape).
+  const [mobileNav, setMobileNav] = useState(false);
+  function go(p) { setPage(p); setMobileNav(false); }
+  useEffect(() => {
+    if (!mobileNav) return;
+    const onKey = e => { if (e.key === 'Escape') setMobileNav(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mobileNav]);
   const [assets, setAssets] = useState(BASE_ASSETS);
   const [jobOrders, setJobOrders] = useState([]);
   const [joCounter, setJoCounter] = useState(1000);
@@ -1294,6 +1372,10 @@ function App() {
   const [users, setUsers] = useState([]);   // N2: empty until read from the database (no built-in accounts)
   // Profile = the current stored record of the signed-in subject; role/section/etc. never come from the auth state.
   const currentUser = isValidAuthState(auth, authAdapter) ? profileFor(auth, users) : null;
+  // Session restore (2026-10-17): while this tab's session token is checked (after the users have been read), a neutral
+  // "restoring" screen is shown instead of the sign-in form, so a refresh no longer flashes the login page.
+  const [restoring, setRestoring] = useState(() => !!authAdapter && !!readTabSession());
+  const [usersSettled, setUsersSettled] = useState(false);   // the users list was read (or is known to be unavailable)
   // Old browser copies that held password hashes (session; users mirror before Phase 2B-4): delete, never read.
   useEffect(() => { try { [SESSION_KEY, USERS_KEY, STORE_KEY, PM_KEY, EMPLOYEES_KEY, CUSTOM_PLANTS_KEY].forEach(k => localStorage.removeItem(k)); } catch(_) {} }, []);
   const [loadIssue, setLoadIssue] = useState(null);   // N1: null | {kind:'failed'|'empty'} (blocks the app) | {kind:'partial', keys} (banner)
@@ -1320,7 +1402,7 @@ function App() {
   //    nothing; a partial read loads what was read and keeps the rest read-only. Seeding happens ONLY in the local mock /
   //    staging when staging-config.js explicitly sets seedEmptyDatabase: true, and never creates accounts.
   useEffect(() => {
-    const fail = (reason, err) => { if (err) console.error('Supabase load error:', err); setLoadIssue({kind: reason}); setSyncStatus('error'); setDbLoaded(true); };
+    const fail = (reason, err) => { if (err) console.error('Supabase load error:', err); setLoadIssue({kind: reason}); setSyncStatus('error'); setUsersSettled(true); setDbLoaded(true); };
     sb.from('app_data').select('*').then(result => {
       const plan = planDataLoad(result, {envName: ENV.name, seedOptIn: ENV.name === 'staging' && !!(window.CMMS_STAGING_CONFIG && window.CMMS_STAGING_CONFIG.seedEmptyDatabase === true)});
       if (plan.action === 'fail') { fail(plan.reason, result && result.error); return; }
@@ -1334,6 +1416,7 @@ function App() {
         dbSave('assets', deduped, seed); dbSave('jobOrders', [], seed); dbSave('pm', [], seed); dbSave('employees', [], seed); dbSave('customPlants', [...PLANTS].sort(), seed);
         dbSave('users', [], seed);   // no accounts are created (staging users start empty, DATABASE.md)
         writeGate.seedAllowed = false;
+        setUsersSettled(true);   // a fresh local database has no accounts
       } else {
         const map = plan.values;
         plan.loaded.forEach(k => writableKeys.add(k));
@@ -1361,9 +1444,9 @@ function App() {
           const needsMigration = rawUsers.some(u => u.password && !/^[0-9a-f]{64}$/.test(u.password));
           if (needsMigration) {
             Promise.all(rawUsers.map(async u => ({...u, password: await hashPwd(u.password)})))   // hashed in memory; stored after an Admin signs in (N2)
-              .then(hashed => { usersFromDb.current = true; setUsers(hashed); setDeferredFix(f => ({...f, users: true})); });
-          } else { usersFromDb.current = true; setUsers(rawUsers); }
-        }
+              .then(hashed => { usersFromDb.current = true; setUsers(hashed); setDeferredFix(f => ({...f, users: true})); setUsersSettled(true); }, () => setUsersSettled(true));
+          } else { usersFromDb.current = true; setUsers(rawUsers); setUsersSettled(true); }
+        } else setUsersSettled(true);   // no readable accounts: nobody can sign in or be restored
         if ('customPlants' in map) setCustomPlants(map.customPlants);
       }
       isLoaded.current = true;
@@ -1403,22 +1486,46 @@ function App() {
   const authzKey = authzFingerprint(currentUser);
   useEffect(() => {
     setAssetModal(null); setJoModal(null); setJoViewModal(null); setAssetImport(null);
-    const PAGE_CAP = {dashboard: 'nav.dashboard', assets: 'nav.assets', joborders: 'nav.jobOrders', pmschedule: 'nav.pm', employees: 'nav.employees', reports: 'nav.reports', settings: 'settings.profile'};
     if (currentUser && !can(currentUser, PAGE_CAP[page])) setPage('dashboard');
   }, [authzKey]);
 
-  // ── Tab session: after the users have been read, one attempt to restore this tab's sign-in (see TAB SESSION).
+  // ── Tab session: after the users have been read, one attempt to restore this tab's sign-in (see TAB SESSION). While it
+  //    runs, `restoring` keeps the sign-in form hidden; it always ends (restored, refused, users unavailable or timeout).
   const restoreTried = useRef(false);
   useEffect(() => {
-    if (restoreTried.current || auth.status === 'signed-in' || !dbLoaded || !usersFromDb.current || !authAdapter) return;
+    if (restoreTried.current || !restoring) return;
+    if (auth.status === 'signed-in' || !authAdapter) { restoreTried.current = true; setRestoring(false); return; }
+    if (!dbLoaded || !usersSettled) return;
     restoreTried.current = true;
     const tok = readTabSession();
-    if (!tok) return;
+    if (!tok || !usersFromDb.current) { setRestoring(false); return; }   // nothing to restore / accounts not readable
     verifyTabSession(tok, users, sha256Hex).then(u => {
-      if (!u) { clearTabSession(); return; }
-      setAuth(Object.freeze({status: 'signed-in', subject: Object.freeze({id: u.id, username: u.username}), adapter: authAdapter.name, env: authAdapter.env, since: new Date().toISOString()}));
-    });
-  }, [dbLoaded, users]);
+      if (!u) clearTabSession();
+      else setAuth(Object.freeze({status: 'signed-in', subject: Object.freeze({id: u.id, username: u.username}), adapter: authAdapter.name, env: authAdapter.env, since: new Date().toISOString()}));
+      setRestoring(false);
+    }, () => setRestoring(false));
+  }, [dbLoaded, usersSettled, users, restoring]);
+  useEffect(() => {   // a slow or unreachable database never leaves the restoring screen up for good
+    if (!restoring) return;
+    const id = setTimeout(() => { if (!restoreTried.current) { restoreTried.current = true; setRestoring(false); } }, RESTORE_MAX_MS);
+    return () => clearTimeout(id);
+  }, [restoring]);
+
+  // ── Page route (2026-10-17): the address shows the current page while signed in (refresh / direct link keep it); a page
+  //    the user may not see falls back to the dashboard. Signed out, the address is left as requested.
+  useEffect(() => {
+    if (!currentUser) return;
+    const h = hashForPage(page);
+    try { if (h && window.location.hash !== h) history.replaceState(null, '', window.location.pathname + window.location.search + h); } catch (_) {}
+  }, [page, signedInId]);
+  useEffect(() => {
+    const onHash = () => { const p = pageFromHash(window.location.hash); if (p) setPage(p); };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  useEffect(() => {
+    if (currentUser && !can(currentUser, PAGE_CAP[page])) setPage('dashboard');
+  }, [page, authzFingerprint(currentUser)]);
 
   // ── While signed in, the subject must still exist and be active in the stored users (deactivated/deleted elsewhere).
   //    Role and section changes need no action: the profile is re-read from the users on every render.
@@ -1480,7 +1587,8 @@ function App() {
     if (r.ok) {
       const u = users.find(x => x && x.id === r.state.subject.id && x.username === r.state.subject.username);
       if (u) writeTabSession(await makeTabSession(u, sha256Hex));   // refresh keeps this sign-in (same tab only)
-      setPage('dashboard'); setAuth(r.state); return {ok: true};
+      setPage(() => { try { return pageFromHash(window.location.hash) || 'dashboard'; } catch (_) { return 'dashboard'; } });   // a requested page opens after sign-in
+      setAuth(r.state); return {ok: true};
     }
     return r;
   }
@@ -1493,17 +1601,27 @@ function App() {
     clearTabSession();   // logout (normal or forced) ends the tab session
     setAuth(AUTH_SIGNED_OUT);
     setAssetModal(null); setJoModal(null); setJoViewModal(null); setAssetImport(null);   // nothing opened by this user survives
-    setPage('dashboard');
+    setPage('dashboard'); setMobileNav(false);
+    // A normal logout clears the page from the address (the next sign-in starts on the dashboard); after a FORCED one
+    // (account deactivated or deleted) it is kept.
+    try { if (forced !== true && window.location.hash) history.replaceState(null, '', window.location.pathname + window.location.search); } catch(_) {}
     try { localStorage.removeItem(SESSION_KEY); } catch(_) {}
   }
 
   async function saveUser(user, editId) {
     if (!allow(can(currentUser,'users.admin') || (!!editId && !!currentUser && editId === currentUser.id && can(currentUser,'profile.edit')))) return;
     if (can(currentUser,'users.admin')) {
-      const err = validateUserRecord(user, assetCategories, {users, editId});
+      const err = validateUserRecord(user, assetCategories, {users, editId: editId || undefined, isNew: !editId});
       if (err) { addToast(err, true); return; }
       if (!editId && !(typeof user.password === 'string' && user.password !== '')) { addToast('A password is required for new accounts.', true); return; }
+      // A password the Admin sets (new account or reset) follows the same policy as an own change (2026-10-17).
+      if (typeof user.password === 'string' && user.password !== '') { const pe = validatePassword(user.password); if (pe) { addToast(pe, true); return; } }
       user = normalizeUserRecord(user);
+      if (typeof user.email === 'string') user = {...user, email: user.email.trim()};
+    } else {
+      // Own profile (name and email only): a changed email must be valid and not used by another account.
+      const err = validateUserRecord({...currentUser, email: user.email}, assetCategories, {users, editId});
+      if (err) { addToast(err, true); return; }
     }
     const hashedPwd = user.password && can(currentUser,'users.admin') ? await sha256Hex(user.password) : null;   // own password: Change Password only
     setUsers(prev => {
@@ -1990,6 +2108,10 @@ function App() {
   if (loadIssue && loadIssue.kind !== 'partial') return (
     <><style>{CSS}</style><DataUnavailable kind={loadIssue.kind}/></>
   );
+  // Refresh with a tab session: never the sign-in form while it is being checked (no login flash).
+  if (!currentUser && restoring) return (
+    <><style>{CSS}</style><SplashScreen text="Restoring your session…"/></>
+  );
   if (!currentUser) return (
     <><style>{CSS}</style><LoginPage onLogin={handleLogin}/>
       {/* N2: messages raised at sign-out (account deactivated, change not saved) stay visible on the login page */}
@@ -1997,11 +2119,7 @@ function App() {
   );
 
   if (!dbLoaded) return (
-    <><style>{CSS}</style>
-    <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--navy)',flexDirection:'column',gap:16}}>
-      <div style={{fontFamily:'var(--fh)',fontSize:24,color:'var(--accent)'}}>CMMS</div>
-      <div style={{color:'var(--gray)',fontSize:13}}>Loading data...</div>
-    </div></>
+    <><style>{CSS}</style><SplashScreen text="Loading data..."/></>
   );
 
   return (
@@ -2011,6 +2129,7 @@ function App() {
         {/* TOPBAR */}
         <div className="topbar">
           <div className="topbar-left">
+          <button type="button" className="mobile-nav-btn" onClick={()=>setMobileNav(v=>!v)} aria-label={mobileNav?'Close menu':'Open menu'} aria-expanded={mobileNav} aria-controls="app-sidebar">{mobileNav?'✕':'☰'}</button>
           <div className="logo">
             <div className="logo-icon">CMMS</div>
             <div>
@@ -2036,14 +2155,15 @@ function App() {
 
         <div className={`layout${sidebarCollapsed?' sidebar-collapsed':''}`}>
           {/* SIDEBAR */}
-          <div className="sidebar">
-            {can(currentUser,'nav.dashboard')&&<NavItem active={page==='dashboard'} onClick={()=>setPage('dashboard')} icon="🏠" label="Dashboard"/>}
-            {can(currentUser,'nav.assets')&&<NavItem active={page==='assets'} onClick={()=>setPage('assets')} icon="🗂️" label="Asset Registry"/>}
-            {can(currentUser,'nav.jobOrders')&&<NavItem active={page==='joborders'} onClick={()=>setPage('joborders')} icon="📋" label="Job Orders"/>}
-            {can(currentUser,'nav.pm')&&<NavItem active={page==='pmschedule'} onClick={()=>setPage('pmschedule')} icon="🔩" label="PM Schedule"/>}
-            {can(currentUser,'nav.employees')&&<NavItem active={page==='employees'} onClick={()=>setPage('employees')} icon="👷" label="Employees"/>}
-            {can(currentUser,'nav.reports')&&<NavItem active={page==='reports'} onClick={()=>setPage('reports')} icon="📊" label="Reports"/>}
-            <NavItem active={page==='settings'} onClick={()=>setPage('settings')} icon="👥" label="Settings"/>
+          {mobileNav && <div className="mobile-nav-backdrop" onClick={()=>setMobileNav(false)} aria-hidden="true"/>}
+          <div className={`sidebar${mobileNav?' mobile-open':''}`} id="app-sidebar">
+            {can(currentUser,'nav.dashboard')&&<NavItem active={page==='dashboard'} onClick={()=>go('dashboard')} icon="🏠" label="Dashboard"/>}
+            {can(currentUser,'nav.assets')&&<NavItem active={page==='assets'} onClick={()=>go('assets')} icon="🗂️" label="Asset Registry"/>}
+            {can(currentUser,'nav.jobOrders')&&<NavItem active={page==='joborders'} onClick={()=>go('joborders')} icon="📋" label="Job Orders"/>}
+            {can(currentUser,'nav.pm')&&<NavItem active={page==='pmschedule'} onClick={()=>go('pmschedule')} icon="🔩" label="PM Schedule"/>}
+            {can(currentUser,'nav.employees')&&<NavItem active={page==='employees'} onClick={()=>go('employees')} icon="👷" label="Employees"/>}
+            {can(currentUser,'nav.reports')&&<NavItem active={page==='reports'} onClick={()=>go('reports')} icon="📊" label="Reports"/>}
+            <NavItem active={page==='settings'} onClick={()=>go('settings')} icon="👥" label="Settings"/>
             <div className="sidebar-footer">
               <div style={{display:'flex',alignItems:'center',gap:10}}>
                 <div className="sidebar-avatar" title={`${currentUser.fullName} — ${currentUser.role}`}>{currentUser.fullName.charAt(0).toUpperCase()}</div>
@@ -2110,6 +2230,13 @@ function App() {
   );
 }
 
+// Neutral full-screen state while the session is restored or data is loading (role=status: announced, nothing interactive).
+function SplashScreen({text}) {
+  return <div className="splash-screen" role="status" aria-live="polite" style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--navy)',flexDirection:'column',gap:16}}>
+    <div style={{fontFamily:'var(--fh)',fontSize:24,color:'var(--accent)'}}>CMMS</div>
+    <div style={{color:'var(--gray)',fontSize:13}}>{text}</div>
+  </div>;
+}
 function NavItem({active,onClick,icon,label}) {
   return <div className={`nav-item${active?' active':''}`} onClick={onClick} title={label} aria-label={label} role="button" aria-current={active?'page':undefined}><span className="nav-icon" aria-hidden="true">{icon}</span><span className="nav-label">{label}</span></div>;
 }
@@ -4154,7 +4281,7 @@ function ChangePasswordModal({onClose, onSubmit}) {
         <div className="modal-head"><div className="modal-title">Change Password</div><button className="modal-close" onClick={onClose}>×</button></div>
         <div className="modal-body">
           <div className="form-group"><label>Current Password</label><input type="password" value={cur} onChange={e=>setCur(e.target.value)} autoComplete="current-password"/></div>
-          <div className="form-group"><label>New Password</label><input type="password" value={nw} onChange={e=>setNw(e.target.value)} autoComplete="new-password"/></div>
+          <div className="form-group"><label>New Password</label><input type="password" value={nw} onChange={e=>setNw(e.target.value)} autoComplete="new-password"/><div className="pw-hint">{PASSWORD_HINT}</div></div>
           <div className="form-group"><label>Confirm New Password</label><input type="password" value={cf} onChange={e=>setCf(e.target.value)} autoComplete="new-password"/></div>
           <div style={{display:'flex',gap:12,justifyContent:'flex-end',marginTop:8}}>
             <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
@@ -4200,8 +4327,9 @@ function UserFormModal({mode, user, onClose, onSave, selfOnly=false, customPlant
     if (!f.username.trim()) { alert('Username is required'); return; }
     if (mode==='add' && !f.password) { alert('Password is required for new users'); return; }
     if (!selfOnly) {
-      const err = validateUserRecord(f, customPlants, {users, editId: mode==='edit' && user ? user.id : undefined});
+      const err = validateUserRecord(f, customPlants, {users, editId: mode==='edit' && user ? user.id : undefined, isNew: mode==='add'});
       if (err) { alert(err); return; }
+      if (f.password) { const pe = validatePassword(f.password); if (pe) { alert(pe); return; } }
     }
     onSave(f);
   }
@@ -4230,11 +4358,12 @@ function UserFormModal({mode, user, onClose, onSave, selfOnly=false, customPlant
             <div className="form-group">
               <label>{mode==='edit'?'New Password (leave blank to keep current)':'Password'}</label>
               <input type="password" value={f.password||''} onChange={e=>setF({...f,password:e.target.value})} placeholder={mode==='edit'?'Leave blank to keep current':'Set password'} autoComplete="new-password"/>
+              <div className="pw-hint">{PASSWORD_HINT}</div>
             </div>
             )}
             <div className="form-group">
-              <label>Email Address</label>
-              <input type="email" value={f.email||''} onChange={e=>setF({...f,email:e.target.value})} placeholder="user@villagroup.mv"/>
+              <label>{mode==='add'?'Email Address *':'Email Address'}</label>
+              <input type="email" value={f.email||''} onChange={e=>setF({...f,email:e.target.value})} placeholder="name@example.com" required={mode==='add'} aria-required={mode==='add'}/>
             </div>
           </div>
           <div className="form-row">

@@ -39,7 +39,7 @@ const strongPw = () => 'Rc-' + crypto.randomBytes(9).toString('base64').replace(
     const specs = [
       { role: 'Assistant Engineer' }, { role: 'Senior Engineer' }, { role: 'Job Card Editor', section: 'Mechanical' },
       { role: 'Department User', department: 'Cement Plant', assignedCategories: [cat] }, { role: 'Viewer' },
-    ].map((s, i) => ({ ...s, username: 'rc_test_' + (i + 1), fullName: 'Role Check ' + s.role, employeeId: 'RC' + String(i + 1).padStart(3, '0'), password: strongPw(), active: true }));
+    ].map((s, i) => ({ ...s, username: 'rc_test_' + (i + 1), email: 'rc_test_' + (i + 1) + '@example.invalid', fullName: 'Role Check ' + s.role, employeeId: 'RC' + String(i + 1).padStart(3, '0'), password: strongPw(), active: true }));
     await nav('Settings');
     for (const s of specs) {
       await ev(`(async()=>{ await T.prop('onSaveUser')(${JSON.stringify(s)}, null); return true; })()`); await sleep(900);

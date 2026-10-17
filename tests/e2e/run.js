@@ -312,9 +312,22 @@ async function main() {
   const tokS = await ev(`(()=>{ const r = sessionStorage.getItem('cmms_vg_tab_session'); return { r, keys: r ? Object.keys(JSON.parse(r)).sort().join() : '' }; })()`);
   t('SESSION sign-in stores a tab-session token in sessionStorage only (id, username, time, proof; no password or hash); nothing in localStorage',
     tokS.keys === 'iat,id,proof,username,v' && !mock.store.users.some(u => (tokS.r || '').includes(u.password)) && (await ev(`localStorage.getItem('cmms_vg_session') === null && document.cookie === ''`)), tokS.keys);
+  const watched = async go => { const r = await B.send('Page.addScriptToEvaluateOnNewDocument', { source: "window.__sawLogin = false; window.__sawRestore = false; new MutationObserver(() => { if (document.querySelector('.login-card')) window.__sawLogin = true; if (document.querySelector('.splash-screen')) window.__sawRestore = true; }).observe(document, { subtree: true, childList: true });" }); await go(); await sleep(300);
+    await waitFor(`document.readyState === 'complete' && (!!document.querySelector('.sidebar') || !!document.querySelector('.login-card'))`, 20000);
+    if (r && r.result) await B.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: r.result.identifier }); };
+  const seen = () => ev(`({ sawLogin: window.__sawLogin, sawRestore: window.__sawRestore, hash: location.hash, active: T.txt(document.querySelector('.nav-item.active') || {textContent:''}) })`);
+  t('SESSION the address shows the current page while signed in', await ev(`location.hash === '#/assets'`));
   mock.store.users = mock.store.users.map(u => u.id === 2 ? { ...u, role: 'Senior Engineer' } : u);
-  await B.send('Page.reload', {});
-  t('SESSION a refresh keeps the same tab signed in (no login form)', (await signedIn()) && (await ev(`!document.querySelector('.login-card')`)));
+  await watched(() => B.send('Page.reload', {})); await signedIn(); await sleep(400);
+  const w1 = await seen();
+  t('SESSION a refresh keeps the same tab signed in: the sign-in form never appears (restoring screen instead) and the same page opens', w1.sawLogin === false && w1.sawRestore === true && w1.hash === '#/assets' && w1.active.includes('Asset Registry') && (await ev(`!document.querySelector('.login-card')`)), w1);
+  await watched(() => B.send('Page.navigate', { url: URL0 + '#/joborders' })); await signedIn(); await sleep(400);
+  const w2 = await seen();
+  t('SESSION a direct load of a page address in the same tab opens that page signed in, without a login flash', w2.sawLogin === false && w2.hash === '#/joborders' && w2.active.includes('Job Orders'), w2);
+  await ev(`location.hash = '#/reports'; true`); await sleep(500);
+  t('SESSION changing the address to another page navigates there', await ev(`T.txt(document.querySelector('.nav-item.active')).includes('Reports')`));
+  await ev(`location.hash = '#/nonsense'; true`); await sleep(400);
+  t('SESSION an unknown page address is ignored (the current page stays)', await ev(`T.txt(document.querySelector('.nav-item.active')).includes('Reports')`));
   await nav('Asset Registry');
   t('SESSION the role is re-read from the stored record after a refresh: AE demoted to SE loses Add Asset', await ev(`!T.find('Add Asset','button')`));
   mock.store.users = mock.store.users.map(u => u.id === 2 ? { ...u, role: 'Assistant Engineer' } : u);
@@ -464,7 +477,7 @@ async function main() {
   console.log('--- F2. admin user form');
   await fresh('t_admin', SEED2); await nav('Settings');
   await ev(`T.click('Add User','button'); true`); await sleep(300);
-  await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'New DU Person'); T.setVal(ins[1],'t_newdu'); T.setVal(ins[2],'Synthetic-New-1'); T.setVal(T.all('select',m)[0],'Department User'); return true; })()`); await sleep(250);
+  await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'New DU Person'); T.setVal(ins[1],'t_newdu'); T.setVal(ins[2],'Synthetic-New-1'); T.setVal(T.field('Email Address *'),'t_newdu@example.invalid'); T.setVal(T.all('select',m)[0],'Department User'); return true; })()`); await sleep(250);
   const uf = await ev(`({ dept: !!T.field('Department'), cats: T.all('.modal .cat-picker-list label:not(.cat-all) input[type=checkbox]').length, all: !!document.querySelector('.modal .cat-picker-list > label:first-child.cat-all'), bundle: T.body().includes('Job Card Editor capability') })`);
   t('Admin form: choosing Department User shows Department, "All" first, then one checkbox per category; hides the editor bundle', uf.dept && uf.all && uf.cats === assetPlantsOf(mock.store).length && !uf.bundle, uf);
   const cp = await ev("(()=>{ const l=document.querySelector('.modal .cat-picker-list'); const cs=getComputedStyle(l); return { maxH: cs.maxHeight, oy: cs.overflowY, search: !!document.querySelector('.modal .cat-search'), count: T.txt(document.querySelector('.modal .cat-count')) }; })()");
@@ -486,7 +499,7 @@ async function main() {
   t('Admin form: six roles offered (five + Viewer, Phase 2B-3), no capability/bundle checkbox (SE edit)', await ev("JSON.stringify(T.all('.modal select')[0].options ? [...T.all('.modal select')[0].options].map(o=>o.value) : []) === JSON.stringify(['Admin','Assistant Engineer','Senior Engineer','Job Card Editor','Department User','Viewer']) && !T.modalText().includes('capability') && T.all('.modal input[type=checkbox]').length === 0"));
   await ev("T.all('.modal-close')[0].click(); true"); await sleep(200);
   await ev("T.click('Add User','button'); true"); await sleep(300);
-  await ev("(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'New Editor'); T.setVal(ins[1],'t_newjce'); T.setVal(ins[2],'Synthetic-New-2'); T.setVal(T.all('select',m)[0],'Job Card Editor'); return true; })()"); await sleep(250);
+  await ev("(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'New Editor'); T.setVal(ins[1],'t_newjce'); T.setVal(ins[2],'Synthetic-New-2'); T.setVal(T.field('Email Address *'),'t_newjce@example.invalid'); T.setVal(T.all('select',m)[0],'Job Card Editor'); return true; })()"); await sleep(250);
   n2 = mock.writes.length;
   await ev("(()=>{ window.__alerts=[]; T.click('Add User','.modal button'); return true; })()"); await settle();
   t('Admin form: Job Card Editor without a section is rejected (alert, no write)', (await ev('window.__alerts.join("|")')).includes('section') && writesSince(n2).length === 0);
@@ -796,6 +809,28 @@ async function main() {
   t('R3 sidebar: control expands again (210px, labels visible)', await ev("Math.round(document.querySelector('.sidebar').getBoundingClientRect().width) === 210 && getComputedStyle(document.querySelector('.nav-label')).display !== 'none' && localStorage.getItem('cmms_vg_sidebar') === '0'"));
   await B.send('Emulation.setDeviceMetricsOverride', { width: 860, height: 900, deviceScaleFactor: 1, mobile: false }); await sleep(300);
   t('R4 sidebar 860px: sidebar hidden, toggle row hidden too (takes no space), no overflow', await ev("getComputedStyle(document.querySelector('.main-toolbar')).display === 'none' && getComputedStyle(document.querySelector('.sidebar')).display === 'none' && document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1"));
+  // Mobile navigation (2026-10-17): below 900px a menu button opens the sidebar as a drawer; choosing a page closes it.
+  await B.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true }); await sleep(400);
+  const mn0 = await ev(`(()=>{ const b = document.querySelector('.mobile-nav-btn'); return { btn: !!b && getComputedStyle(b).display !== 'none', label: b && b.getAttribute('aria-label'), exp: b && b.getAttribute('aria-expanded'),
+      side: getComputedStyle(document.querySelector('.sidebar')).display, overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 }; })()`);
+  t('MOBILE 390px: a menu button is shown (labelled, collapsed), the sidebar is hidden, no horizontal overflow', mn0.btn && mn0.label === 'Open menu' && mn0.exp === 'false' && mn0.side === 'none' && !mn0.overflow, mn0);
+  await ev(`document.querySelector('.mobile-nav-btn').click(); true`); await sleep(350);
+  const mn1 = await ev(`(()=>{ const sd = document.querySelector('.sidebar'), r = sd.getBoundingClientRect(); return { side: getComputedStyle(sd).display, w: Math.round(r.width), left: Math.round(r.left),
+      labels: T.all('.sidebar .nav-label').filter(l => getComputedStyle(l).display !== 'none').map(T.txt), backdrop: !!document.querySelector('.mobile-nav-backdrop'), exp: document.querySelector('.mobile-nav-btn').getAttribute('aria-expanded') }; })()`);
+  t('MOBILE the menu opens the navigation as a drawer with every page label the role may use, over a backdrop', mn1.side !== 'none' && mn1.left === 0 && mn1.w >= 200 && mn1.labels.includes('Job Orders') && mn1.labels.includes('Settings') && mn1.backdrop && mn1.exp === 'true', mn1);
+  await ev(`T.click('Job Orders', '.sidebar .nav-item'); true`); await sleep(400);
+  t('MOBILE choosing a page navigates there and closes the drawer', await ev(`T.txt(document.querySelector('.nav-item.active')).includes('Job Orders') && getComputedStyle(document.querySelector('.sidebar')).display === 'none' && !document.querySelector('.mobile-nav-backdrop')`));
+  await ev(`document.querySelector('.mobile-nav-btn').click(); true`); await sleep(300);
+  await ev(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true`); await sleep(300);
+  t('MOBILE Escape closes the drawer', await ev(`getComputedStyle(document.querySelector('.sidebar')).display === 'none' && document.querySelector('.mobile-nav-btn').getAttribute('aria-expanded') === 'false'`));
+  await ev(`document.querySelector('.mobile-nav-btn').click(); true`); await sleep(300); await ev(`document.querySelector('.mobile-nav-backdrop').click(); true`); await sleep(300);
+  t('MOBILE a tap outside (backdrop) closes the drawer', await ev(`getComputedStyle(document.querySelector('.sidebar')).display === 'none'`));
+  await ev(`document.querySelector('.mobile-nav-btn').click(); true`); await sleep(300); await ev(`T.click('Dashboard', '.sidebar .nav-item'); true`); await sleep(400);
+  const mn2 = await ev(`(()=>{ const tb = document.querySelector('.topbar'); return { overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1, tbH: Math.round(tb.getBoundingClientRect().height),
+      logout: !!document.querySelector('.btn-logout') && document.querySelector('.btn-logout').getBoundingClientRect().right <= innerWidth + 1 }; })()`);
+  t('MOBILE top bar fits the phone width (one row, logout reachable, no horizontal scroll)', !mn2.overflow && mn2.tbH <= 60 && mn2.logout, mn2);
+  await B.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }); await sleep(300);
+  t('MOBILE on a wide screen the menu button is hidden and the sidebar is the normal sidebar', await ev(`getComputedStyle(document.querySelector('.mobile-nav-btn')).display === 'none' && getComputedStyle(document.querySelector('.sidebar')).display !== 'none' && !document.querySelector('.mobile-nav-backdrop')`));
   await B.send('Emulation.clearDeviceMetricsOverride', {}); await sleep(300);
 
   console.log('--- R4. Settings → Users: compact assignment summary + details on demand');
@@ -1095,7 +1130,7 @@ async function main() {
     await fresh('t_admin', SEEDV); await nav('Settings');
     await ev(`T.click('Add User','button'); true`); await sleep(300);
     t('VIEWER role offered in the account form', await ev(`[...T.all('.modal select')[0].options].map(o => o.value).includes('Viewer')`));
-    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'New Viewer'); T.setVal(ins[1],'t_newviewer'); T.setVal(ins[2],'Viewer-Pass1!'); T.setVal(T.all('select',m)[0],'Viewer'); window.__alerts=[]; T.click('Add User','.modal button'); return true; })()`); await settle();
+    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'New Viewer'); T.setVal(ins[1],'t_newviewer'); T.setVal(ins[2],'Viewer-Pass1!'); T.setVal(T.field('Email Address *'),'t_newviewer@example.invalid'); T.setVal(T.all('select',m)[0],'Viewer'); window.__alerts=[]; T.click('Add User','.modal button'); return true; })()`); await settle();
     const nv = mock.store.users.find(u => u.username === 't_newviewer');
     t('VIEWER account created by Admin: role Viewer, hashed password, no department/categories/section', !!nv && nv.role === 'Viewer' && /^[0-9a-f]{64}$/.test(nv.password) && !('department' in nv) && !('assignedCategories' in nv) && !('section' in nv), nv && nv.role);
     await ev(`T.prop('onSaveUser')({...${JSON.stringify({ ...SEEDV.users.find(u => u.id === 20), password: '' })}, fullName: 'Test Viewer Renamed'}, 20); true`); await settle();
@@ -1214,23 +1249,30 @@ async function main() {
     t('ACCT a duplicate username is refused (sign-in needs exactly one match), no write', (await ev(`T.body().includes('This username is already used by another account.')`)) && mock.writes.length === w0);
     await ev(`T.click('Add User','button'); true`); await sleep(300);
     const form = await ev(`({ empId: T.modalText().includes('employee id'), temp: T.modalText().includes('temporary password'), hint: !!document.querySelector('.modal .pw-hint') })`);
-    t('ACCT the account form has no Employee ID field, no temporary-password generator and no password-policy hint', !form.empId && !form.temp && !form.hint, form);
-    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'Acct New'); T.setVal(ins[1],'t_acct'); T.setVal(ins[2],'simplepw8'); T.setVal(T.all('select',m)[0],'Viewer'); window.__alerts=[]; T.click('Add User','.modal button'); return true; })()`); await settle();
+    t('ACCT the account form has no Employee ID field and no temporary-password generator; it shows the password-policy hint', !form.empId && !form.temp && form.hint, form);
+    w0 = mock.writes.length;
+    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'Acct New'); T.setVal(ins[1],'t_acct'); T.setVal(ins[2],'Strong-Pass1'); T.setVal(T.field('Email Address *'),''); T.setVal(T.all('select',m)[0],'Viewer'); window.__alerts=[]; T.click('Add User','.modal button'); return true; })()`); await sleep(400);
+    t('EMAIL the account form refuses a new account without an email (clear message, no write, form stays open)', (await ev(`window.__alerts.some(a => /valid email address is required/.test(a)) && !!document.querySelector('.modal')`)) && mock.writes.length === w0);
+    await ev(`(()=>{ T.setVal(T.field('Email Address *'),'not-an-email'); window.__alerts=[]; T.click('Add User','.modal button'); return true; })()`); await sleep(400);
+    t('EMAIL a malformed email is refused (no write)', (await ev(`window.__alerts.some(a => a.includes('valid email address (for example'))`)) && mock.writes.length === w0);
+    await ev(`(()=>{ T.setVal(T.field('Email Address *'),'t_acct@example.invalid'); T.setVal(T.all('.modal input')[2],'simplepw8'); window.__alerts=[]; T.click('Add User','.modal button'); return true; })()`); await sleep(400);
+    t('PASSWORD an admin-set password that breaks the policy is refused with the rule (no write)', (await ev(`window.__alerts.some(a => /The password needs an uppercase letter, a special character/.test(a))`)) && mock.writes.length === w0);
+    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'Acct New'); T.setVal(ins[1],'t_acct'); T.setVal(ins[2],'Simple-pw8'); T.setVal(T.field('Email Address *'),'t_acct@example.invalid'); T.setVal(T.all('select',m)[0],'Viewer'); window.__alerts=[]; T.click('Add User','.modal button'); return true; })()`); await settle();
     const nu = mock.store.users.find(u => u.username === 't_acct');
     t('ACCT the Admin creates an account as before: hashed password (plain SHA-256), no forced-change flag; existing accounts unchanged',
-      !!nu && nu.password === require('crypto').createHash('sha256').update('simplepw8').digest('hex') && !('must_change_password' in nu) && SEED2.users.every(x => JSON.stringify(storeUser(x.id)) === JSON.stringify(x)), nu && { role: nu.role });
+      !!nu && nu.password === require('crypto').createHash('sha256').update('Simple-pw8').digest('hex') && !('must_change_password' in nu) && SEED2.users.every(x => JSON.stringify(storeUser(x.id)) === JSON.stringify(x)), nu && { role: nu.role });
     t('ACCT no password-reset button on user rows', await ev(`!T.find('Reset','button',T.row('t_jce'))`));
     await ev(`document.querySelector('.btn-logout').click(); true`); await sleep(500);
-    await relogin('t_acct', { password: 'simplepw8' });
+    await relogin('t_acct', { password: 'Simple-pw8' });
     t('ACCT the new account signs in straight away (no forced password change)', await ev(`!!document.querySelector('.sidebar') && T.txt(document.querySelector('.sidebar-user-role')) === 'Viewer'`));
     await nav('Settings');
     await ev(`(T.all('.settings-tab').find(e=>T.txt(e).includes('Profile'))||{click(){}}).click(); true`); await sleep(250);
     await ev(`T.click('Change Password','button'); true`); await sleep(250);
     w0 = mock.writes.length;
-    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'simplepw8'); T.setVal(ins[1],'short'); T.setVal(ins[2],'short'); window.__alerts=[]; T.click('Change Password','.modal button'); return true; })()`); await sleep(500);
+    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'Simple-pw8'); T.setVal(ins[1],'short'); T.setVal(ins[2],'short'); window.__alerts=[]; T.click('Change Password','.modal button'); return true; })()`); await sleep(500);
     t('ACCT own password change: fewer than 8 characters refused (no write)', (await ev(`window.__alerts.join('|').includes('at least 8 characters')`)) && mock.writes.length === w0);
-    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[1],'newpass88'); T.setVal(ins[2],'newpass88'); T.click('Change Password','.modal button'); return true; })()`); await settle();
-    t('ACCT own password change (Viewer) saved as plain SHA-256', (mock.store.users.find(u => u.username === 't_acct') || {}).password === require('crypto').createHash('sha256').update('newpass88').digest('hex'));
+    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[1],'New-pass88'); T.setVal(ins[2],'New-pass88'); T.click('Change Password','.modal button'); return true; })()`); await settle();
+    t('ACCT own password change (Viewer) saved as plain SHA-256', (mock.store.users.find(u => u.username === 't_acct') || {}).password === require('crypto').createHash('sha256').update('New-pass88').digest('hex'));
   }
 
   // ============ N1 (P2 preparation): safe initialization, per-dataset saves, no browser copies, print escaping ============
@@ -1592,7 +1634,7 @@ async function main() {
     await ev(`T.all('.modal-close')[0].click(); true`); await sleep(200);
     const n0 = mock.writes.length;
     const useCat = assetCats.find(c => c !== '12 VESSEL');
-    await ev(`(async()=>{ await T.prop('onSaveUser')({ username: 't_cat_du', fullName: 'Category Test DU', employeeId: 'CT001', role: 'Department User', department: 'Cement Plant', assignedCategories: [${JSON.stringify(useCat)}], password: 'Cat-Test-Pass1!', active: true }, null); return true; })()`); await sleep(1200);
+    await ev(`(async()=>{ await T.prop('onSaveUser')({ username: 't_cat_du', email: 't_cat_du@example.invalid', fullName: 'Category Test DU', employeeId: 'CT001', role: 'Department User', department: 'Cement Plant', assignedCategories: [${JSON.stringify(useCat)}], password: 'Cat-Test-Pass1!', active: true }, null); return true; })()`); await sleep(1200);
     t('CATEGORIES a Department User can be assigned a category that is only used by assets (validation uses the same list)', mock.store.users.some(u => u.username === 't_cat_du' && JSON.stringify(u.assignedCategories) === JSON.stringify([useCat])));
     t('CATEGORIES the stored category list is not rewritten to sync', JSON.stringify(mock.store.customPlants) === JSON.stringify(['12 VESSEL']) && !mock.writes.slice(n0).some(w => w.key === 'customPlants'));
 
@@ -1602,7 +1644,7 @@ async function main() {
     const ALLPW = 'All-Cat-Pass1!';
     await fresh('t_admin', SEED2); await nav('Settings');
     await ev(`T.click('Add User','button'); true`); await sleep(300);
-    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'All Categories DU'); T.setVal(ins[1],'t_alldu'); T.setVal(ins[2],${JSON.stringify(ALLPW)}); T.setVal(T.all('select',m)[0],'Department User'); return true; })()`); await sleep(300);
+    await ev(`(()=>{ const m=T.all('.modal')[0]; const ins=T.all('input',m); T.setVal(ins[0],'All Categories DU'); T.setVal(ins[1],'t_alldu'); T.setVal(ins[2],${JSON.stringify(ALLPW)}); T.setVal(T.field('Email Address *'),'t_alldu@example.invalid'); T.setVal(T.all('select',m)[0],'Department User'); return true; })()`); await sleep(300);
     const deptOpts = await ev(`[...T.field('Department').options].map(o => o.value).filter(Boolean)`);
     t('DEPARTMENTS user creation offers exactly the ten departments, in order', JSON.stringify(deptOpts) === JSON.stringify(DEPTS10), deptOpts);
     const first = await ev(`(()=>{ const l = document.querySelector('.modal .cat-picker-list > label'); return { all: l.classList.contains('cat-all'), text: T.txt(l) }; })()`);
