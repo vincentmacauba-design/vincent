@@ -1053,6 +1053,13 @@ async function main() {
   const LOGIN_SELS = ['.login-welcome', '.login-instr', '.login-field label', '.login-btn'];
   const cDark = await ev(`window.__minContrast(${JSON.stringify(LOGIN_SELS)})`);
   t('LOGIN dark: heading, instructions, labels and button readable (≥ 4.5:1)', Object.keys(cDark).length === 4 && Object.values(cDark).every(v => v >= 4.5), cDark);
+  // 2026-10-18: the motherboard stays sharp on the right. The right-panel tint (.login-main::before) must sit BELOW the board
+  // (.login-main forms no stacking context) and the glass card blurs the board by at most 2px; the card keeps its tint and border.
+  const board = await ev(`(()=>{ const m = getComputedStyle(document.querySelector('.login-main')), c = getComputedStyle(document.querySelector('.login-card')), b = document.querySelector('.login-visual.lc-board');
+    const blur = /blur\\(([\\d.]+)px\\)/.exec(c.backdropFilter || c.webkitBackdropFilter || ''); return { z: m.zIndex, blur: blur ? +blur[1] : null, bg: c.backgroundColor, border: c.borderTopWidth,
+      radius: c.borderTopLeftRadius, boardZ: getComputedStyle(b).zIndex, boardFirst: b.compareDocumentPosition(document.querySelector('.login-main')) === Node.DOCUMENT_POSITION_FOLLOWING, traces: document.querySelectorAll('.lc-board .lc-traces path').length }; })()`);
+  t('LOGIN motherboard sharp behind and around the card: panel tint below the board (no stacking context on .login-main), card blur ≤ 2px, glass card unchanged (translucent, 1px border, 18px radius)',
+    board.z === 'auto' && board.boardZ === '0' && board.boardFirst && board.blur !== null && board.blur <= 2 && /rgba\(10, 22, 46, 0\.42\)/.test(board.bg) && board.border === '1px' && board.radius === '18px' && board.traces >= 12, board);
   // the theme preference is applied before render; the redesigned login follows it
   await ev(`localStorage.setItem('cmms_vg_theme', 'light'); true`);
   await B.send('Page.reload', {}); await waitFor(`!!document.querySelector('.login-card')`, 20000); await sleep(800);

@@ -962,20 +962,20 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
 .theme-toggle:hover,.theme-toggle:focus-visible{color:var(--accent);border-color:var(--accent);outline:none;}
 /* ── Login Page */
 .login-page{position:relative;isolation:isolate;overflow:hidden;min-height:100vh;display:grid;grid-template-columns:minmax(0,54fr) minmax(510px,46fr);background:var(--li-bg);
-  --li-bg:linear-gradient(160deg,#0b1a33 0%,#0f2550 55%,#0b1a33 100%);--li-line:rgba(148,180,230,.16);--li-line-strong:rgba(148,180,230,.28);--li-gear:rgba(245,158,11,.22);--li-text:#f8fafc;--li-muted:#a9b8cf;
+  --li-bg:linear-gradient(160deg,#0b1a33 0%,#0f2550 55%,#0b1a33 100%);--li-line:rgba(148,180,230,.20);--li-line-strong:rgba(148,180,230,.28);--li-gear:rgba(245,158,11,.22);--li-text:#f8fafc;--li-muted:#a9b8cf;
   --card-bg:rgba(10,22,46,.42);--card-bg-solid:rgba(13,28,58,.94);--card-bd:rgba(255,255,255,.16);--card-hl:rgba(255,255,255,.38);--card-sheen:rgba(255,255,255,.07);
   --card-shadow:0 30px 70px rgba(2,8,20,.5),0 10px 24px rgba(2,8,20,.28),0 1px 2px rgba(2,8,20,.3),inset 0 1px 0 rgba(255,255,255,.1),inset 0 0 0 1px rgba(255,255,255,.02);
   --li-tint:rgba(8,18,38,.38);--li-packet:rgba(245,158,11,.75);
   --rs-bg:radial-gradient(ellipse at 75% 20%,rgba(80,130,230,.14) 0%,transparent 60%),linear-gradient(160deg,rgba(28,50,94,.78) 0%,rgba(22,42,82,.78) 100%);
   --rs-edge:rgba(148,180,230,.18);--rs-shade:-18px 0 40px -24px rgba(0,0,0,.6);}
-:root[data-theme="light"] .login-page{--li-bg:linear-gradient(160deg,#e9eff8 0%,#dfe8f5 55%,#eaf0f8 100%);--li-line:rgba(15,32,68,.08);--li-line-strong:rgba(15,32,68,.14);--li-gear:rgba(180,83,9,.2);--li-text:#0f2044;--li-muted:#46566e;
+:root[data-theme="light"] .login-page{--li-bg:linear-gradient(160deg,#e9eff8 0%,#dfe8f5 55%,#eaf0f8 100%);--li-line:rgba(15,32,68,.10);--li-line-strong:rgba(15,32,68,.14);--li-gear:rgba(180,83,9,.2);--li-text:#0f2044;--li-muted:#46566e;
   --card-bg:rgba(255,255,255,.5);--card-bg-solid:rgba(255,255,255,.95);--card-bd:rgba(255,255,255,.75);--card-hl:rgba(255,255,255,.95);--card-sheen:rgba(255,255,255,.45);
   --card-shadow:0 28px 64px rgba(15,32,68,.16),0 8px 20px rgba(15,32,68,.08),0 0 0 1px rgba(15,32,68,.06),inset 0 1px 0 rgba(255,255,255,.9);
   --li-tint:rgba(255,255,255,.34);--li-packet:rgba(217,119,6,.7);
   --rs-bg:radial-gradient(ellipse at 75% 20%,rgba(26,86,219,.07) 0%,transparent 60%),linear-gradient(160deg,rgba(246,248,251,.7) 0%,rgba(238,242,247,.7) 100%);
   --rs-edge:rgba(15,32,68,.10);--rs-shade:-18px 0 40px -26px rgba(15,32,68,.25);}
-.login-page{--lc-trace:rgba(245,158,11,.20);--lc-trace-strong:rgba(245,158,11,.34);--lc-socket:rgba(245,158,11,.38);--lc-pad:rgba(245,158,11,.62);--lc-via:#0b1a33;}
-:root[data-theme="light"] .login-page{--lc-trace:rgba(180,83,9,.16);--lc-trace-strong:rgba(180,83,9,.28);--lc-socket:rgba(180,83,9,.32);--lc-pad:rgba(180,83,9,.55);--lc-via:#eef3fa;}
+.login-page{--lc-trace:rgba(245,158,11,.30);--lc-trace-strong:rgba(245,158,11,.46);--lc-socket:rgba(245,158,11,.5);--lc-pad:rgba(245,158,11,.78);--lc-via:#0b1a33;}
+:root[data-theme="light"] .login-page{--lc-trace:rgba(180,83,9,.26);--lc-trace-strong:rgba(180,83,9,.40);--lc-socket:rgba(180,83,9,.44);--lc-pad:rgba(180,83,9,.70);--lc-via:#eef3fa;}
 .lc-traces path{fill:none;stroke:var(--lc-trace);stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round;}
 .lc-socket{fill:none;stroke:var(--lc-socket);stroke-width:1.2;stroke-dasharray:6 6;}
 .lc-vias circle{fill:var(--lc-via);stroke:var(--lc-trace-strong);stroke-width:1.3;}
@@ -1029,11 +1029,14 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
 .login-features span{font-size:12.5px;line-height:1.5;color:var(--li-muted);}
 .lf-icon{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:9px;flex-shrink:0;color:var(--accent-fill);background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.28);}
 :root[data-theme="light"] .lf-icon{color:#b45309;}
-.login-main{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;padding:72px clamp(20px,4vw,56px) 40px;}
+/* No z-index here (2026-10-18): .login-main must not form a stacking context, so its ::before panel tint is painted
+   BELOW the circuit board (.lc-board, z 0) instead of over it (the cause of the dim right side). The card still paints
+   above the board (later in the page, positioned). */
+.login-main{position:relative;display:flex;align-items:center;justify-content:center;padding:72px clamp(20px,4vw,56px) 40px;}
 .login-main::before{content:'';position:absolute;top:0;bottom:0;right:0;left:-80px;z-index:-1;pointer-events:none;background:var(--rs-bg);
   -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 160px);mask-image:linear-gradient(90deg,transparent 0,#000 160px);}
 .login-card{position:relative;isolation:isolate;background-color:var(--card-bg);background-image:linear-gradient(128deg,var(--card-sheen) 0%,transparent 34%,transparent 70%,var(--card-sheen) 130%);border:1px solid var(--card-bd);border-radius:18px;padding:38px 36px 28px;width:392px;max-width:100%;
-  -webkit-backdrop-filter:blur(10px) saturate(160%);backdrop-filter:blur(10px) saturate(160%);box-shadow:var(--card-shadow);}
+  -webkit-backdrop-filter:blur(1px) saturate(160%);backdrop-filter:blur(1px) saturate(160%);box-shadow:var(--card-shadow);}   /* 1px (was 10px): the board stays sharp behind the glass */
 .login-card::before{content:'';position:absolute;top:0;left:18px;right:18px;height:1px;border-radius:1px;pointer-events:none;background:linear-gradient(90deg,transparent,var(--card-hl),transparent);}
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){ .login-card{background-color:var(--card-bg-solid);} }
 .login-features li{background:var(--li-tint);}
