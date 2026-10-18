@@ -1060,6 +1060,13 @@ async function main() {
       radius: c.borderTopLeftRadius, boardZ: getComputedStyle(b).zIndex, boardFirst: b.compareDocumentPosition(document.querySelector('.login-main')) === Node.DOCUMENT_POSITION_FOLLOWING, traces: document.querySelectorAll('.lc-board .lc-traces path').length }; })()`);
   t('LOGIN motherboard sharp behind and around the card: panel tint below the board (no stacking context on .login-main), card blur ≤ 2px, glass card unchanged (translucent, 1px border, 18px radius)',
     board.z === 'auto' && board.boardZ === '0' && board.boardFirst && board.blur !== null && board.blur <= 2 && /rgba\(10, 22, 46, 0\.42\)/.test(board.bg) && board.border === '1px' && board.radius === '18px' && board.traces >= 12, board);
+  // 2026-10-18 (2): both halves share the page navy (the right panel paints no colour sheet, only a faint glow), and the light
+  // signals are slow and continuous (each cycle ≥ 3 s at desktop size, infinite, never restarted by the page).
+  const calm = await ev(`(()=>{ const bg = getComputedStyle(document.querySelector('.login-main'), '::before').backgroundImage, alphas = (bg.match(/rgba\\([^)]*,\\s*([\\d.]+)\\)/g) || []).map(s => +s.match(/([\\d.]+)\\)$/)[1]);
+    const an = document.getAnimations(), d = an.map(a => a.effect.getTiming());
+    return { linear: /linear-gradient/.test(bg), maxAlpha: alphas.length ? Math.max(...alphas) : 0, n: an.length, minSec: Math.min(...d.map(x => x.duration)) / 1000, infinite: d.every(x => x.iterations === Infinity) }; })()`);
+  t('LOGIN both halves share one background (no tint sheet on the right, glow ≤ 0.1 alpha); light signals slow (every cycle ≥ 3 s) and continuous',
+    !calm.linear && calm.maxAlpha <= 0.1 && calm.n >= 20 && calm.minSec >= 3 && calm.infinite, calm);
   // the theme preference is applied before render; the redesigned login follows it
   await ev(`localStorage.setItem('cmms_vg_theme', 'light'); true`);
   await B.send('Page.reload', {}); await waitFor(`!!document.querySelector('.login-card')`, 20000); await sleep(800);

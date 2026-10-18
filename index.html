@@ -966,13 +966,14 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
   --card-bg:rgba(10,22,46,.42);--card-bg-solid:rgba(13,28,58,.94);--card-bd:rgba(255,255,255,.16);--card-hl:rgba(255,255,255,.38);--card-sheen:rgba(255,255,255,.07);
   --card-shadow:0 30px 70px rgba(2,8,20,.5),0 10px 24px rgba(2,8,20,.28),0 1px 2px rgba(2,8,20,.3),inset 0 1px 0 rgba(255,255,255,.1),inset 0 0 0 1px rgba(255,255,255,.02);
   --li-tint:rgba(8,18,38,.38);--li-packet:rgba(245,158,11,.75);
-  --rs-bg:radial-gradient(ellipse at 75% 20%,rgba(80,130,230,.14) 0%,transparent 60%),linear-gradient(160deg,rgba(28,50,94,.78) 0%,rgba(22,42,82,.78) 100%);
+  /* Right panel (2026-10-18): only a faint glow, no colour sheet, so both halves share the page navy and the board looks the same on both sides. */
+  --rs-bg:radial-gradient(ellipse at 75% 20%,rgba(80,130,230,.06) 0%,transparent 60%);
   --rs-edge:rgba(148,180,230,.18);--rs-shade:-18px 0 40px -24px rgba(0,0,0,.6);}
 :root[data-theme="light"] .login-page{--li-bg:linear-gradient(160deg,#e9eff8 0%,#dfe8f5 55%,#eaf0f8 100%);--li-line:rgba(15,32,68,.10);--li-line-strong:rgba(15,32,68,.14);--li-gear:rgba(180,83,9,.2);--li-text:#0f2044;--li-muted:#46566e;
   --card-bg:rgba(255,255,255,.5);--card-bg-solid:rgba(255,255,255,.95);--card-bd:rgba(255,255,255,.75);--card-hl:rgba(255,255,255,.95);--card-sheen:rgba(255,255,255,.45);
   --card-shadow:0 28px 64px rgba(15,32,68,.16),0 8px 20px rgba(15,32,68,.08),0 0 0 1px rgba(15,32,68,.06),inset 0 1px 0 rgba(255,255,255,.9);
   --li-tint:rgba(255,255,255,.34);--li-packet:rgba(217,119,6,.7);
-  --rs-bg:radial-gradient(ellipse at 75% 20%,rgba(26,86,219,.07) 0%,transparent 60%),linear-gradient(160deg,rgba(246,248,251,.7) 0%,rgba(238,242,247,.7) 100%);
+  --rs-bg:radial-gradient(ellipse at 75% 20%,rgba(26,86,219,.04) 0%,transparent 60%);
   --rs-edge:rgba(15,32,68,.10);--rs-shade:-18px 0 40px -26px rgba(15,32,68,.25);}
 .login-page{--lc-trace:rgba(245,158,11,.30);--lc-trace-strong:rgba(245,158,11,.46);--lc-socket:rgba(245,158,11,.5);--lc-pad:rgba(245,158,11,.78);--lc-via:#0b1a33;}
 :root[data-theme="light"] .login-page{--lc-trace:rgba(180,83,9,.26);--lc-trace-strong:rgba(180,83,9,.40);--lc-socket:rgba(180,83,9,.44);--lc-pad:rgba(180,83,9,.70);--lc-via:#eef3fa;}
@@ -2324,8 +2325,10 @@ function circuitTraces(w, h, card, seed = 7, opts = {}) {
 // hidden behind the card for the socket width (same speed, nothing is drawn over the card), then runs OUT along the
 // right trace to the page edge. Pairs share duration and delay, so in and out are one connected flow. Traces without a
 // partner (top, bottom, or left when there is no room on the right) run in only. lengths[i] = length of traces[i].
+const SIGNAL_SPEED = 150, SIGNAL_PAUSE = 2.4;   // px/s and s between runs (login board light signals)
 function signalSchedule(traces, lengths, socketWidth, opts = {}) {
-  const v = opts.speed || 260, pause = opts.pause == null ? 1.4 : opts.pause, out = traces.map(() => null);
+  // 2026-10-18: slower and calmer (was 260 px/s with a 1.4 s pause: every cycle is now ~1.75x longer).
+  const v = opts.speed || SIGNAL_SPEED, pause = opts.pause == null ? SIGNAL_PAUSE : opts.pause, out = traces.map(() => null);
   const rightByRow = new Map();
   traces.forEach((t, i) => { if (t.side === 'right') rightByRow.set(t.pad[1], i); });
   traces.forEach((t, i) => {
