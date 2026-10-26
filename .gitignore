@@ -1,3 +1,7 @@
 # Local staging configuration: holds the STAGING project URL and anon key. Never commit.
 # See docs/FEATURE_PLAN.md §13.5 and staging/staging-config.example.js.
 staging-config.js
+# Secrets and account outputs: never commit filled-in environment files or temporary-password lists.
+*.env
+.env*
+!*.example.env

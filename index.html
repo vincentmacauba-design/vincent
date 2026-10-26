@@ -68,15 +68,16 @@ window.onunhandledrejection = function(e) { console.error('Unhandled rejection:'
     if (why) return { name: 'blocked', reason: why };
     return { name: 'staging', url: 'https://' + ref + '.supabase.co', anonKey: staging.anonKey };
   }
-  // Staging only: the backend must carry the __environment marker before the app starts.
+  // Staging only: the backend must carry the __environment marker before the app starts. Read through the one function
+  // the server allows before sign-in (environment_marker: returns only the marker value; app_data itself is closed).
   function envGate(env, client) {
     if (!env || env.name === 'blocked' || !client) return Promise.resolve({ ok: false, reason: (env && env.reason) || 'environment not resolved' });
     if (env.name === 'production') return Promise.resolve({ ok: true });
     return Promise.resolve().then(function () {
-      return client.from('app_data').select('value').eq('key', '__environment').maybeSingle();
+      return client.rpc('environment_marker');
     }).then(function (r) {
       if (!r || r.error) return { ok: false, reason: 'staging environment marker could not be read' };
-      var v = r.data && r.data.value;
+      var v = r.data;
       if (!v || v.env !== 'staging') return { ok: false, reason: 'staging environment marker missing or not "staging"' };
       return { ok: true };
     }, function () { return { ok: false, reason: 'staging environment marker check failed' }; });
@@ -106,112 +107,6 @@ CREATE TABLE app_data (
 );
 */
 
-// ─── BASE ASSET DATA ────────────────────────────────────────────────────────
-const BASE_ASSETS = [
-  {num:"1001",plant:"01 FUEL FARM",desc:"FUEL TANKS",code:"",model:"",cap:"-",reg:"",eng:"",serial:"HE0014-TK1",loc:"FUEL FARM",status:"OPERATIONAL"},
-  {num:"1002",plant:"01 FUEL FARM",desc:"FUEL PUMP HOUSE",code:"",model:"",cap:"",reg:"",eng:"",serial:"",loc:"FUEL PUMP ROOM",status:"OPERATIONAL"},
-  {num:"1003",plant:"01 FUEL FARM",desc:"METERING ROOM",code:"",model:"",cap:"",reg:"",eng:"",serial:"",loc:"FUEL CNTRL ROOM",status:"OPERATIONAL"},
-  {num:"2001",plant:"02 CEMENT PLANT",desc:"CEMENT STORAGE SILO",code:"",model:"",cap:"200 TONS",reg:"",eng:"",serial:"",loc:"CEMENT PLANT AREA",status:"OPERATIONAL"},
-  {num:"2002",plant:"02 CEMENT PLANT",desc:"CEMENT CONVEYORS",code:"",model:"",cap:"200 KG",reg:"",eng:"",serial:"",loc:"CEMENT PLANT 01",status:"OPERATIONAL"},
-  {num:"2003",plant:"02 CEMENT PLANT",desc:"CEMENT FILTER TOWERS",code:"",model:"",cap:"200 KG",reg:"",eng:"",serial:"",loc:"CEMENT PLANT 02",status:"OPERATIONAL"},
-  {num:"2004",plant:"02 CEMENT PLANT",desc:"CEMENT PACKING PLANTS",code:"",model:"",cap:"200 KG",reg:"",eng:"",serial:"",loc:"CEMENT PLANT 03",status:"OPERATIONAL"},
-  {num:"2005",plant:"02 CEMENT PLANT",desc:"SCREW CONVEYORS",code:"",model:"",cap:"200 KG",reg:"",eng:"",serial:"",loc:"CEMENT PLANT 01",status:"OPERATIONAL"},
-  {num:"3001",plant:"03 LPG PLANT",desc:"LPG SPHERE TANKS",code:"ST - 01",model:"",cap:"800T",reg:"",eng:"",serial:"",loc:"LPG TANK AREA",status:"OPERATIONAL"},
-  {num:"3002",plant:"03 LPG PLANT",desc:"LPG FILLING MACHINES",code:"",model:"",cap:"8 CYLINDER 10KG",reg:"",eng:"",serial:"",loc:"LPG PLANT BUILDING",status:"OPERATIONAL"},
-  {num:"3003",plant:"03 LPG PLANT",desc:"LPG PUMP HOUSE",code:"",model:"",cap:"1 SMALL CYLINDER",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"4001",plant:"04 POWER HOUSE",desc:"GENERATOR SET-1",code:"GS 01",model:"",cap:"",reg:"",eng:"",serial:"",loc:"POWERHOUSE",status:"OPERATIONAL"},
-  {num:"4002",plant:"04 POWER HOUSE",desc:"GENERATOR SET-2",code:"GS 02",model:"HIERSUN / CCFJ350J",cap:"437 KVA",reg:"",eng:"160111638",serial:"H160403-M",loc:"POWERHOUSE",status:"OPERATIONAL"},
-  {num:"4003",plant:"04 POWER HOUSE",desc:"GENERATOR SET-3",code:"GS 03",model:"HIERSUN / CCFJ350J",cap:"437 KVA",reg:"",eng:"160111638",serial:"H160402-M",loc:"POWERHOUSE",status:"OPERATIONAL"},
-  {num:"4004",plant:"04 POWER HOUSE",desc:"SEA WATER DESALATION UNIT",code:"SWD 01",model:"ACE / S0-K11OTR",cap:"100 CU M",reg:"",eng:"",serial:"0310-802-B",loc:"POWERHOUSE",status:"OPERATIONAL"},
-  {num:"4005",plant:"04 POWER HOUSE",desc:"AIR COMPRESSOR-1",code:"AC 02",model:"ATLAS COPCO / GA30+FF A 10",cap:"9.8 BAR",reg:"",eng:"",serial:"1506842",loc:"POWERHOUSE",status:"OPERATIONAL"},
-  {num:"4006",plant:"04 POWER HOUSE",desc:"AIR COMPRESSOR-2",code:"AC 03",model:"ATLAS COPCO / GA30",cap:"10 BAR",reg:"",eng:"",serial:"AII 367717",loc:"POWERHOUSE",status:"OPERATIONAL"},
-  {num:"5001",plant:"05 ROOFING PLANT",desc:"COIL MACHINE",code:"CCM 01",model:"BMS",cap:"1MM - 20MM GAUGE",reg:"",eng:"",serial:"200568",loc:"ROOFING PLANT",status:"OPERATIONAL"},
-  {num:"5002",plant:"05 ROOFING PLANT",desc:"COIL MACHINE",code:"CCM 02",model:"BMS",cap:"1MM - 20MM GAUGE",reg:"",eng:"",serial:"200569",loc:"ROOFING PLANT",status:"OPERATIONAL"},
-  {num:"5003",plant:"05 ROOFING PLANT",desc:"CUTTER MACHINE",code:"CTM 01",model:"BMS",cap:"1MM - 20MM GAUGE",reg:"",eng:"",serial:"200572",loc:"ROOFING PLANT",status:"OPERATIONAL"},
-  {num:"5004",plant:"05 ROOFING PLANT",desc:"CUTTER MACHINE MANUAL",code:"CTM 02",model:"BMS",cap:"1MM - 20MM GAUGE",reg:"",eng:"",serial:"",loc:"ROOFING PLANT",status:"OPERATIONAL"},
-  {num:"5005",plant:"05 ROOFING PLANT",desc:"CUTTER AND BENDING MACHINE",code:"CBM 03",model:"BMS",cap:"1MM - 20MM GAUGE",reg:"",eng:"",serial:"200571",loc:"ROOFING PLANT",status:"OPERATIONAL"},
-  {num:"5006",plant:"05 ROOFING PLANT",desc:"ROOFING MACHINE",code:"RM 01",model:"BMS",cap:"1MM - 20MM GAUGE",reg:"",eng:"",serial:"200569",loc:"ROOFING PLANT",status:"OPERATIONAL"},
-  {num:"5007",plant:"05 ROOFING PLANT",desc:"ROOFING MACHINE",code:"RM 02",model:"BMS",cap:"1MM - 20MM GAUGE",reg:"",eng:"",serial:"",loc:"ROOFING PLANT",status:"OPERATIONAL"},
-  {num:"5008",plant:"05 ROOFING PLANT",desc:"C & Z Purlin MACHINE",code:"ZM 31",model:"BMS",cap:"1MM - 20MM GAUGE",reg:"",eng:"",serial:"200570",loc:"ROOFING PLANT",status:"OPERATIONAL"},
-  {num:"5009",plant:"05 ROOFING PLANT",desc:"AIR COMPRESSOR",code:"AC 01",model:"ATLAS COPCO / GA30+FF A 10",cap:"9.8 BAR",reg:"",eng:"",serial:"WUM346952",loc:"ROOFING PLANT",status:"OPERATIONAL"},
-  {num:"6001",plant:"06 OXYGEN PLANT",desc:"PUMP BOOSTER",code:"",model:"ING.LA.BOSCHI",cap:"51KG / CM2",reg:"",eng:"",serial:"364 2PHF211",loc:"OXYGEN PLANT",status:"OPERATIONAL"},
-  {num:"6002",plant:"06 OXYGEN PLANT",desc:"VERTICAL DRY PUMP EXPANDER",code:"",model:"CRYO EXPANDER",cap:"05 / CM2",reg:"",eng:"",serial:"",loc:"OXYGEN PLANT",status:"OPERATIONAL"},
-  {num:"6003",plant:"06 OXYGEN PLANT",desc:"AIR SEPARATION COLUMN",code:"",model:"UBP 130",cap:"",reg:"",eng:"",serial:"UBP 130/RC/21",loc:"OXYGEN PLANT",status:"OPERATIONAL"},
-  {num:"6004",plant:"06 OXYGEN PLANT",desc:"PURIFICATION UNIT",code:"",model:"UBP 130",cap:"780M3/HR",reg:"",eng:"",serial:"UBP 130/PS/21",loc:"OXYGEN PLANT",status:"OPERATIONAL"},
-  {num:"6005",plant:"06 OXYGEN PLANT",desc:"LIQUID OXYGEN PUMP",code:"",model:"RECIPROCATING",cap:"5 BAR / 165 BAR",reg:"",eng:"",serial:"",loc:"OXYGEN PLANT",status:"OPERATIONAL"},
-  {num:"6006",plant:"06 OXYGEN PLANT",desc:"CYLINDER PRESSURE TEST MACHINE",code:"",model:"ZL-1/22.5-III",cap:"7L/MIN.",reg:"",eng:"",serial:"075",loc:"OXYGEN PLANT",status:"OPERATIONAL"},
-  {num:"6007",plant:"06 OXYGEN PLANT",desc:"REFILLING STATION",code:"",model:"",cap:"12 TANKS",reg:"",eng:"",serial:"",loc:"OXYGEN PLANT",status:"OPERATIONAL"},
-  {num:"6008",plant:"06 OXYGEN PLANT",desc:"AIR COMPRESSOR",code:"AC 04",model:"ATLAS COPCO / GA75",cap:"7.5 BAR",reg:"",eng:"",serial:"",loc:"OXYGEN PLANT",status:"OPERATIONAL"},
-  {num:"7001",plant:"07 MOBILE MACHINERY",desc:"MOBILE CRANE-80T",code:"MC-06",model:"SYM5460JQZ (STC800T5)",cap:"80 TONS",reg:"",eng:"ISLE375 30",serial:"SYM5460J",loc:"Q-MARINE",status:"OPERATIONAL"},
-  {num:"7002",plant:"07 MOBILE MACHINERY",desc:"MOBILE CRANE-25T",code:"MC-08",model:"STC250T5",cap:"25 TONS",reg:"",eng:"93362323",serial:"SYM5333J",loc:"CEMENT PLANT",status:"OPERATIONAL"},
-  {num:"7003",plant:"07 MOBILE MACHINERY",desc:"MOBILE CRANE-25T",code:"MC-09",model:"STC250T5",cap:"25 TONS",reg:"",eng:"",serial:"",loc:"",status:"NEW"},
-  {num:"7004",plant:"07 MOBILE MACHINERY",desc:"MOBILE CRANE-25T",code:"MC-10",model:"STC250T5",cap:"25 TONS",reg:"",eng:"93554030",serial:"LFCNLDP5P3S2004496",loc:"",status:""},
-  {num:"7005",plant:"07 MOBILE MACHINERY",desc:"MOBILE CRANE-25T",code:"MC-11",model:"STC250T5",cap:"25 TONS",reg:"",eng:"93554033",serial:"LFCNLDP5P3S2004496",loc:"",status:""},
-  {num:"7006",plant:"07 MOBILE MACHINERY",desc:"FORKLIFT -5T",code:"FL 01",model:"HEC HA / FD50",cap:"5 TONS",reg:"V-3006",eng:"6BG1-385670",serial:"1905001147/1911090",loc:"GENERAL STORE",status:"OPERATIONAL"},
-  {num:"7007",plant:"07 MOBILE MACHINERY",desc:"FORKLIFT- 3T TOYOTA",code:"FL 02",model:"TOYOTA / 62-7FD30",cap:"3 TONS",reg:"V-1581",eng:"1DZ-0077601",serial:"607fd30-10856",loc:"GENERAL STORE",status:"OPERATIONAL"},
-  {num:"7008",plant:"07 MOBILE MACHINERY",desc:"FORKLIFT-5T",code:"FL 03",model:"KOMATSU / 6D102E-1",cap:"5 TONS",reg:"C-1207",eng:"H20-K03166Y",serial:"M151-528881",loc:"CEMENT PLANT",status:"OPERATIONAL"},
-  {num:"7009",plant:"07 MOBILE MACHINERY",desc:"FORKLIFT-HECHA / 62-7FD30-3T",code:"FL 04",model:"HEC HA / 62-7FD30",cap:"3 TONS",reg:"C7A-2832",eng:"C240-258991",serial:"1703002275",loc:"CEMENT PLANT",status:"OPERATIONAL"},
-  {num:"7010",plant:"07 MOBILE MACHINERY",desc:"FORKLIFT PETROL",code:"FL 05",model:"KOMATSU",cap:"3 TONS",reg:"V-1513",eng:"H20-K19766Y",serial:"M151-544254",loc:"ESD",status:"BREAKDOWN"},
-  {num:"7011",plant:"07 MOBILE MACHINERY",desc:"FORKLIFT ELECTRIC DRIVE",code:"FL 06",model:"HITOP - CPD16",cap:"1.6 TONS",reg:"",eng:"",serial:"202109023",loc:"ROOFING PLANT",status:"OPERATIONAL"},
-  {num:"7012",plant:"07 MOBILE MACHINERY",desc:"FORKLIFT- 5T (**597)",code:"FL 07",model:"HEC HA / FD50",cap:"5 TONS",reg:"",eng:"",serial:"",loc:"CEMENT PLANT",status:"OPERATIONAL"},
-  {num:"7013",plant:"07 MOBILE MACHINERY",desc:"FORKLIFT- 5T (**598)",code:"FL 08",model:"HEC HA / FD50",cap:"5 TONS",reg:"",eng:"",serial:"",loc:"CEMENT PLANT",status:"OPERATIONAL"},
-  {num:"7014",plant:"07 MOBILE MACHINERY",desc:"AIR COMPRESSOR",code:"AC 05",model:"PUMA / PP 310p",cap:"10 HP",reg:"",eng:"",serial:"",loc:"WORKSHOP",status:"OPERATIONAL"},
-  {num:"7015",plant:"07 MOBILE MACHINERY",desc:"OVERHEAD CRANE",code:"OH 01",model:"ELECTROMECH",cap:"5 TONS",reg:"SR 779",eng:"",serial:"",loc:"ROOFING PLANT",status:"OPERATIONAL"},
-  {num:"7016",plant:"07 MOBILE MACHINERY",desc:"OVERHEAD CRANE",code:"OH 02",model:"ELECTROMECH",cap:"5 TONS",reg:"SR 780",eng:"",serial:"",loc:"ROOFING PLANT",status:"OPERATIONAL"},
-  {num:"7017",plant:"07 MOBILE MACHINERY",desc:"Schwing Stetter Stationary Pump-01",code:"SP 01",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:""},
-  {num:"7018",plant:"07 MOBILE MACHINERY",desc:"Schwing Stetter Stationary Pump-02",code:"SP 02",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:""},
-  {num:"7019",plant:"07 MOBILE MACHINERY",desc:"SANY Concrete Pump-1",code:"CP 01",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"7020",plant:"07 MOBILE MACHINERY",desc:"Schwing Stetter Concrete Pump",code:"CP 02",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"7021",plant:"07 MOBILE MACHINERY",desc:"Ashok Leyland Mixer Truck-1",code:"MT 01",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"7022",plant:"07 MOBILE MACHINERY",desc:"Ashok Leyland Mixer Truck-2",code:"MT 02",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"7023",plant:"07 MOBILE MACHINERY",desc:"Ashok Leyland Mixer Truck-3",code:"MT 03",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"7024",plant:"07 MOBILE MACHINERY",desc:"Ashok Leyland Mixer Truck-4",code:"MT 04",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"7025",plant:"07 MOBILE MACHINERY",desc:"Ashok Leyland Mixer Truck-5",code:"MT 05",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"7026",plant:"07 MOBILE MACHINERY",desc:"Ashok Leyland Mixer Truck-6",code:"MT 06",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"7027",plant:"07 MOBILE MACHINERY",desc:"Ashok Leyland Mixer Truck-7",code:"MT 07",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"7028",plant:"07 MOBILE MACHINERY",desc:"Ashok Leyland Mixer Truck-8",code:"MT 08",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"7029",plant:"07 MOBILE MACHINERY",desc:"Ashok Leyland Mixer Truck-9",code:"MT 09",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"7030",plant:"07 MOBILE MACHINERY",desc:"Ashok Leyland Mixer Truck-10",code:"MT 10",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"7031",plant:"07 MOBILE MACHINERY",desc:"Ashok Leyland Mixer Truck-11",code:"MT 11",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"7032",plant:"07 MOBILE MACHINERY",desc:"Wheel Loader-SANY",code:"WL 01",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"7033",plant:"07 MOBILE MACHINERY",desc:"Boom Lift machine",code:"BL 01",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"7034",plant:"07 MOBILE MACHINERY",desc:"Excavator TATA HITACHI ZX220",code:"EX 01",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"7035",plant:"07 MOBILE MACHINERY",desc:"Excavator TATA HITACHI ZX370",code:"EX 02",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"7036",plant:"07 MOBILE MACHINERY",desc:"Putzmeister Stationary Pump-3",code:"SP 03",model:"Hired",cap:"",reg:"",eng:"",serial:"",loc:"",status:""},
-  {num:"7037",plant:"07 MOBILE MACHINERY",desc:"MOBILE CRANE-KATO 25T",code:"MC-09",model:"KATO/SR-250Ri",cap:"25 TONS",reg:"",eng:"-",serial:"6711112",loc:"THILAFUSHI",status:"OPERATIONAL"},
-  {num:"7038",plant:"07 MOBILE MACHINERY",desc:"FORKLIFT 3T KOMATSU",code:"FL 09",model:"KOMATSU",cap:"03 TON",reg:"",eng:"-",serial:"-",loc:"CEMENT PLANT",status:"OPERATIONAL"},
-  {num:"7039",plant:"07 MOBILE MACHINERY",desc:"NISSAN Mixer Truck-1",code:"MT 12",model:"NISSAN",cap:"6 Cum",reg:"",eng:"-",serial:"CW520HN-08909",loc:"SUN ISLAND",status:"Inactive"},
-  {num:"7040",plant:"07 MOBILE MACHINERY",desc:"NISSAN Mixer Truck-2",code:"MT 13",model:"NISSAN",cap:"6 Cum",reg:"",eng:"-",serial:"",loc:"SUN ISLAND",status:"Inactive"},
-  {num:"7041",plant:"07 MOBILE MACHINERY",desc:"SENNEBOGEN Material handler",code:"MH-1",model:"Sennebogen",cap:"15T",reg:"",eng:"22590596",serial:"835.0.4099",loc:"THILAFUSHI",status:"OPERATIONAL"},
-  {num:"7042",plant:"07 MOBILE MACHINERY",desc:"SANY Concrete Pump-2",code:"CP-02",model:"SANY",cap:"160m3/H",reg:"",eng:"DL121113473",serial:"BC5310CF2233",loc:"THILAFUSHI",status:"OPERATIONAL"},
-  {num:"7043",plant:"07 MOBILE MACHINERY",desc:"Wheel Loader-Liu Gong",code:"WL 02",model:"Liu Gong",cap:"160m3/H",reg:"",eng:"",serial:"",loc:"THILAFUSHI",status:"OPERATIONAL"},
-  {num:"8001",plant:"08 VEHICLES",desc:"BOOMTRUCK LORRY-C1336",code:"BT 01",model:"HINO",cap:"9.2 TONS",reg:"C-1336",eng:"RG8-125503",serial:"CY53YP-00003",loc:"Batching Plant",status:"OPERATIONAL"},
-  {num:"8002",plant:"08 VEHICLES",desc:"BOOMTRUCK XDR-2095",code:"BT 02",model:"XDR / YZR5082JSQL",cap:"8.950 TONS",reg:"C C0A C2095",eng:"YC4FA120-33",serial:"LGDGH91G6KH135686",loc:"CEMENT PLANT",status:"OPERATIONAL"},
-  {num:"8003",plant:"08 VEHICLES",desc:"BOOMTRUCK XDR-C2094",code:"BT 03",model:"XDR / YC4FA120-33",cap:"8.950 TONS",reg:"C2094",eng:"GB17691-2005",serial:"LGDCH91G7KH135678",loc:"Batching Plant",status:"OPERATIONAL"},
-  {num:"8004",plant:"08 VEHICLES",desc:"TRUCK LORRY",code:"BT 04",model:"H6E4ED132E/23",cap:"",reg:"",eng:"PDEZ423999",serial:"F7533513CR / PDRF254243",loc:"CEMENT PLANT",status:"OPERATIONAL"},
-  {num:"8005",plant:"08 VEHICLES",desc:"TRUCK LORRY 2484",code:"BT 05",model:"H6E4ED132E/23",cap:"",reg:"",eng:"PDEZ423992",serial:"F7533413CL / PDRF255639",loc:"CEMENT PLANT",status:"OPERATIONAL"},
-  {num:"8006",plant:"08 VEHICLES",desc:"TRUCK LORRY-2479",code:"BT 06",model:"H6E4ED132",cap:"",reg:"",eng:"SREZ400756",serial:"MB1DTHHD6SERR8104",loc:"CEMENT PLANT",status:"OPERATIONAL"},
-  {num:"8007",plant:"08 VEHICLES",desc:"SERVICE VEHICLE PICK UP",code:"SV 01",model:"MITUSUBISHI",cap:"",reg:"COA1161",eng:"4D34-J67140",serial:"FE659F-A44479",loc:"CEMENT PLANT",status:"OPERATIONAL"},
-  {num:"8008",plant:"08 VEHICLES",desc:"SERVICE VEHICLE PICK UP-Stores",code:"SV 02",model:"MITUSUBISHI",cap:"",reg:"C2A1591",eng:"4D34-K04355",serial:"FE73PEA00015",loc:"GENERAL STORE",status:"OPERATIONAL"},
-  {num:"8009",plant:"08 VEHICLES",desc:"SERVICE VEHICLE PICK UP",code:"SV 03",model:"MITUSUBISHI / FB511B8",cap:"",reg:"C1276",eng:"4D40-DA7712",serial:"FB511BA44559",loc:"F&B",status:"OPERATIONAL"},
-  {num:"8010",plant:"08 VEHICLES",desc:"SERVICE VEHICLE PICK UP",code:"SV 04",model:"KIA / HDH268852",cap:"1.5 TONS",reg:"CC1AC4969",eng:"KNCSH76L2",serial:"KNCSHX76LL7442309",loc:"VILLA MART",status:"OPERATIONAL"},
-  {num:"8011",plant:"08 VEHICLES",desc:"SERVICE VEHICLE PICK UP-LPG",code:"SV 05",model:"HINO / XZU600R-HKTQLT3",cap:"",reg:"COA 2006",eng:"N04C-VBH16767",serial:"MNKACL1H00200290",loc:"LPG PLANT",status:"OPERATIONAL"},
-  {num:"8012",plant:"08 VEHICLES",desc:"SERVICE VEHICLE VAN",code:"SV 07",model:"NISSAN / DBG4RPAE25EDZ-A",cap:"1.25 tons",reg:"AB 1A C-7069",eng:"",serial:"CWGE25-13574",loc:"ADMIN OFFICE",status:"OPERATIONAL"},
-  {num:"8013",plant:"08 VEHICLES",desc:"Dump Truck-1 (***RNT7846)",code:"DT 01",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"8014",plant:"08 VEHICLES",desc:"Dump Truck-2 (416330)",code:"DT 02",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"8015",plant:"08 VEHICLES",desc:"Dump Truck-3 (400763)",code:"DT 03",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"8016",plant:"08 VEHICLES",desc:"Dump Truck-4",code:"DT 04",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"8017",plant:"08 VEHICLES",desc:"Mini Dumper-1",code:"MD 01",model:"",cap:"",reg:"",eng:"",serial:"",loc:"Thilafushi",status:"OPERATIONAL"},
-  {num:"8018",plant:"08 VEHICLES",desc:"Mini Dumper-2",code:"MD 01",model:"",cap:"",reg:"",eng:"",serial:"",loc:"Fun Island",status:"OPERATIONAL"},
-  {num:"9001",plant:"09 Fire Pump System",desc:"Fire Pump-1",code:"WP 01",model:"8210SR126 03",cap:"",reg:"",eng:"8210 SRI 2701A 559",serial:"",loc:"Wtr Pump Room",status:"OPERATIONAL"},
-  {num:"9002",plant:"09 Fire Pump System",desc:"Fire Pump-2",code:"WP 02",model:"8210SR127 01",cap:"",reg:"",eng:"",serial:"5005",loc:"Wtr Pump Room",status:"OPERATIONAL"},
-  {num:"9003",plant:"09 Fire Pump System",desc:"FIRELINE SYSTEM IN LPG PLANT",code:"",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"idle"},
-  {num:"9004",plant:"09 Fire Pump System",desc:"FIRELINE SYSTEM IN FUEL FARM",code:"",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"idle"},
-  {num:"10001",plant:"10 Batching Plant",desc:"Batching Plant-Thilafushi",code:"",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"10002",plant:"10 Batching Plant",desc:"Batching Plant-MAXX ROYAL",code:"",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-  {num:"10003",plant:"10 Batching Plant",desc:"Batching Plant Genset-1",code:"",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"BREAKDOWN"},
-  {num:"10004",plant:"10 Batching Plant",desc:"Batching Plant Genset-2",code:"",model:"",cap:"",reg:"",eng:"",serial:"",loc:"",status:"OPERATIONAL"},
-];
 
 // N1: the app keeps NO browser copy of any dataset. These legacy keys (copies of assets/JOs, PM, employees, categories)
 // are only deleted on load and never read.
@@ -252,42 +147,87 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // Owner-confirmed 2026-10-09: the only production hostname staff use (FEATURE_PLAN §13.10). Exact match only; never add guesses.
 const PROD_HOSTS = Object.freeze(['vincent-mauve.vercel.app']); // sole production hostname
 const ENV = window.CMMS_resolveEnv(window.location, {url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY}, window.CMMS_STAGING_CONFIG, PROD_HOSTS);
-const sb = ENV.name === 'blocked' ? null : window.supabase.createClient(ENV.url, ENV.anonKey);
+// Session (2026-10-17, refresh keeps the sign-in): the Supabase Auth session is kept in THIS TAB's sessionStorage, so a
+// refresh or a direct page load in the same tab is restored, while closing the tab ends it and other tabs are not signed
+// in by it. It holds Supabase tokens only (short-lived access token + rotating refresh token), never a password or a hash.
+// Logout, password change/reset, deactivation and server-side revocation end it (see App). Storage access never throws:
+// with storage blocked the app works as before (sign-in per page load). Recovery links are handled by the app itself
+// (detectSessionInUrl: false), so their tokens are read once and removed from the URL.
+const AUTH_STORAGE_KEY = 'cmms_vg_auth';
+const TAB_STORAGE = Object.freeze({
+  getItem: k => { try { return window.sessionStorage.getItem(k); } catch (_) { return null; } },
+  setItem: (k, v) => { try { window.sessionStorage.setItem(k, v); } catch (_) {} },
+  removeItem: k => { try { window.sessionStorage.removeItem(k); } catch (_) {} },
+});
+const sb = ENV.name === 'blocked' ? null : window.supabase.createClient(ENV.url, ENV.anonKey,
+  {auth: {persistSession: true, storage: TAB_STORAGE, storageKey: AUTH_STORAGE_KEY, autoRefreshToken: true, detectSessionInUrl: false}});
+// Supabase Auth sign-in address domain (decision D4: company-controlled, receives NO mail). The address is derived from the
+// Employee ID; it is configuration, not a secret. Decided 2026-10-25 (P6): signin.vhpl.mv, the same value as the Edge
+// Function secret CMMS_SIGN_IN_DOMAIN and the provisioning tool; no DNS records exist or are needed for it. null would make
+// production sign-in fail closed with a clear message. Staging / the local mock take it from staging-config.js (signInDomain).
+const PRODUCTION_SIGN_IN_DOMAIN = 'signin.vhpl.mv';
+const SIGN_IN_DOMAIN = ENV.name === 'production' ? PRODUCTION_SIGN_IN_DOMAIN
+  : ENV.name === 'staging' && window.CMMS_STAGING_CONFIG && typeof window.CMMS_STAGING_CONFIG.signInDomain === 'string' ? window.CMMS_STAGING_CONFIG.signInDomain : null;
+// Email features (confirmation mails, "Forgot password?" by email, resend). OFF by default: owner decision 2026-10-21 —
+// Employee ID + temporary password, Admin-managed accounts, forgotten passwords reset by an Admin. Turn on only together
+// with the server's mail settings (CMMS_MAIL_*): production PRODUCTION_EMAIL_FEATURES, staging/mock emailFeatures: true.
+const PRODUCTION_EMAIL_FEATURES = false;
+const EMAIL_FEATURES = ENV.name === 'production' ? PRODUCTION_EMAIL_FEATURES
+  : ENV.name === 'staging' && !!window.CMMS_STAGING_CONFIG && window.CMMS_STAGING_CONFIG.emailFeatures === true;
 let envReady = false; // true only after the environment gate passes (production: immediately)
-// N1 (data safety): the datasets in app_data. A dataset may be written only after it was read completely in this
-// page load (or seeded in the explicitly opted-in local mock). A failed, empty or partial read never enables a write to
-// data that could not be read, so a read problem can never overwrite stored data.
-const DATA_KEYS = Object.freeze(['assets','jobOrders','pm','employees','users','customPlants']);
+// ─── BACKEND ACCESS (P2: Supabase Auth + server-enforced permissions, p2/sql) ───────────────────────────────────
+// Identity: Supabase Auth (Employee ID → derived sign-in address). Authorization: the DATABASE decides every read and
+// change (row-level security + checked server functions). The browser checks (can(), mayEditJO(), ...) only avoid
+// sending requests the server would refuse anyway.
+// N1 (data safety): a dataset may be changed only after it was read completely after this sign-in.
+const DATA_KEYS = Object.freeze(['assets','jobOrders','pm','employees','customPlants']);   // accounts are NOT a dataset (server: profiles)
 const DATA_LABELS = Object.freeze({assets:'assets', jobOrders:'job orders', pm:'PM schedule', employees:'employees', users:'user accounts', customPlants:'categories'});
+// The only datasets the browser saves as a whole list (Admin / Assistant Engineer, enforced by the database). Everything
+// else changes only through a server function, one checked step at a time.
+const DIRECT_WRITE_KEYS = Object.freeze(['assets','pm','customPlants']);
 const writableKeys = new Set();
-// N2: NO application write happens before a successful sign-in. App() opens this gate while a signed-in profile exists
-// and closes it on sign-out. The single exception is the explicit local-mock seed (load plan 'seed' = staging + the
-// staging-config.js opt-in), which passes {seed: true} while seedAllowed is set; production can never take that path.
-// Browser-side only: this protects against the app's own mistakes, not against direct API access (S2, P2).
-const writeGate = {signedIn: false, seedAllowed: false};
+// N2: NO application write happens before a successful sign-in (and a completed forced password change).
+const writeGate = {signedIn: false};
 const recentWrites = {};   // key -> last few written values (stable JSON), to recognise our own Realtime echoes
-async function dbSave(key, value, opts = {}) {
+// Whole-list save of assets, PM or categories: an UPDATE of the existing row (never an insert or upsert, never another
+// key). The database returns the changed row only when the signed-in role may write it; anything else is "not saved".
+async function dbSave(key, value) {
   if (!sb || !envReady) { console.warn('dbSave blocked: environment not ready', key); return new Error('environment not ready'); }
-  const seeding = opts.seed === true && writeGate.seedAllowed && ENV.name === 'staging';
-  if (!writeGate.signedIn && !seeding) { console.warn('dbSave blocked: not signed in', key); return new Error('not signed in'); }
-  if (DATA_KEYS.includes(key) && !writableKeys.has(key)) { console.warn('dbSave blocked: dataset was not loaded', key); return new Error('dataset not loaded: ' + key); }
+  if (!writeGate.signedIn) { console.warn('dbSave blocked: not signed in', key); return new Error('not signed in'); }
+  if (!DIRECT_WRITE_KEYS.includes(key)) { console.warn('dbSave blocked: changed only through server functions', key); return new Error('no direct write: ' + key); }
+  if (!writableKeys.has(key)) { console.warn('dbSave blocked: dataset was not loaded', key); return new Error('dataset not loaded: ' + key); }
+  if (!Array.isArray(value)) return new Error('a dataset is a list');
   (recentWrites[key] = (recentWrites[key] || []).slice(-4)).push(stableJson(value));
   try {
-    const {error} = await sb.from('app_data').upsert({key, value, updated_at: new Date().toISOString()});
-    if (error) { console.warn('dbSave error', key, error); return error; }
+    const {data, error} = await sb.from('app_data').update({value, updated_at: new Date().toISOString()}).eq('key', key).select('key');
+    if (error) { console.warn('dbSave error', key, error.code || ''); return error; }
+    if (!Array.isArray(data) || data.length !== 1) { console.warn('dbSave refused by the server', key); return new Error('not saved: ' + key); }
     return null;
-  } catch(e) { console.warn('dbSave failed', key, e); return e; }
+  } catch(e) { console.warn('dbSave failed', key); return e; }
 }
-// Plain SHA-256 hex (no 64-hex passthrough). Used for own password changes.
-async function sha256Hex(pw) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(pw)));
-  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+const MSG_NO_PERMISSION = 'You do not have permission for this action.';
+function serverError(e) {
+  const code = e && e.code ? String(e.code) : '', message = e && typeof e.message === 'string' ? e.message : '';
+  return {code, message, kind: code === '42501' ? 'denied' : ['22023','23505','P0002'].includes(code) ? 'invalid' : 'failed'};
 }
-async function hashPwd(pw) {
-  if (!pw) return '';
-  if (/^[0-9a-f]{64}$/.test(pw)) return pw;
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw));
-  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+// A checked server operation (p2/sql). Never called before sign-in. Returns {data} or {error}.
+async function serverCall(fn, args) {
+  if (!sb || !envReady || !writeGate.signedIn) return {error: {code: 'local', message: 'not signed in', kind: 'failed'}};
+  try {
+    const {data, error} = await sb.rpc(fn, args || {});
+    return error ? {error: serverError(error)} : {data};
+  } catch(e) { return {error: {code: 'network', message: '', kind: 'failed'}}; }
+}
+// Edge Functions (p2/functions). Returns {status, body}; status 0 = unreachable.
+async function serverFunction(name, body) {
+  if (!sb || !envReady) return {status: 0, body: {}};
+  try {
+    const {data, error} = await sb.functions.invoke(name, {body});
+    if (!error) return {status: 200, body: data || {}};
+    const res = error.context;
+    if (res && typeof res.status === 'number') { let b = {}; try { b = await res.json(); } catch(_) {} return {status: res.status, body: b || {}}; }
+    return {status: 0, body: {}};
+  } catch(e) { return {status: 0, body: {}}; }
 }
 
 // N2: the built-in default accounts (plaintext passwords and staff details, S1) were removed. Nothing in the app can
@@ -317,7 +257,7 @@ const ROLE_CAPS = Object.freeze({
                                        'asset.view','report.view','jo.view','jo.create','jo.edit.request','jo.print','profile.password']),
   // Viewer (Phase 2B-3): every page and record is viewable (no department/section scope). Nothing else: no create, edit,
   // delete, import, status change, approval, assignment, completion, closing, administration, PDF download or CSV export.
-  // profile.password = own password change. Browser-side only: NOT server enforcement.
+  // profile.password = own password change (needed for a forced first-login change). Browser-side only: NOT server enforcement.
   'Viewer':             Object.freeze(['nav.dashboard','nav.assets','nav.jobOrders','nav.reports','nav.pm','nav.employees','settings.profile',
                                        'asset.view','pm.view','emp.view','report.view','jo.view','profile.password']),
 });
@@ -429,11 +369,13 @@ const ROLE_SUMMARY = Object.freeze({
   'Department User': 'Raise Unplanned job orders for your department\'s asset categories; edit your own OPEN job orders; download job order PDFs.',
   'Viewer': 'View all pages and records: assets, job orders, PM schedules, employees and reports. No editing, approvals, status changes, downloads, exports or administration.',
 });
-// ─── PASSWORD POLICY (2026-10-17) ─────────────────────────────────────────────────
-// The agreed policy (same rules and messages as the Supabase Auth release, p2/functions/_shared/policy.mjs): 8-72 bytes,
-// an uppercase and a lowercase letter, a number and a special character. Applied to every NEW password (own change and
-// passwords an Admin sets); existing passwords keep working for sign-in.
+// ─── PASSWORD POLICY (Phase 2B-2) ─────────────────────────────────────────────────────────────────
+// One reusable rule set for account creation, admin reset and password change (to be mirrored by the backend later).
+// At least 8 characters with an uppercase letter, a lowercase letter, a number and a special character
+// (any character that is not a letter, digit or whitespace). Browser-side only: NOT server enforcement.
+// Supabase Auth (bcrypt) uses at most 72 BYTES of a password: a longer one is refused with a message, never shortened.
 const PASSWORD_MIN = 8, PASSWORD_MAX_BYTES = 72;
+const FORCED_CHANGE_ALLOWED = Object.freeze({forcedChangeAllowed: true});   // allow() marker: the only action permitted during a forced change
 const PASSWORD_RULES = Object.freeze([
   Object.freeze({id: 'length',  text: 'at least 8 characters',   test: p => p.length >= PASSWORD_MIN}),
   Object.freeze({id: 'upper',   text: 'an uppercase letter',     test: p => /[A-Z]/.test(p)}),
@@ -442,30 +384,29 @@ const PASSWORD_RULES = Object.freeze([
   Object.freeze({id: 'special', text: 'a special character',     test: p => /[^A-Za-z0-9\s]/.test(p)}),
 ]);
 const PASSWORD_HINT = 'At least 8 characters, with an uppercase letter, a lowercase letter, a number and a special character.';
+// Returns the ids of the failed rules ([] = valid). Not a string / empty → ['empty']; over the maximum → ['tooLong'].
 function passwordProblems(pw) {
   if (typeof pw !== 'string' || pw === '') return ['empty'];
   if (new TextEncoder().encode(pw).length > PASSWORD_MAX_BYTES) return ['tooLong'];
   return PASSWORD_RULES.filter(r => !r.test(pw)).map(r => r.id);
 }
-// Returns an error message, or null when the password satisfies the policy. A 64-hex string is never accepted (it looks
-// like a stored hash).
+// Returns an error message, or null when the password satisfies the policy.
 function validatePassword(pw) {
   const bad = passwordProblems(pw);
-  if (bad.length) {
-    if (bad[0] === 'empty') return 'A password is required.';
-    if (bad[0] === 'tooLong') return 'The password is too long (maximum 72 characters).';
-    return 'The password needs ' + PASSWORD_RULES.filter(r => bad.includes(r.id)).map(r => r.text).join(', ') + '.';
-  }
-  if (/^[0-9a-f]{64}$/i.test(pw)) return 'Choose a different password.';
-  return null;
+  if (!bad.length) return null;
+  if (bad[0] === 'empty') return 'A password is required.';
+  if (bad[0] === 'tooLong') return 'The password is too long (maximum 72 characters).';
+  return 'The password needs ' + PASSWORD_RULES.filter(r => bad.includes(r.id)).map(r => r.text).join(', ') + '.';
 }
-// Own password change (every role): returns an error message or null.
+// Own password change (DU, JCE and everyone else): returns an error message or null.
 function validateNewPassword(pw, current) {
   const err = validatePassword(pw);
   if (err) return err;
+  if (/^[0-9a-f]{64}$/i.test(pw)) return 'Choose a different password.';
   if (pw === current) return 'The new password must differ from the current one.';
   return null;
 }
+// Temporary passwords are generated ONLY by the server (p2/functions/_shared/policy.mjs, crypto random), never in the browser.
 function isApproved(jo) { return !!jo && jo.approvalStatus === 'APPROVED'; }
 function canApproveJO(jo) { return !!jo && jo.status === 'COMPLETED' && !isApproved(jo); }
 function canCloseJO(jo) { return !!jo && jo.status === 'COMPLETED' && isApproved(jo); }   // the one shared close check (§4.4 inv. 3)
@@ -493,6 +434,8 @@ function resetApprovalIfChanged(stored, jo, user) {
 }
 function pickFields(src, keys) { const o = {}; keys.forEach(k => { if (src && hasOwn(src, k)) o[k] = src[k]; }); return o; }
 // Admin user form / saveUser: returns an error message, or null when the record is valid.
+// Same rule as the server (policy.mjs normalizeEmail): one "@", no spaces, a dot in the domain, at most 254 characters.
+function isEmailAddress(v) { const s = String(v == null ? '' : v).trim(); return s.length <= 254 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s); }
 function validateUserRecord(u, categories, opts = {}) {
   if (!u || !hasOwn(ROLE_CAPS, u.role)) return 'Choose a valid role.';
   if (u.extraBundles !== undefined && !(Array.isArray(u.extraBundles) && u.extraBundles.length === 0)) return 'Additional capabilities are not supported: choose one of the defined roles.';
@@ -500,8 +443,7 @@ function validateUserRecord(u, categories, opts = {}) {
     if (!DEPARTMENTS.includes(u.department)) return 'A Department User needs a department from the list.';
     const cats = Array.isArray(u.assignedCategories) ? u.assignedCategories : [];
     if (!cats.length) return 'A Department User needs at least one asset category.';
-    // "All" is valid only on its own. No early return (fixed 2026-10-17): the uniqueness and email checks below still apply,
-    // otherwise a duplicate username would make sign-in ambiguous and lock BOTH accounts out.
+    // "All" is valid only on its own. No early return: the checks below (Employee ID, email, uniqueness) still apply.
     if (cats.includes(ALL_CATEGORIES)) { if (!isAllCategories(cats)) return 'Choose either All or individual asset categories, not both.'; }
     else {
       const known = (categories || []).map(c => String(c).toUpperCase()), up = cats.map(c => String(c).toUpperCase());
@@ -510,89 +452,93 @@ function validateUserRecord(u, categories, opts = {}) {
     }
   }
   if (u.role === 'Job Card Editor' && !JCE_SECTIONS.includes(u.section)) return 'A Job Card Editor needs one section: Electrical, Mechanical or Maintenance.';
-  // Usernames are unique: sign-in needs exactly one matching account. opts: {users, editId (excluded from the check), isNew}
+  // Phase 2B-2: Employee ID (EMPLOYEE_ID_RE, any length 1–32; required for NEW accounts, optional for existing ones) and uniqueness.
+  // opts: {users: current records, editId: id being edited (excluded from the checks), isNew: true when creating}
   const others = (Array.isArray(opts.users) ? opts.users : []).filter(x => x && x.id !== opts.editId);
+  if (u.employeeId != null && typeof u.employeeId !== 'string') return 'The Employee ID must be text (a number would lose its leading zeros).';
+  const emp = u.employeeId == null ? '' : u.employeeId.trim();
+  if (opts.isNew && !emp) return 'An Employee ID is required for new accounts.';
+  if (emp) {
+    if (!EMPLOYEE_ID_RE.test(emp)) return EMPLOYEE_ID_RULE;
+    const E = emp.toUpperCase();
+    if (others.some(x => typeof x.employeeId === 'string' && x.employeeId.trim().toUpperCase() === E)) return 'This Employee ID is already used by another account.';
+    if (others.some(x => typeof x.username === 'string' && x.username.trim().toUpperCase() === E)) return 'This Employee ID matches another account\'s username. Choose a different one.';
+  }
+  // Email: OPTIONAL (owner decision 2026-10-21, replacing the 2026-10-17 requirement: accounts are Admin-managed with
+  // temporary passwords). When given it must be valid and unique; the server also refuses the internal sign-in domain.
+  const em = u.recoveryEmail == null ? '' : String(u.recoveryEmail).trim();
+  if (em) {
+    if (!isEmailAddress(em)) return 'Enter a valid email address (for example name@example.com).';
+    if (others.some(x => typeof x.recoveryEmail === 'string' && x.recoveryEmail.trim().toLowerCase() === em.toLowerCase())) return 'This email address is already used by another account.';
+  }
   const un = typeof u.username === 'string' ? u.username.trim() : '';
   if (un && others.some(x => x.username === un)) return 'This username is already used by another account.';
-  // Email (owner requirement 2026-10-17): mandatory and valid for a NEW account; when given, valid and unique. Existing
-  // accounts without one stay editable (no address is invented); an UNCHANGED stored address is not re-checked, so an
-  // existing record is never blocked by data it already holds.
-  const em = u.email == null ? '' : String(u.email).trim();
-  if (opts.isNew && !em) return 'A valid email address is required for a new account.';
-  const prev = opts.editId === undefined ? null : (Array.isArray(opts.users) ? opts.users : []).find(x => x && x.id === opts.editId);
-  const unchanged = !!prev && String(prev.email == null ? '' : prev.email).trim().toLowerCase() === em.toLowerCase();
-  if (em && !unchanged) {
-    if (!isEmailAddress(em)) return 'Enter a valid email address (for example name@example.com).';
-    if (others.some(x => typeof x.email === 'string' && x.email.trim().toLowerCase() === em.toLowerCase())) return 'This email address is already used by another account.';
-  }
+  if (un && EMPLOYEE_ID_RE.test(un) && others.some(x => typeof x.employeeId === 'string' && x.employeeId.trim().toUpperCase() === un.toUpperCase()))
+    return 'This username matches another account\'s Employee ID. Choose a different one.';
   return null;
 }
-function isEmailAddress(v) { const s = String(v == null ? '' : v).trim(); return s.length <= 254 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s); }
 // Fields that only mean something for some roles are removed for the others; every other field is kept.
 function normalizeUserRecord(u) {
   const out = {...u};
   if (out.role !== 'Department User') { delete out.department; delete out.assignedCategories; }
   delete out.extraBundles;                                                     // defined roles only, no bundles
   if (out.role !== 'Job Card Editor') delete out.section; else out.section = String(out.section || '').trim();
+  if (out.employeeId != null) { const e = String(out.employeeId).trim().toUpperCase(); if (e) out.employeeId = e; else delete out.employeeId; }   // stored upper-case
   return out;
 }
-// ─── AUTH (Phase 2B-1: local authentication foundation) ─────────────────────────────────────────────
-// Authentication state (who signed in, through which adapter) is separate from the profile (role, section,
-// department, categories), which is always read from the CURRENT stored user records. Nothing restored from browser
-// storage counts as signed in: the state lives in memory and starts signed out on every page load.
-// Adapter today: 'appdata' = the legacy users array in app_data, reached through the environment the guard resolved
-// (production = the real project; local development = the mock via staging-config.js on loopback hosts only).
-// A future Supabase Auth adapter must implement the same contract (authAdapterFor / authVerify / profileFor).
-// NOT production security: verification runs in the browser against data the browser can read (Phase 2A gaps A2, A10).
+// ─── AUTH (P2: Supabase Auth, Employee ID sign-in) ──────────────────────────────────────────────────────────────
+// Authentication state (who signed in, through which adapter) is separate from the profile (role, section, department,
+// categories, status, forced change), which always comes from the SERVER (public.profiles, own row) and is re-checked
+// while signed in. The session lives in memory: every page load starts signed out. The browser never sees a password
+// hash and never compares passwords.
 const AUTH_SIGNED_OUT = Object.freeze({status: 'signed-out', subject: null, adapter: null, env: null, since: null});
 function authAdapterFor(envName) {
-  if (envName === 'production') return Object.freeze({name: 'appdata', env: 'production'});
-  if (envName === 'staging') return Object.freeze({name: 'appdata', env: 'staging'});
+  if (envName === 'production') return Object.freeze({name: 'supabase-auth', env: 'production'});
+  if (envName === 'staging') return Object.freeze({name: 'supabase-auth', env: 'staging'});
   return null;   // blocked/unknown environment: no adapter, sign-in disabled; never a fallback to another backend
 }
+// Company Employee ID (2026-10-23; same rule as p2/functions/_shared/policy.mjs and SQL 0012): numbers of any length
+// (historical 3/4 digits, current 5, longer later) or letters and digits (EX001); a single . _ or - only between them,
+// because the ID is the local part of the sign-in address. A string, never a number (leading zeros kept); upper-cased.
+const EMPLOYEE_ID_RE = /^(?=.{1,32}$)[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*$/;
+const EMPLOYEE_ID_RULE = 'An Employee ID has 1 to 32 letters or digits (a single . _ or - is allowed between them).';
+const EMPLOYEE_ID_MAX = 32;
 function normalizeLoginId(raw) { return String(raw == null ? '' : raw).trim(); }
-// Sign-in by username (exact), as before. Exactly one match is required; ambiguity is treated as "no match".
-function findLoginCandidates(users, loginId) {
-  const id = normalizeLoginId(loginId), list = Array.isArray(users) ? users : [];
-  if (!id) return [];
-  return list.filter(u => u && u.username === id);
+function normalizeEmployeeId(raw) { if (typeof raw !== 'string') return null; const s = normalizeLoginId(raw); return EMPLOYEE_ID_RE.test(s) ? s.toUpperCase() : null; }
+// Option B (decision D3): the Supabase Auth sign-in address is DERIVED from the Employee ID (no lookup, so no request can
+// ask whether an ID exists). The domain receives no mail (decision D4). null when the ID or the domain is not usable.
+function signInEmailFor(employeeId, domain) {
+  const id = normalizeEmployeeId(employeeId);
+  return id && typeof domain === 'string' && /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(domain) ? id.toLowerCase() + '@' + domain.toLowerCase() : null;
 }
-const AUTH_INVALID = Object.freeze({ok: false, reason: 'invalid'});
-// hashFn: plain SHA-256 hex of the TYPED password. No hash passthrough: a typed 64-hex string is hashed like any text.
-async function authVerify({adapter, loginId, password, users, usersLoaded, hashFn}) {
-  if (!adapter) return {ok: false, reason: 'unavailable', message: 'Sign-in is not available in this environment.'};
-  if (!usersLoaded) return {ok: false, reason: 'unavailable', message: 'Sign-in is unavailable: user data could not be loaded. Please try again later.'};
-  if (typeof password !== 'string' || !password) return AUTH_INVALID;
-  const cands = findLoginCandidates(users, loginId);
-  if (cands.length !== 1) return AUTH_INVALID;
-  const u = cands[0];
-  if (u.active === false || typeof u.password !== 'string' || !/^[0-9a-f]{64}$/.test(u.password)) return AUTH_INVALID;
-  if ((await hashFn(password)) !== u.password) return AUTH_INVALID;
-  return {ok: true, state: Object.freeze({status: 'signed-in', subject: Object.freeze({id: u.id, username: u.username}),
-                                         adapter: adapter.name, env: adapter.env, since: new Date().toISOString()})};
+const SIGN_IN_FAILED = 'Invalid Employee ID or password. Please try again.';
+const SIGN_IN_UNREACHABLE = 'Sign-in is unavailable: the server could not be reached. Please try again later.';
+const SIGN_IN_NOT_CONFIGURED = 'Sign-in is not configured for this site yet. Contact the CMMS administrator.';
+// Pure: Supabase Auth's answer to a password sign-in → the login page's result. GoTrue's own text is never shown (every
+// refusal reads the same); only a network/server failure is reported differently.
+function signInOutcome(r) {
+  if (r && !r.error && r.data && r.data.session && r.data.session.access_token) return {ok: true};
+  const e = r && r.error;
+  if (!r || (e && (e.status === 0 || e.status >= 500 || e.name === 'AuthRetryableFetchError'))) return {ok: false, reason: 'unavailable', message: SIGN_IN_UNREACHABLE};
+  if (e && e.status === 429) return {ok: false, reason: 'unavailable', message: 'Too many sign-in attempts. Please wait a few minutes and try again.'};
+  return {ok: false, reason: 'invalid', message: SIGN_IN_FAILED};
 }
-// ─── TAB SESSION (2026-10-15) ───────────────────────────────────────────────────────────────────────────────────
-// Keeps the sign-in across a page REFRESH in the same browser tab: sessionStorage (cleared when the tab closes, never
-// shared with other tabs). It holds no password and no hash: the proof is SHA-256 over the account id, username, issue
-// time and the account's CURRENT stored hash, so a password change or reset, deactivation, deletion or username change
-// ends it at the next load; it also expires after TAB_SESSION_MAX_MS. Logout deletes it. Client-side only, like the
-// sign-in itself (not production security: SECURITY_REMEDIATION S2).
-const TAB_SESSION_KEY = 'cmms_vg_tab_session';
-const TAB_SESSION_MAX_MS = 12 * 3600 * 1000;
-function tabSessionProof(id, username, iat, storedHash, hashFn) { return hashFn(['cmms-tab-session-v1', id, username, iat, storedHash].join('\n')); }
-async function makeTabSession(user, hashFn, now = Date.now()) {
-  return {v: 1, id: user.id, username: user.username, iat: now, proof: await tabSessionProof(user.id, user.username, now, user.password, hashFn)};
+// The server profile row (public.profiles, own row) in the app's user-record shape. The numeric legacy id stays `id`
+// (job orders reference it). Nothing about passwords.
+function profileFromRow(row) {
+  if (!row || typeof row !== 'object' || !Number.isInteger(row.legacy_id)) return null;
+  const u = {id: row.legacy_id, userId: row.user_id, employeeId: row.employee_id, username: row.employee_id, fullName: row.full_name || '',
+             role: row.role, active: row.active === true, must_change_password: row.must_change_password === true,
+             recoveryEmail: row.recovery_email || '', recoveryEmailVerified: !!row.recovery_email_verified_at};
+  if (row.department != null) u.department = row.department;
+  if (Array.isArray(row.assigned_categories)) u.assignedCategories = row.assigned_categories;
+  if (row.section != null) u.section = row.section;
+  return u;
 }
-async function verifyTabSession(token, users, hashFn, now = Date.now(), maxAge = TAB_SESSION_MAX_MS) {
-  if (!token || typeof token !== 'object' || token.v !== 1 || typeof token.username !== 'string' || !token.username || typeof token.proof !== 'string') return null;
-  if (!Number.isFinite(token.iat) || token.iat > now + 60000 || now - token.iat > maxAge) return null;
-  const u = (Array.isArray(users) ? users : []).find(x => x && x.id === token.id && x.username === token.username);
-  if (!u || u.active === false || typeof u.password !== 'string' || !/^[0-9a-f]{64}$/.test(u.password)) return null;
-  return (await tabSessionProof(u.id, u.username, token.iat, u.password, hashFn)) === token.proof ? u : null;
+function signedInState(adapter, profile) {
+  return Object.freeze({status: 'signed-in', subject: Object.freeze({id: profile.id, username: profile.username}),
+                        adapter: adapter.name, env: adapter.env, since: new Date().toISOString()});
 }
-function readTabSession() { try { const raw = sessionStorage.getItem(TAB_SESSION_KEY); return raw ? JSON.parse(raw) : null; } catch (_) { return null; } }
-function writeTabSession(t) { try { sessionStorage.setItem(TAB_SESSION_KEY, JSON.stringify(t)); } catch (_) {} }
-function clearTabSession() { try { sessionStorage.removeItem(TAB_SESSION_KEY); } catch (_) {} }
 // Phase 2B-4: only a well-formed signed-in state from THIS environment's adapter counts; anything else is "signed out".
 function isValidAuthState(auth, adapter) {
   if (!auth || typeof auth !== 'object' || auth.status !== 'signed-in' || !adapter) return false;
@@ -600,28 +546,175 @@ function isValidAuthState(auth, adapter) {
   if (!sub || typeof sub !== 'object' || (typeof sub.id !== 'number' && typeof sub.id !== 'string') || typeof sub.username !== 'string' || !sub.username) return false;
   return auth.adapter === adapter.name && auth.env === adapter.env;
 }
+// Any truthy flag value means "must change" (fail closed on malformed values).
+function mustChangePassword(user) { return !!(user && user.must_change_password); }
 // What the signed-in user may see/do depends on these fields; when any of them changes, open forms and page state are reset.
 function authzFingerprint(user) {
   if (!user) return '';
   return JSON.stringify([user.id, user.username, user.role, user.department || null, Array.isArray(user.assignedCategories) ? user.assignedCategories : null,
-                         user.section || null, user.active !== false]);
+                         user.section || null, user.active !== false, mustChangePassword(user)]);
 }
-// The profile is the stored record of the signed-in subject (matched by id AND username); inactive/missing → null.
-function profileFor(auth, users) {
-  if (!auth || auth.status !== 'signed-in' || !auth.subject || typeof auth.subject !== 'object') return null;
-  const u = (Array.isArray(users) ? users : []).find(x => x && x.id === auth.subject.id && x.username === auth.subject.username);
-  return u && u.active !== false ? u : null;
+// The signed-in user = the server profile of the signed-in subject (same id AND username), only while active.
+function profileFor(auth, profile) {
+  if (!auth || auth.status !== 'signed-in' || !auth.subject || typeof auth.subject !== 'object' || !profile) return null;
+  return profile.id === auth.subject.id && profile.username === auth.subject.username && profile.active !== false ? profile : null;
 }
-// ─── DATA LOAD (N1) ────────────────────────────────────────────────────────────
-// Pure: classify the result of the full app_data read. Never guesses: an error or an unusable response is a failure,
-// zero data rows is a failure (except in the opted-in local mock/staging, where it means "fresh database"), and missing or
-// malformed datasets are reported so they stay read-only. 'seed' requires ENV staging AND the explicit opt-in.
+// ─── LOGIN CIRCUIT (2026-10-14) ─────────────────────────────────────────────────
+// Pure layout of the login background: circuit traces from the page edges that converge on a "socket" around the login
+// card (45° bends, vias, pads, a few components). Coordinates are CSS pixels of the login page; card = {l,t,r,b} of the
+// card relative to the page. Deterministic for a seed. Decorative only (aria-hidden).
+function circuitTraces(w, h, card, seed = 7, opts = {}) {
+  // Board routing: horizontal/vertical runs with short 45° corners, fanned so that NO two traces cross (the trace that
+  // ends farther from the card's centre turns closer to the card). opts.topBound: keep everything below this y (the
+  // stacked layout's introduction); no top traces then.
+  let st = seed >>> 0; const rnd = () => { st = (Math.imul(st, 1664525) + 1013904223) >>> 0; return st / 4294967296; };
+  const r1 = v => Math.round(v * 10) / 10, clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const top = Math.max(0, opts.topBound || 0), g = 16, S = {l: card.l - g, t: card.t - g, r: card.r + g, b: card.b + g}, traces = [];
+  const spread = (a, b, n) => Array.from({length: n}, (_, i) => a + (b - a) * (i + 1) / (n + 1));
+  const count = len => Math.max(2, Math.min(8, Math.round(len / 60)));
+  const cy = (S.t + S.b) / 2, cx = (S.l + S.r) / 2;
+  // one side: pads along the side, starts fanned out, jog positions nested (outermost jog nearest the card)
+  function side(name, pads, centre, fanLo, fanHi, room, jogFrom, dir) {
+    if (room <= 50 || !pads.length) return;
+    const half = Math.max(1, Math.max(...pads.map(p => Math.abs(p - centre))));
+    const k = Math.min(1.9, Math.max(0, (Math.min(centre - fanLo, fanHi - centre) - 14) / half - 1));   // outermost start stays 14px inside the bounds
+    const order = pads.map(p => Math.abs(p - centre));
+    const ranks = order.map(d => order.filter(e => e > d + 0.01).length);          // 0 = outermost
+    const gap = Math.max(6, Math.min(26, (room - 44) / Math.max(1, pads.length / 2 + 1)));
+    pads.forEach((p, i) => {
+      const s = clamp(centre + (p - centre) * (1 + k), fanLo + 6, fanHi - 6);
+      const dlt = s - p, c = Math.min(10, Math.abs(dlt) / 2), sg = Math.sign(dlt);
+      const lo = (name === 'top' ? top : 0) + 8 + c, hi = (name === 'left' || name === 'right' ? w : h) - 8 - c;
+      const jog = clamp(jogFrom + dir * (30 + ranks[i] * gap + (rnd() - 0.5) * 4), lo, hi);   // dir: -1 = towards the page edge on left/top
+      if (name === 'left' || name === 'right') {
+        const edge = name === 'left' ? 0 : w, inX = name === 'left' ? 1 : -1;   // inX: direction towards the card
+        const d = c ? `M${r1(edge)} ${r1(s)}H${r1(jog - inX * c)}L${r1(jog)} ${r1(s - sg * c)}V${r1(p + sg * c)}L${r1(jog + inX * c)} ${r1(p)}H${r1(name === 'left' ? S.l : S.r)}`
+                    : `M${r1(edge)} ${r1(p)}H${r1(name === 'left' ? S.l : S.r)}`;
+        traces.push({side: name, d, start: [r1(edge), r1(c ? s : p)], pad: [r1(name === 'left' ? S.l : S.r), r1(p)], vias: c ? [[r1(jog), r1(s - sg * c)], [r1(jog), r1(p + sg * c)]] : [],
+                     part: name === 'right' && w - jog > 170 ? {x: r1(jog + (w - jog) * 0.55), y: r1(c ? s : p), horizontal: true} : null});
+      } else {
+        const edge = name === 'top' ? top : h, inY = name === 'top' ? 1 : -1;
+        const d = c ? `M${r1(s)} ${r1(edge)}V${r1(jog - inY * c)}L${r1(s - sg * c)} ${r1(jog)}H${r1(p + sg * c)}L${r1(p)} ${r1(jog + inY * c)}V${r1(name === 'top' ? S.t : S.b)}`
+                    : `M${r1(p)} ${r1(edge)}V${r1(name === 'top' ? S.t : S.b)}`;
+        traces.push({side: name, d, start: [r1(c ? s : p), r1(edge)], pad: [r1(p), r1(name === 'top' ? S.t : S.b)], vias: c ? [[r1(s - sg * c), r1(jog)], [r1(p + sg * c), r1(jog)]] : [],
+                     part: name === 'bottom' && h - jog > 170 ? {x: r1(c ? s : p), y: r1(jog + (h - jog) * 0.55), horizontal: false} : null});
+      }
+    });
+  }
+  const vPads = spread(S.t, S.b, count(S.b - S.t)), hPads = spread(S.l + 18, S.r - 18, count(S.r - S.l));
+  side('left', vPads, cy, top, h, S.l, S.l, -1);
+  side('right', vPads, cy, top, h, w - S.r, S.r, 1);
+  if (!top) side('top', hPads, cx, S.l, S.r, S.t, S.t, -1);   // stays within the card's width: never crosses the side traces
+  side('bottom', hPads, cx, S.l, S.r, h - S.b, S.b, 1);
+  return {socket: {l: r1(S.l), t: r1(S.t), r: r1(S.r), b: r1(S.b)}, traces};
+}
+
+// Pure: timing of the light signals on the circuit (all values in seconds / px). ONE constant speed everywhere. A left
+// trace and the right trace that ends on the SAME pad row form a pair: the light runs IN along the left trace, passes
+// hidden behind the card for the socket width (same speed, nothing is drawn over the card), then runs OUT along the
+// right trace to the page edge. Pairs share duration and delay, so in and out are one connected flow. Traces without a
+// partner (top, bottom, or left when there is no room on the right) run in only. lengths[i] = length of traces[i].
+const SIGNAL_SPEED = 150, SIGNAL_PAUSE = 2.4;   // px/s and s between runs (login board light signals)
+function signalSchedule(traces, lengths, socketWidth, opts = {}) {
+  // 2026-10-18: slower and calmer (was 260 px/s with a 1.4 s pause: every cycle is now ~1.75x longer).
+  const v = opts.speed || SIGNAL_SPEED, pause = opts.pause == null ? SIGNAL_PAUSE : opts.pause, out = traces.map(() => null);
+  const rightByRow = new Map();
+  traces.forEach((t, i) => { if (t.side === 'right') rightByRow.set(t.pad[1], i); });
+  traces.forEach((t, i) => {
+    if (t.side === 'right') return;
+    const j = t.side === 'left' && rightByRow.has(t.pad[1]) ? rightByRow.get(t.pad[1]) : null;
+    const tin = lengths[i] / v, tc = j === null ? 0 : socketWidth / v, tout = j === null ? 0 : lengths[j] / v;
+    const T = tin + tc + tout + pause + (i % 5) * 0.4, delay = -((i * 1.7) % T);
+    out[i] = {duration: T, delay, from: 0, to: tin / T, dir: 'in', pair: j, speed: v};
+    if (j !== null) out[j] = {duration: T, delay, from: (tin + tc) / T, to: (tin + tc + tout) / T, dir: 'out', pair: i, speed: v};
+  });
+  traces.forEach((t, i) => {   // a right trace without a left partner (not produced by circuitTraces) still runs out
+    if (out[i]) return;
+    const T = lengths[i] / v + pause;
+    out[i] = {duration: T, delay: -((i * 1.7) % T), from: 0, to: (lengths[i] / v) / T, dir: 'out', pair: null, speed: v};
+  });
+  return out;
+}
+// Keyframes (Web Animations) for one signal: a dash of `dash` px on a path of `len` px. The trace path runs from the
+// page edge to the pad: 'in' moves the dash edge -> pad, 'out' moves it pad -> edge. Outside [from, to] the dash sits
+// beyond an end of the path, i.e. it is invisible (no flash anywhere, in particular never over the card).
+function signalKeyframes(s, len, dash = 26) {
+  const a = s.dir === 'in' ? dash : -len, b = s.dir === 'in' ? -len : dash;
+  return [{offset: 0, strokeDashoffset: a}, {offset: s.from, strokeDashoffset: a}, {offset: s.to, strokeDashoffset: b}, {offset: 1, strokeDashoffset: b}];
+}
+// Pad glow: peaks when the light ARRIVES at a left/top/bottom pad and when it LEAVES a right pad.
+function glowKeyframes(s, base = 0.12, peak = 0.85) {
+  const p = s.dir === 'in' ? s.to : s.from, r = Math.min(0.45 / s.duration, 0.2);
+  const lo = Math.max(0, p - r), hi = Math.min(1, p + 1.6 * r);
+  return [{offset: 0, opacity: base}, {offset: lo, opacity: base}, {offset: p, opacity: peak}, {offset: hi, opacity: base}, {offset: 1, opacity: base}];
+}
+
+// ─── PASSWORD RECOVERY (P2: request-recovery / complete-recovery / verify-recovery-email Edge Functions) ─────────
+// Requests are non-enumerating: every outcome except a network failure shows the SAME message. Recovery is offered only
+// where Supabase Auth sign-in is configured (SIGN_IN_DOMAIN); emails go only to a VERIFIED recovery address (server).
+const RECOVERY_SERVICE = typeof SIGN_IN_DOMAIN === 'string' && SIGN_IN_DOMAIN && EMAIL_FEATURES ? Object.freeze({   // + email features on (2026-10-21)
+  requestReset: async employeeId => { const r = await serverFunction('request-recovery', {employeeId}); return {ok: r.status === 202 || r.status === 200}; },
+}) : null;
+const RECOVERY_MESSAGES = Object.freeze({
+  sent: 'If an account with a verified recovery email exists for this Employee ID, a password reset link has been sent to it. Check your inbox.',
+  unavailable: 'Password reset by email is not available yet. Ask a CMMS administrator to reset your password: you will receive a temporary password and must change it when you next sign in.',
+  error: 'The request could not be sent. Check your connection and try again.',
+  empty: 'Enter your Employee ID.',
+  format: EMPLOYEE_ID_RULE,
+});
+function recoveryStep(state, action) {
+  switch (action && action.type) {
+    case 'submit': {
+      const id = String(action.employeeId == null ? '' : action.employeeId).trim();
+      if (!id) return {phase: 'invalid', message: RECOVERY_MESSAGES.empty};
+      if (!EMPLOYEE_ID_RE.test(id)) return {phase: 'invalid', message: RECOVERY_MESSAGES.format};
+      if (action.serviceAvailable !== true) return {phase: 'unavailable', message: RECOVERY_MESSAGES.unavailable};
+      return {phase: 'sending', message: ''};
+    }
+    case 'result': return action.ok === true ? {phase: 'sent', message: RECOVERY_MESSAGES.sent} : {phase: 'error', message: RECOVERY_MESSAGES.error};
+    case 'reset': return {phase: 'idle', message: ''};
+    default: return state || {phase: 'idle', message: ''};
+  }
+}
+// Recovery / verification links (tokens in the URL fragment). Returns the kind, or null.
+function recoveryLinkKind(hash) {
+  const h = String(hash || '');
+  if (/(^|[#&])verify-email=/.test(h)) return 'verify-email';
+  if (/(^|[#&])type=recovery(&|$)/.test(h) || /(^|[#&])access_token=/.test(h) || /(^|[#&])error_code=/.test(h)) return 'recovery';
+  return null;
+}
+// Pure: what a link carries. Read ONCE at start-up; the app removes the fragment from the address bar immediately and
+// keeps the values only in memory (never stored, never logged).
+function parseRecoveryLink(hash) {
+  const kind = recoveryLinkKind(hash);
+  if (!kind) return null;
+  const p = new URLSearchParams(String(hash || '').replace(/^#/, ''));
+  if (kind === 'verify-email') return {kind, verifyToken: p.get('verify-email') || ''};
+  const err = p.get('error_code') || p.get('error');
+  const at = p.get('access_token') || '', rt = p.get('refresh_token') || '';
+  return {kind, error: err ? 'expired' : (at && rt && p.get('type') === 'recovery' ? null : 'invalid'), accessToken: at, refreshToken: rt};
+}
+
+// ─── NOTIFICATIONS (P2: p2/sql/0008; recipients computed on the server) ─────────────────────────────────────────
+// Every signed-in role except Viewer (which receives none). The browser only reads its own list (my_notifications) and
+// marks its own items read (notification_mark_read); it never names a recipient. Polling (decision N-D3).
+function notificationsFor(user) { return !!user && user.role !== 'Viewer' && !mustChangePassword(user); }
+const NOTIFY_EVENT_LABEL = Object.freeze({OPEN: 'Raised', IN_PROGRESS: 'In progress', COMPLETED: 'Completed', CLOSED: 'Closed'});
+function unreadCount(items) { return (Array.isArray(items) ? items : []).filter(n => n && n.read !== true).length; }
+
+// ─── DATA LOAD (N1) — after sign-in only ──────────────────────────────────────────────────────
+// Which datasets a role reads. Department Users read their assets and job orders through the server's scoped lists
+// (asset_list / jo_list) and have no PM or employee pages; everyone else reads the datasets the server lets them read.
+function datasetsFor(user) { return isDeptUser(user) ? ['assets','jobOrders','customPlants'] : DATA_KEYS.slice(); }
+// Pure: classify what was read. Never guesses: an error or an unusable response is a failure, zero datasets is a failure,
+// and missing or malformed datasets are reported so they stay read-only. Nothing is ever seeded by the browser.
 function planDataLoad(result, opts = {}) {
   if (!result || typeof result !== 'object' || result.error || !Array.isArray(result.data)) return {action: 'fail', reason: 'failed'};
-  const rows = result.data.filter(r => r && typeof r === 'object' && typeof r.key === 'string' && r.key !== '__environment');
-  if (rows.length === 0) return opts.envName === 'staging' && opts.seedOptIn === true ? {action: 'seed'} : {action: 'fail', reason: 'empty'};
+  const expected = Array.isArray(opts.expected) ? opts.expected : DATA_KEYS;
+  const rows = result.data.filter(r => r && typeof r === 'object' && typeof r.key === 'string' && expected.includes(r.key));
+  if (rows.length === 0) return {action: 'fail', reason: 'empty'};
   const values = {}, loaded = [], missing = [], invalid = [];
-  for (const k of DATA_KEYS) {
+  for (const k of expected) {
     const r = rows.find(x => x.key === k);
     if (!r) missing.push(k);
     else if (!Array.isArray(r.value)) invalid.push(k);
@@ -629,6 +722,25 @@ function planDataLoad(result, opts = {}) {
   }
   if (loaded.length === 0) return {action: 'fail', reason: 'empty'};
   return {action: missing.length || invalid.length ? 'partial' : 'load', loaded, missing, invalid, values};
+}
+// Reads the given datasets for this user. {error} when nothing could be read, else {data: rows} (a dataset that failed is
+// simply absent, so planDataLoad reports it as missing and it stays read-only).
+async function readDatasets(user, keys) {
+  if (!sb || !writeGate.signedIn) return {error: new Error('not signed in')};
+  const scoped = {assets: 'asset_list', jobOrders: 'jo_list'};
+  const direct = keys.filter(k => !(isDeptUser(user) && scoped[k])), viaFn = keys.filter(k => isDeptUser(user) && scoped[k]);
+  const rows = []; let failures = 0, attempts = 0;
+  const jobs = [];
+  if (direct.length) { attempts++; jobs.push(Promise.resolve(sb.from('app_data').select('key,value').in('key', direct)).then(r => {
+    if (r.error || !Array.isArray(r.data)) { failures++; return; }
+    r.data.forEach(x => { if (x && direct.includes(x.key)) rows.push({key: x.key, value: x.value}); });
+  }, () => { failures++; })); }
+  viaFn.forEach(k => { attempts++; jobs.push(Promise.resolve(sb.rpc(scoped[k])).then(r => {
+    if (r.error) { failures++; return; }
+    rows.push({key: k, value: r.data});
+  }, () => { failures++; })); });
+  await Promise.all(jobs);
+  return attempts > 0 && failures === attempts ? {error: new Error('read failed')} : {data: rows};
 }
 // N2: JSON with sorted object keys. The database (JSONB) does not keep key order, so values are compared this way.
 function stableJson(v) {
@@ -984,10 +1096,43 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
 .lc-parts rect,.lc-parts path{fill:none;stroke:var(--lc-trace-strong);stroke-width:1.1;}
 .lc-signal{fill:none;stroke:var(--li-packet);stroke-width:2.2;stroke-linecap:round;stroke-dasharray:26 100000;stroke-dashoffset:26;}   /* moved by Web Animations (LoginCircuit); hidden until then */
 .lc-glow{fill:var(--accent-fill);opacity:.12;}
+.login-link{background:none;border:0;padding:0;color:var(--accent);font:inherit;font-size:12px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;}
+.login-link:disabled{opacity:.45;cursor:default;text-decoration:none;}
+:root[data-theme="light"] .login-link{color:#b45309;}
+.login-aux{display:flex;justify-content:flex-end;margin:-8px 0 14px;}
+.login-back{display:block;margin:16px auto 0;}
+.login-connecting{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--gray);margin:-12px 0 16px;}
 .login-caps{font-size:12px;color:var(--accent);margin:-10px 0 12px;}
 :root[data-theme="light"] .login-caps{color:#b45309;}
 .login-input.invalid input{border-color:var(--red) !important;box-shadow:0 0 0 2px rgba(239,68,68,.18);}
+.login-info{background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.35);border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.55;color:var(--white);margin-bottom:14px;}
+.login-success{background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.38);border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.55;color:var(--white);margin-bottom:14px;}
+.login-temp-note{font-size:11px;line-height:1.5;color:var(--gray);margin-top:14px;text-align:center;}
+.pw-checklist{list-style:none;margin:-6px 0 14px;padding:0;display:grid;gap:3px;font-size:12px;color:var(--gray);}
+.pw-checklist li.ok{color:var(--green);}
+:root[data-theme="light"] .pw-checklist li.ok{color:#047857;}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+.notif-wrap{position:relative;}
+.notif-bell{position:relative;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--white);cursor:pointer;}
+.notif-bell:hover,.notif-bell[aria-expanded="true"]{border-color:var(--accent);color:var(--accent);}
+.notif-badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font:700 10px/18px var(--fm);text-align:center;}
+.notif-panel{position:absolute;right:0;top:calc(100% + 8px);width:min(380px,92vw);max-height:min(70vh,520px);display:flex;flex-direction:column;background:var(--navy2);border:1px solid var(--border);border-radius:10px;box-shadow:0 18px 40px rgba(0,0,0,.35);z-index:200;}
+.notif-head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border);font-family:var(--fh);font-weight:700;letter-spacing:.5px;}
+.notif-list{overflow:auto;}
+.notif-item{display:flex;gap:10px;width:100%;text-align:left;padding:10px 14px;background:none;border:0;border-bottom:1px solid var(--border);color:var(--white);cursor:pointer;font:inherit;}
+.notif-item:hover{background:rgba(245,158,11,.06);}
+.notif-item.unread{background:rgba(59,130,246,.08);}
+.notif-item.unread .notif-title strong{color:var(--accent);}
+.notif-dot{flex:0 0 8px;height:8px;margin-top:6px;border-radius:50%;background:var(--gray);}
+.notif-dot.ev-open{background:#f59e0b;}.notif-dot.ev-in_progress{background:#3b82f6;}.notif-dot.ev-completed{background:#10b981;}.notif-dot.ev-closed{background:#94a3b8;}
+.notif-body{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.notif-title{font-size:13px;}
+.notif-sub{font-size:11px;color:var(--gray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.notif-time{font-size:10px;color:var(--gray);font-family:var(--fm);}
+.notif-empty{padding:18px 14px;font-size:12px;color:var(--gray);text-align:center;}
+.notif-err{color:var(--red);}
+.notif-local{padding:8px 14px;font-size:10px;color:var(--gray);border-top:1px solid var(--border);}
+@media(max-width:600px){.notif-panel{position:fixed;left:8px;right:8px;top:64px;width:auto;}}
 .login-theme{position:absolute;top:16px;right:16px;z-index:5;}
 .login-intro{position:relative;z-index:2;color:var(--li-text);display:flex;align-items:center;padding:56px clamp(32px,5vw,72px);background:linear-gradient(90deg,var(--li-tint) 0%,transparent 100%);}
 .login-visual{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;display:block;}
@@ -1358,36 +1503,42 @@ function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [mobileNav]);
-  const [assets, setAssets] = useState(BASE_ASSETS);
+  const [assets, setAssets] = useState([]);
   const [jobOrders, setJobOrders] = useState([]);
-  const [joCounter, setJoCounter] = useState(1000);
-  const [syncStatus, setSyncStatus] = useState('loading'); // loading | saving | ok
+  const [joCounter, setJoCounter] = useState(1000);   // the number previewed in a new form; the server assigns the real one
+  const [syncStatus, setSyncStatus] = useState('ok'); // loading | saving | ok | error
   const [toasts, setToasts] = useState([]);
   const [clock, setClock] = useState('');
   const [dbLoaded, setDbLoaded] = useState(false);
   const saveTimer = useRef(null);
   const isLoaded = useRef(false);
   const isResetting = useRef(false);
-  const usersFromDb = useRef(false); // true once `users` came from the database (never the built-in defaults)
 
-  // auth & users (Phase 2B-1): authentication state lives in memory only and starts signed out on every load.
+  // auth: a Supabase Auth session (Employee ID sign-in; memory only; every page load starts signed out). The profile
+  // (role, scope, status, forced change) is the SERVER's (public.profiles, own row); `users` = user_list (Admin: all
+  // accounts; others: own + active Job Card Editors). No password data ever reaches the browser.
   const authAdapter = useRef(authAdapterFor(ENV.name)).current;
   const [auth, setAuth] = useState(AUTH_SIGNED_OUT);
-  const [users, setUsers] = useState([]);   // N2: empty until read from the database (no built-in accounts)
-  // Profile = the current stored record of the signed-in subject; role/section/etc. never come from the auth state.
-  const currentUser = isValidAuthState(auth, authAdapter) ? profileFor(auth, users) : null;
-  // Session restore (2026-10-17): while this tab's session token is checked (after the users have been read), a neutral
-  // "restoring" screen is shown instead of the sign-in form, so a refresh no longer flashes the login page.
-  const [restoring, setRestoring] = useState(() => !!authAdapter && !!readTabSession());
-  const [usersSettled, setUsersSettled] = useState(false);   // the users list was read (or is known to be unavailable)
-  // Old browser copies that held password hashes (session; users mirror before Phase 2B-4): delete, never read.
+  const [profile, setProfile] = useState(null);
+  const [users, setUsers] = useState([]);
+  const currentUser = isValidAuthState(auth, authAdapter) ? profileFor(auth, profile) : null;
+  const signedInRef = useRef(false);
+  const reauthRef = useRef(false);   // own password change: the ended session's SIGNED_OUT is not a sign-out (changeOwnPassword)
+  // Old browser copies that held password hashes or datasets (earlier versions): delete, never read.
   useEffect(() => { try { [SESSION_KEY, USERS_KEY, STORE_KEY, PM_KEY, EMPLOYEES_KEY, CUSTOM_PLANTS_KEY].forEach(k => localStorage.removeItem(k)); } catch(_) {} }, []);
+  // Recovery / verification links: read ONCE, then the URL fragment (it holds tokens) is removed from the address bar at
+  // once. The values stay in memory only for the recovery form; never stored or logged.
+  const [link, setLink] = useState(() => { try { const l = parseRecoveryLink(window.location.hash); if (l) history.replaceState(null, '', window.location.pathname + window.location.search); return l; } catch (_) { return null; } });
+  // Session restore (2026-10-17): while this tab's stored session is checked with the server, a neutral "restoring" screen
+  // is shown instead of the sign-in form (no login flash on refresh). Not attempted for a recovery/verification link.
+  const [restoring, setRestoring] = useState(() => !link && !!sb && !!SIGN_IN_DOMAIN && !!authAdapter && !!TAB_STORAGE.getItem(AUTH_STORAGE_KEY));
   const [loadIssue, setLoadIssue] = useState(null);   // N1: null | {kind:'failed'|'empty'} (blocks the app) | {kind:'partial', keys} (banner)
-  // N2: corrections found while loading (employee statuses that no longer match their dates; plaintext passwords in the
-  // users list) are applied in memory only and written after an AUTHORIZED user signs in (never anonymously).
-  const [deferredFix, setDeferredFix] = useState({employees: false, users: false});
+  // N2: employee statuses that no longer match their dates are shown corrected at once and STORED by the server function
+  // employee_apply_date_rules when an authorized user (Admin, Assistant Engineer) is signed in.
+  const [deferredFix, setDeferredFix] = useState({employees: false});
   // N2: the write gate follows the signed-in profile (deactivation or deletion closes it too).
-  const signedInId = currentUser ? currentUser.id : null;
+  // The forced first-login change blocks everything: no data is read and nothing is written until it succeeds.
+  const signedInId = currentUser && !mustChangePassword(currentUser) ? currentUser.id : null;
   useEffect(() => { writeGate.signedIn = signedInId !== null; }, [signedInId]);
 
   // modals
@@ -1402,65 +1553,79 @@ function App() {
     tick(); const id = setInterval(tick, 1000); return () => clearInterval(id);
   }, []);
 
-  // ── Load from Supabase on mount (N1, data safety). A failed or empty read shows a failure screen and writes
-  //    nothing; a partial read loads what was read and keeps the rest read-only. Seeding happens ONLY in the local mock /
-  //    staging when staging-config.js explicitly sets seedEmptyDatabase: true, and never creates accounts.
+  // ── Applying what the server returned (shared by the first load, refreshes and Realtime)
+  function applyDataset(key, value) {
+    if (key === 'assets') setAssets(sortByAssetNum([...new Map((value || []).filter(a => !/^0/.test(String(a.num))).map(a => [a.num, {...a, plant: (a.plant || '').toUpperCase()}])).values()]));
+    else if (key === 'jobOrders') { setJobOrders(value); const maxN = value.length ? Math.max(...value.map(j => parseInt((j.jobNo || '').replace(/\D/g, '')) || 0)) : 0; setJoCounter(maxN > 0 ? maxN : 1000); }
+    else if (key === 'pm') setPM(value);
+    else if (key === 'employees') { const fixed = applyStatusFromDates(value); setEmployees(fixed); if (stableJson(fixed) !== stableJson(value)) setDeferredFix(f => ({...f, employees: true})); }
+    else if (key === 'customPlants') setCustomPlants(value);
+  }
+  async function loadUsers() {
+    const r = await serverCall('user_list');
+    if (!r.error && Array.isArray(r.data)) setUsers(r.data);
+    return !r.error;
+  }
+  // ── Load after sign-in (N1, data safety). A failed or empty read shows a failure screen and changes nothing; a partial
+  //    read loads what was read and keeps the rest read-only. Nothing is read before a valid session exists.
+  async function loadAll(me) {
+    setDbLoaded(false); setSyncStatus('loading'); isLoaded.current = false; writableKeys.clear(); setDeferredFix({employees: false});
+    const expected = datasetsFor(me);
+    const result = await readDatasets(me, expected);
+    if (!signedInRef.current) return;   // signed out meanwhile
+    const plan = planDataLoad(result, {expected});
+    if (plan.action === 'fail') { setLoadIssue({kind: plan.reason}); setSyncStatus('error'); setDbLoaded(true); return; }
+    plan.loaded.forEach(k => writableKeys.add(k));
+    expected.filter(k => !plan.loaded.includes(k)).forEach(k => applyDataset(k, []));   // shown EMPTY, never built-in data; read-only
+    plan.loaded.forEach(k => applyDataset(k, plan.values[k]));
+    if (plan.action === 'partial') setLoadIssue({kind: 'partial', keys: [...plan.missing, ...plan.invalid]});
+    await loadUsers();
+    isLoaded.current = true;
+    setSyncStatus('ok');
+    setDbLoaded(true);
+  }
+  // Re-reads datasets after a server change (the stored result, incl. server-assigned numbers). Returns {key: value}.
+  async function refresh(keys) {
+    const want = keys.filter(k => DATA_KEYS.includes(k) && datasetsFor(currentUser).includes(k));
+    const out = {};
+    if (want.length) {
+      const r = await readDatasets(currentUser, want);
+      if (!r.error) r.data.forEach(row => { if (Array.isArray(row.value) && writableKeys.has(row.key)) { applyDataset(row.key, row.value); out[row.key] = row.value; } });
+    }
+    if (keys.includes('users')) await loadUsers();
+    return out;
+  }
+  // The server is asked again who the signed-in user is: a deactivated, deleted or changed account takes effect here
+  // (the server already refuses its requests). Runs periodically, on focus and after a refusal.
+  // The own profile row (RLS: own row only). {profile} | {gone: true} (no active profile any more) | {error: true} (network)
+  async function loadProfile() {
+    try {
+      const {data: u, error: ue} = await sb.auth.getUser();
+      if (ue || !u || !u.user) return {gone: true};
+      const {data, error} = await sb.from('profiles').select('*').eq('user_id', u.user.id).maybeSingle();
+      if (error) return {error: true};
+      const p = profileFromRow(data);
+      return p && p.active ? {profile: p} : {gone: true};
+    } catch (_) { return {error: true}; }
+  }
+  async function recheckProfile() {
+    if (!signedInRef.current) return;
+    const r = await loadProfile();
+    if (!signedInRef.current) return;
+    if (r.gone) { handleLogout(true); addToast('Your account is no longer active. Please sign in again.', true); return; }
+    if (r.profile) setProfile(r.profile);
+  }
   useEffect(() => {
-    const fail = (reason, err) => { if (err) console.error('Supabase load error:', err); setLoadIssue({kind: reason}); setSyncStatus('error'); setUsersSettled(true); setDbLoaded(true); };
-    sb.from('app_data').select('*').then(result => {
-      const plan = planDataLoad(result, {envName: ENV.name, seedOptIn: ENV.name === 'staging' && !!(window.CMMS_STAGING_CONFIG && window.CMMS_STAGING_CONFIG.seedEmptyDatabase === true)});
-      if (plan.action === 'fail') { fail(plan.reason, result && result.error); return; }
-      if (plan.action === 'seed') {
-        DATA_KEYS.forEach(k => writableKeys.add(k));
-        const baseAssets = BASE_ASSETS.map(a => ({...a, plant: (a.plant||'').toUpperCase()}));
-        const deduped = [...new Map(baseAssets.map(a => [a.num, a])).values()];
-        setAssets(deduped); setJobOrders([]); setPM([]); setEmployees([]); setCustomPlants([...PLANTS].sort());
-        writeGate.seedAllowed = true;   // the only write before sign-in; dbSave accepts it in staging only
-        const seed = {seed: true};
-        dbSave('assets', deduped, seed); dbSave('jobOrders', [], seed); dbSave('pm', [], seed); dbSave('employees', [], seed); dbSave('customPlants', [...PLANTS].sort(), seed);
-        dbSave('users', [], seed);   // no accounts are created (staging users start empty, DATABASE.md)
-        writeGate.seedAllowed = false;
-        setUsersSettled(true);   // a fresh local database has no accounts
-      } else {
-        const map = plan.values;
-        plan.loaded.forEach(k => writableKeys.add(k));
-        // Datasets that could not be read are shown EMPTY (never built-in data) and stay read-only.
-        if (!('assets' in map)) setAssets([]);
-        if (!('jobOrders' in map)) setJobOrders([]);
-        if (!('customPlants' in map)) setCustomPlants([]);
-        if (plan.action === 'partial') setLoadIssue({kind: 'partial', keys: [...plan.missing, ...plan.invalid]});
-        if ('assets' in map) {
-          const raw = map.assets;
-          const cleaned = sortByAssetNum([...new Map(
-            raw.filter(a => !/^0/.test(String(a.num)))
-               .map(a => [a.num, {...a, plant:(a.plant||'').toUpperCase()}])
-          ).values()]);
-          setAssets(cleaned);   // N1: no write-back before sign-in; the cleaned list is stored with the next asset save
-        }
-        if ('jobOrders' in map) { const jos=map.jobOrders; setJobOrders(jos); if(jos.length){const maxN=Math.max(...jos.map(j=>parseInt((j.jobNo||'').replace(/\D/g,''))||0)); if(maxN>0) setJoCounter(maxN);} }
-        if ('pm' in map) setPM(map.pm);
-        if ('employees' in map) {   // statuses follow leave/off-site dates: shown at once, STORED only after an authorized sign-in (N2)
-          const fixed=applyStatusFromDates(map.employees); setEmployees(fixed);
-          if (stableJson(fixed) !== stableJson(map.employees)) setDeferredFix(f => ({...f, employees: true}));
-        }
-        if ('users' in map && map.users.length) {
-          const rawUsers = map.users;
-          const needsMigration = rawUsers.some(u => u.password && !/^[0-9a-f]{64}$/.test(u.password));
-          if (needsMigration) {
-            Promise.all(rawUsers.map(async u => ({...u, password: await hashPwd(u.password)})))   // hashed in memory; stored after an Admin signs in (N2)
-              .then(hashed => { usersFromDb.current = true; setUsers(hashed); setDeferredFix(f => ({...f, users: true})); setUsersSettled(true); }, () => setUsersSettled(true));
-          } else { usersFromDb.current = true; setUsers(rawUsers); setUsersSettled(true); }
-        } else setUsersSettled(true);   // no readable accounts: nobody can sign in or be restored
-        if ('customPlants' in map) setCustomPlants(map.customPlants);
-      }
-      isLoaded.current = true;
-      setSyncStatus('ok');
-      setDbLoaded(true);
-    }, err => fail('failed', err));
-  }, []);
+    if (!signedInId) return;
+    const id = setInterval(recheckProfile, 60000);
+    const onFocus = () => { recheckProfile(); if (isDeptUser(currentUser)) refresh(['assets', 'jobOrders']); };   // DU lists are not pushed by Realtime
+    window.addEventListener('focus', onFocus);
+    return () => { clearInterval(id); window.removeEventListener('focus', onFocus); };
+  }, [signedInId, currentUser && currentUser.role]);
 
-  // ── Real-time sync via Supabase
+  // ── Real-time sync via Supabase (signed in only; the server sends only what this user may read)
   useEffect(() => {
+    if (!signedInId || !sb) return;
     const ch = sb.channel('cmms_sync')
       .on('postgres_changes', {event:'*', schema:'public', table:'app_data'}, ({new:row}) => {
         if (isResetting.current) return; // block stale broadcasts during/after reset
@@ -1473,50 +1638,55 @@ function App() {
           if (!Object.keys(pendingSaves.current).length) { clearTimeout(saveTimer.current); setSyncStatus('error'); }
           addToast(`⚠ Someone else changed ${DATA_LABELS[row.key] || row.key} while your change was waiting to be saved. Your change was NOT saved; the latest data is shown. Please make it again.`, true);
         }
-        if (row.key==='assets')        setAssets(sortByAssetNum([...new Map((row.value||[]).filter(a=>!/^0/.test(String(a.num))).map(a=>[a.num,a])).values()]));
-        else if (row.key==='jobOrders')    setJobOrders(row.value);
-        else if (row.key==='pm')           setPM(row.value);
-        else if (row.key==='employees')    { const fixed = applyStatusFromDates(row.value); setEmployees(fixed); if (stableJson(fixed) !== stableJson(row.value)) setDeferredFix(f => ({...f, employees: true})); }
-        else if (row.key==='users')        { usersFromDb.current = true; setUsers(row.value); }
-        else if (row.key==='customPlants') setCustomPlants(row.value);
+        applyDataset(row.key, row.value);
       })
       .subscribe();
-    return () => sb.removeChannel(ch);
+    return () => { sb.removeChannel(ch); };
+  }, [signedInId]);
+  // A session that ends on the server side (expired, revoked) signs the app out.
+  useEffect(() => {
+    if (!sb) return;
+    const {data} = sb.auth.onAuthStateChange(event => {
+      if (event === 'SIGNED_OUT' && signedInRef.current && !reauthRef.current) { handleLogout(true); addToast('Your session has ended. Please sign in again.', true); }
+    });
+    return () => { try { data.subscription.unsubscribe(); } catch(_) {} };
   }, []);
 
-  // ── Phase 2B-4: when the signed-in user's authorization changes (role, scope, status, forced change), nothing opened under
-  //    the previous authorization stays open: App-level forms close and a page the new role cannot see falls back to the
-  //    dashboard. The page area is also re-mounted (key below), which clears page-local state (tabs, dialogs, notices).
-  const authzKey = authzFingerprint(currentUser);
+  // ── Session restore (2026-10-17): ONE attempt per page load. The stored session is only a candidate: the server must
+  //    still know the account as active (own profile row); otherwise it is discarded. Role, scope and the forced-change flag
+  //    come from that fresh profile, never from storage. A network failure keeps the stored session (a reload retries) and
+  //    shows the sign-in form with a message; a slow server shows the sign-in form after RESTORE_MAX_MS.
   useEffect(() => {
-    setAssetModal(null); setJoModal(null); setJoViewModal(null); setAssetImport(null);
-    if (currentUser && !can(currentUser, PAGE_CAP[page])) setPage('dashboard');
-  }, [authzKey]);
-
-  // ── Tab session: after the users have been read, one attempt to restore this tab's sign-in (see TAB SESSION). While it
-  //    runs, `restoring` keeps the sign-in form hidden; it always ends (restored, refused, users unavailable or timeout).
-  const restoreTried = useRef(false);
-  useEffect(() => {
-    if (restoreTried.current || !restoring) return;
-    if (auth.status === 'signed-in' || !authAdapter) { restoreTried.current = true; setRestoring(false); return; }
-    if (!dbLoaded || !usersSettled) return;
-    restoreTried.current = true;
-    const tok = readTabSession();
-    if (!tok || !usersFromDb.current) { setRestoring(false); return; }   // nothing to restore / accounts not readable
-    verifyTabSession(tok, users, sha256Hex).then(u => {
-      if (!u) clearTabSession();
-      else setAuth(Object.freeze({status: 'signed-in', subject: Object.freeze({id: u.id, username: u.username}), adapter: authAdapter.name, env: authAdapter.env, since: new Date().toISOString()}));
-      setRestoring(false);
-    }, () => setRestoring(false));
-  }, [dbLoaded, usersSettled, users, restoring]);
-  useEffect(() => {   // a slow or unreachable database never leaves the restoring screen up for good
     if (!restoring) return;
-    const id = setTimeout(() => { if (!restoreTried.current) { restoreTried.current = true; setRestoring(false); } }, RESTORE_MAX_MS);
-    return () => clearTimeout(id);
-  }, [restoring]);
+    let done = false;
+    const finish = () => { if (!done) { done = true; setRestoring(false); } };
+    const timer = setTimeout(() => { if (!done && !signedInRef.current) { finish(); addToast('Your session could not be restored in time. Please sign in again.', true); } }, RESTORE_MAX_MS);
+    (async () => {
+      let session = null;
+      try { const r = await sb.auth.getSession(); session = r && r.data ? r.data.session : null; } catch (_) { session = null; }
+      if (done) return;
+      if (!session) { finish(); return; }                       // nothing valid stored (expired or revoked refresh token)
+      writeGate.signedIn = true;                                  // the profile read needs the session (as in handleLogin)
+      const p = await loadProfile();
+      if (done) return;
+      if (!p.profile) {
+        writeGate.signedIn = false;
+        if (p.gone) { try { await sb.auth.signOut({scope: 'local'}); } catch (_) {} }   // deactivated/deleted/revoked: discard
+        else addToast('Your session could not be restored: the server could not be reached. Please sign in again or reload.', true);
+        finish(); return;
+      }
+      signedInRef.current = true;
+      setLoadIssue(null);
+      setProfile(p.profile);
+      setAuth(signedInState(authAdapter, p.profile));
+      if (!mustChangePassword(p.profile)) loadAll(p.profile);
+      finish();
+    })();
+    return () => clearTimeout(timer);
+  }, []);
 
-  // ── Page route (2026-10-17): the address shows the current page while signed in (refresh / direct link keep it); a page
-  //    the user may not see falls back to the dashboard. Signed out, the address is left as requested.
+  // ── Page route: the address shows the current page while signed in (refresh / direct link keep it); a page the user may
+  //    not see falls back to the dashboard. Signed out, the address is left as requested (the page opens after sign-in).
   useEffect(() => {
     if (!currentUser) return;
     const h = hashForPage(page);
@@ -1531,16 +1701,17 @@ function App() {
     if (currentUser && !can(currentUser, PAGE_CAP[page])) setPage('dashboard');
   }, [page, authzFingerprint(currentUser)]);
 
-  // ── While signed in, the subject must still exist and be active in the stored users (deactivated/deleted elsewhere).
-  //    Role and section changes need no action: the profile is re-read from the users on every render.
+  // ── Phase 2B-4: when the signed-in user's authorization changes (role, scope, status), nothing opened under the
+  //    previous authorization stays open: App-level forms close and a page the new role cannot see falls back to the
+  //    dashboard. The page area is also re-mounted (key below), which clears page-local state (tabs, dialogs, notices).
+  const authzKey = authzFingerprint(currentUser);
   useEffect(() => {
-    if (auth.status !== 'signed-in' || !dbLoaded || !usersFromDb.current) return;
-    if (!profileFor(auth, users)) { handleLogout(true); addToast('Your account is no longer active. Please sign in again.', true); }
-  }, [users, dbLoaded, auth]);
+    setAssetModal(null); setJoModal(null); setJoViewModal(null); setAssetImport(null);
+    if (currentUser && !can(currentUser, PAGE_CAP[page])) setPage('dashboard');
+  }, [authzKey]);
 
-  // ── Saves (N1). Asset and job-order changes go through one debounced queue that writes ONLY the dataset(s) that changed
-  //    (previously every change rewrote both). A failed write is reported by dataset name and never shown as saved.
-  //    No dataset is copied to browser storage.
+  // ── Saves (N1). Asset changes go through one debounced queue (whole-list UPDATE of the changed dataset only); PM and
+  //    category lists are saved at once. A failed write is reported by dataset name and never shown as saved.
   const pendingSaves = useRef({});
   const unsavedMsg = keys => `⚠ Not saved: ${keys.map(k => DATA_LABELS[k] || k).join(', ')}. The change is shown on this screen but is NOT stored. Reload and try again.`;
   const runBatch = useCallback(async () => {   // writes everything waiting; reports per dataset
@@ -1551,7 +1722,8 @@ function App() {
     const errs = await Promise.all(keys.map(k => dbSave(k, batch[k])));   // dbSave checks the write gate synchronously, at call time
     const failed = keys.filter((k, i) => errs[i]);
     setSyncStatus(failed.length ? 'error' : 'ok');
-    if (failed.length) addToast(unsavedMsg(failed), true);
+    // A refused save may mean the account was deactivated or changed elsewhere: re-read it (signs out a deactivated user).
+    if (failed.length) { addToast(unsavedMsg(failed), true); recheckProfile(); }
     else addToast('✓ Saved');
   }, []);
   const queueSave = useCallback((key, value) => {
@@ -1561,138 +1733,230 @@ function App() {
     setSyncStatus('saving');
     saveTimer.current = setTimeout(runBatch, 800);
   }, []);
-  // Immediate save of one dataset (PM, employees, categories, users), with a visible error on failure.
+  // Immediate save of one whole list (PM, categories), with a visible error on failure.
   function saveNow(key, next) { return dbSave(key, next).then(e => { if (e) { setSyncStatus('error'); addToast(unsavedMsg([key]), true); } return e; }); }
-
-  // ── N2: deferred load-time corrections. Written once, by the first signed-in user allowed to make them (employee
-  //    statuses: emp.statusUpdate = Admin, AE; user password hashing: users.admin = Admin). Until then the corrected
-  //    values are only shown. Not retried automatically after a failure.
-  useEffect(() => {
-    if (!currentUser) return;
-    if (deferredFix.employees && can(currentUser,'emp.statusUpdate') && writableKeys.has('employees')) {
-      setDeferredFix(f => ({...f, employees: false}));
-      setEmployees(prev => { const next = applyStatusFromDates(prev); saveNow('employees', next); return next; });
+  // A checked server operation that changes `keys`. The screen then shows what the server stored. On a refusal the
+  // server's reason is shown (permission or validation) and nothing changes.
+  async function serverChange(fn, args, keys, okMsg) {
+    if (keys.some(k => DATA_KEYS.includes(k) && !writableKeys.has(k))) { addToast(unsavedMsg(keys.filter(k => DATA_KEYS.includes(k))), true); return null; }
+    setSyncStatus('saving');
+    const r = await serverCall(fn, args);
+    if (r.error) {
+      setSyncStatus('error');
+      addToast(r.error.kind === 'denied' ? MSG_NO_PERMISSION : r.error.kind === 'invalid' && r.error.message ? r.error.message : unsavedMsg(keys.filter(k => DATA_KEYS.includes(k) || k === 'users')), true);
+      if (r.error.kind === 'denied') recheckProfile();
+      await refresh(keys);
+      return null;
     }
-    if (deferredFix.users && can(currentUser,'users.admin') && writableKeys.has('users')) {
-      setDeferredFix(f => ({...f, users: false}));
-      saveNow('users', users);   // the in-memory list already holds hashes instead of plaintext
-    }
-  }, [signedInId, currentUser && currentUser.role, deferredFix.employees, deferredFix.users]);
-
-  // ── Auth & User management
-  function persistUsers(next) {
-    saveNow('users', next);   // N1: no browser copy of the users list
+    const fresh = await refresh(keys);
+    setSyncStatus('ok');
+    if (okMsg) addToast(typeof okMsg === 'function' ? okMsg(r.data) : okMsg);
+    return {data: r.data, fresh};
   }
 
-  // Returns {ok:true} or {ok:false, reason:'invalid'|'unavailable', message?}. Sign-in needs users loaded from the backend:
-  // never the built-in defaults and never another environment's data.
+  // ── N2: deferred load-time correction of employee statuses, stored by the server for an authorized user only.
+  useEffect(() => {
+    if (!currentUser || !deferredFix.employees || !can(currentUser,'emp.statusUpdate') || !writableKeys.has('employees')) return;
+    setDeferredFix(f => ({...f, employees: false}));
+    serverCall('employee_apply_date_rules').then(r => { if (r.error) addToast(unsavedMsg(['employees']), true); else refresh(['employees']); });
+  }, [signedInId, currentUser && currentUser.role, deferredFix.employees, dbLoaded]);
+
+  // ── Auth & user management
+  // Returns {ok:true} or {ok:false, reason:'invalid'|'unavailable', message?}. Supabase Auth checks the password; the app
+  // then reads the server profile; data is read only after a forced change (if any) has been completed.
   async function handleLogin(loginId, password) {
-    const r = await authVerify({adapter: authAdapter, loginId, password, users, usersLoaded: usersFromDb.current, hashFn: sha256Hex});
-    if (r.ok) {
-      const u = users.find(x => x && x.id === r.state.subject.id && x.username === r.state.subject.username);
-      if (u) writeTabSession(await makeTabSession(u, sha256Hex));   // refresh keeps this sign-in (same tab only)
-      setPage(() => { try { return pageFromHash(window.location.hash) || 'dashboard'; } catch (_) { return 'dashboard'; } });   // a requested page opens after sign-in
-      setAuth(r.state); return {ok: true};
+    if (!authAdapter || !sb || !envReady) return {ok: false, reason: 'unavailable', message: 'Sign-in is not available in this environment.'};
+    if (!SIGN_IN_DOMAIN) return {ok: false, reason: 'unavailable', message: SIGN_IN_NOT_CONFIGURED};
+    const email = signInEmailFor(loginId, SIGN_IN_DOMAIN);
+    if (!email || typeof password !== 'string' || !password) return {ok: false, reason: 'invalid', message: SIGN_IN_FAILED};   // no request at all
+    let r;
+    try { r = await sb.auth.signInWithPassword({email, password}); } catch (_) { r = null; }
+    const out = signInOutcome(r);
+    if (!out.ok) return out;
+    writeGate.signedIn = true;   // the profile read below needs the session; the effect keeps the gate in step afterwards
+    const p = await loadProfile();
+    if (!p.profile) {
+      writeGate.signedIn = false;
+      try { await sb.auth.signOut({scope: 'local'}); } catch(_) {}
+      return p.error ? {ok: false, reason: 'unavailable', message: SIGN_IN_UNREACHABLE} : {ok: false, reason: 'invalid', message: SIGN_IN_FAILED};
     }
-    return r;
+    signedInRef.current = true;
+    setLoadIssue(null);
+    setProfile(p.profile);
+    setPage(() => { try { return pageFromHash(window.location.hash) || 'dashboard'; } catch (_) { return 'dashboard'; } });   // a requested page (e.g. after an expired session) opens after sign-in
+    setAuth(signedInState(authAdapter, p.profile));
+    if (!mustChangePassword(p.profile)) loadAll(p.profile);
+    return {ok: true};
   }
 
   function handleLogout(forced) {
-    // N2: a normal sign-out first writes what is waiting; a forced one (account deactivated or deleted) discards it.
+    // N2: a normal sign-out first writes what is waiting; a forced one (account deactivated, session ended) discards it.
+    let pending = Promise.resolve();
     if (forced === true) { clearTimeout(saveTimer.current); const k = Object.keys(pendingSaves.current); pendingSaves.current = {}; if (k.length) addToast(unsavedMsg(k), true); }
-    else runBatch();
+    else pending = runBatch();
     writeGate.signedIn = false;
-    clearTabSession();   // logout (normal or forced) ends the tab session
-    setAuth(AUTH_SIGNED_OUT);
+    signedInRef.current = false;
+    // ends the session on the server too (every session of this user), then makes sure this tab keeps nothing stored
+    pending.finally(() => { if (sb) sb.auth.signOut().catch(() => {}).finally(() => TAB_STORAGE.removeItem(AUTH_STORAGE_KEY)); else TAB_STORAGE.removeItem(AUTH_STORAGE_KEY); });
+    setAuth(AUTH_SIGNED_OUT); setProfile(null); setUsers([]);
+    // nothing read under the session stays in memory
+    setAssets([]); setJobOrders([]); setPM([]); setEmployees([]); setCustomPlants([]);
+    writableKeys.clear(); isLoaded.current = false; setDbLoaded(false); setLoadIssue(null); setDeferredFix({employees: false});
     setAssetModal(null); setJoModal(null); setJoViewModal(null); setAssetImport(null);   // nothing opened by this user survives
     setPage('dashboard'); setMobileNav(false);
-    // A normal logout clears the page from the address (the next sign-in starts on the dashboard); after a FORCED one
-    // (account deactivated or deleted) it is kept.
+    // A normal logout clears the page from the address (the next sign-in starts on the dashboard); after a FORCED one (session
+    // ended, account changed) it is kept, so signing in again returns to the same page.
     try { if (forced !== true && window.location.hash) history.replaceState(null, '', window.location.pathname + window.location.search); } catch(_) {}
     try { localStorage.removeItem(SESSION_KEY); } catch(_) {}
   }
 
-  async function saveUser(user, editId) {
-    if (!allow(can(currentUser,'users.admin') || (!!editId && !!currentUser && editId === currentUser.id && can(currentUser,'profile.edit')))) return;
-    if (can(currentUser,'users.admin')) {
-      const err = validateUserRecord(user, assetCategories, {users, editId: editId || undefined, isNew: !editId});
-      if (err) { addToast(err, true); return; }
-      if (!editId && !(typeof user.password === 'string' && user.password !== '')) { addToast('A password is required for new accounts.', true); return; }
-      // A password the Admin sets (new account or reset) follows the same policy as an own change (2026-10-17).
-      if (typeof user.password === 'string' && user.password !== '') { const pe = validatePassword(user.password); if (pe) { addToast(pe, true); return; } }
-      user = normalizeUserRecord(user);
-      if (typeof user.email === 'string') user = {...user, email: user.email.trim()};
-    } else {
-      // Own profile (name and email only): a changed email must be valid and not used by another account.
-      const err = validateUserRecord({...currentUser, email: user.email}, assetCategories, {users, editId});
-      if (err) { addToast(err, true); return; }
-    }
-    const hashedPwd = user.password && can(currentUser,'users.admin') ? await sha256Hex(user.password) : null;   // own password: Change Password only
-    setUsers(prev => {
-      let next;
-      if (editId) {
-        const existing = prev.find(u => u.id === editId);
-        // Without users.admin only the own name, email and password may change (fixes S4; FEATURE_PLAN §6.1 ★).
-        const base = can(currentUser,'users.admin') ? user : {...existing, fullName: user.fullName, email: user.email};
-        const updated = {...base, id: editId, password: hashedPwd || existing.password};
-        next = prev.map(u => u.id === editId ? updated : u);
-      } else {
-        const newId = Math.max(0, ...prev.map(u => u.id)) + 1;
-        next = [...prev, {...user, id: newId, password: hashedPwd}];
-      }
-      persistUsers(next);
-      return next;
-    });
-    addToast(editId ? 'User updated.' : 'User added.');
-  }
-
-  // Own password change. Verifies the current password with a plain SHA-256 (no hash passthrough) and changes ONLY `password`.
+  // Own password change (also the forced first-login change): the server verifies the current password, stores the new
+  // one in Supabase Auth and clears the forced-change flag only after success.
   async function changeOwnPassword(currentPw, newPw) {
-    if (!allow(!!currentUser && can(currentUser,'profile.password'))) return false;
-    const me = users.find(u => u.id === currentUser.id && u.username === currentUser.username);
-    if (!me) { addToast('Your account was not found.', true); return false; }
-    if (typeof currentPw !== 'string' || (await sha256Hex(currentPw)) !== me.password) { addToast('The current password is incorrect.', true); return false; }
+    if (!allow(!!currentUser && can(currentUser,'profile.password') && FORCED_CHANGE_ALLOWED)) return false;
+    if (typeof currentPw !== 'string' || !currentPw) { addToast('The current password is incorrect.', true); return false; }
     const err = validateNewPassword(newPw, currentPw);
     if (err) { addToast(err, true); return false; }
-    const hashed = await sha256Hex(newPw);
-    // Only the hash changes, and only once the save has succeeded.
-    const updatedMe = {...me, password: hashed};
-    const next = users.map(u => u.id === me.id ? updatedMe : u);
-    const saveErr = await dbSave('users', next);
-    if (saveErr) { addToast('Your password was not changed: it could not be saved. Please try again.', true); return false; }
-    setUsers(prev => prev.map(u => u.id === me.id ? updatedMe : u));
-    writeTabSession(await makeTabSession(updatedMe, sha256Hex));   // own change: this tab stays signed in after a refresh
+    const res = await serverFunction('complete-password-change', {currentPassword: currentPw, newPassword: newPw});
+    if (res.status !== 200) {
+      addToast(res.status === 0 || res.status >= 500 ? 'Your password was not changed: it could not be saved. Please try again.' : accountError(res, 'Your password was not changed.'), true);
+      return false;
+    }
+    const wasForced = mustChangePassword(currentUser);
+    // Signed out while the change ran (a session check met the ended session, or the user signed out): stay signed out.
+    if (!signedInRef.current) { addToast('Your password was changed. Sign in with your new password.'); return true; }
+    // The server sets the password with the Auth admin API, and Supabase Auth then ends EVERY session of the account, this
+    // tab's too (GoTrue UpdatePassword → Logout; seen on staging 2026-10-24). Sign this tab in again at once with the new
+    // password, so the user stays in the application; the SIGNED_OUT of the ended session is expected meanwhile.
+    reauthRef.current = true;
+    let again = false;
+    try {
+      const email = signInEmailFor(currentUser.employeeId, SIGN_IN_DOMAIN);
+      const r = email ? await sb.auth.signInWithPassword({email, password: newPw}) : null;
+      again = !!(r && !r.error && r.data && r.data.session);
+    } catch (_) { again = false; }
+    reauthRef.current = false;
+    // Signed out while signing in again: the new session must not survive the sign-out (it ends here and on the server).
+    if (again && !signedInRef.current) { try { await sb.auth.signOut({scope: 'local'}); } catch (_) {} TAB_STORAGE.removeItem(AUTH_STORAGE_KEY); return true; }
+    if (!again) { handleLogout(true); addToast('Your password was changed. Please sign in again with your new password.'); return true; }
+    const p = await loadProfile();
+    if (!signedInRef.current) return true;   // signed out meanwhile: nothing is shown or loaded
+    if (p.profile) { setProfile(p.profile); if (wasForced && !mustChangePassword(p.profile)) loadAll(p.profile); }
     addToast('Password changed.');
     return true;
   }
 
-  // Phase 2B-2, LOCAL DEVELOPMENT ONLY: reset an account to a generated temporary password and force a change at the next
-  // sign-in. Only password + flag change; role, section, department, status and all references stay. The plaintext is
-  // returned once for display and is never stored, logged or sent anywhere.
+  // Account administration (Admin): the admin-users Edge Function (service role) after its own Admin check. New accounts
+  // and resets get a server-generated temporary password, returned ONCE for the Admin to deliver (decision D5); the user
+  // must change it at the first sign-in. Accounts are never deleted (job orders reference them): they are deactivated.
+  // A refusal shows the server's reason; a network or server failure names what did not happen (the operation's own message).
+  const accountError = (res, fallback) => res.status === 403 ? MSG_NO_PERMISSION : res.status === 0 || res.status >= 500 ? fallback
+    : (res.body && typeof res.body.error === 'string' ? res.body.error : fallback);
+  const accountFields = u => ({fullName: u.fullName, role: u.role, department: u.role === 'Department User' ? u.department : null,
+    assignedCategories: u.role === 'Department User' ? u.assignedCategories : null, section: u.role === 'Job Card Editor' ? u.section : null});
+  async function saveUser(user, editId) {
+    if (!allow(can(currentUser,'users.admin') || (!!editId && !!currentUser && editId === currentUser.id && can(currentUser,'profile.edit')))) return null;
+    if (can(currentUser,'users.admin') && !(editId && currentUser && editId === currentUser.id)) {
+      const err = validateUserRecord(user, assetCategories, {users, editId, isNew: !editId});
+      if (err) { addToast(err, true); return null; }
+      user = normalizeUserRecord(user);
+      setSyncStatus('saving');
+      let res;
+      if (!editId) {
+        res = await serverFunction('admin-users', {action: 'create', employeeId: user.employeeId, username: user.username || null, active: user.active !== false,
+          recoveryEmail: user.recoveryEmail || null, ...accountFields(user)});
+      } else {
+        const target = users.find(u => u.id === editId);
+        if (!target || !target.userId) { setSyncStatus('error'); addToast('Account not found.', true); return null; }
+        res = await serverFunction('admin-users', {action: 'update', userId: target.userId, ...accountFields(user),
+          ...(user.recoveryEmail && user.recoveryEmail !== target.recoveryEmail ? {recoveryEmail: user.recoveryEmail} : {})});
+        if (res.status === 200 && (user.active !== false) !== (target.active !== false))
+          res = await serverFunction('admin-users', {action: 'set_active', userId: target.userId, active: user.active !== false});
+      }
+      await loadUsers();
+      if (res.status !== 200) { setSyncStatus('error'); addToast(accountError(res, unsavedMsg(['users'])), true); return null; }
+      setSyncStatus('ok');
+      addToast(editId ? 'User updated.' : 'User added. Give the temporary password to the user: it is shown only once.');
+      return editId ? null : {temporaryPassword: res.body.temporaryPassword, name: user.fullName};
+    }
+    // Own account (also an Admin's own record): only the own name may change here (S4); the server enforces the same.
+    const r = await serverChange('profile_update_self', {p_full_name: user.fullName}, ['users']);
+    if (r) { await recheckProfile(); addToast('User updated.'); }
+    return null;
+  }
+  // Admin: a new temporary password for another account (forced change at its next sign-in; its sessions end).
+  async function resetUserPassword(id) {
+    if (!allow(can(currentUser,'users.admin'))) return null;
+    const target = users.find(u => u.id === id);
+    if (!target || !target.userId) { addToast('Account not found.', true); return null; }
+    if (currentUser && target.id === currentUser.id) { addToast('Use Change Password for your own account.', true); return null; }
+    const res = await serverFunction('admin-users', {action: 'reset_password', userId: target.userId});
+    await loadUsers();
+    if (res.status !== 200) { addToast(accountError(res, 'The password was not reset.'), true); return null; }
+    addToast('Temporary password generated. The user must change it at the next sign-in.');
+    return res.body.temporaryPassword;
+  }
+  // Send the confirmation mail again to an account's CURRENT, unconfirmed recovery address (e.g. a provisioned account, which
+  // received none). Nothing about the account changes; the server checks the Admin, the account and a per-account limit.
+  async function resendVerification(id) {
+    if (!allow(can(currentUser,'users.admin'))) return false;
+    const target = users.find(u => u.id === id);
+    if (!target || !target.userId) { addToast('Account not found.', true); return false; }
+    const res = await serverFunction('admin-users', {action: 'resend_verification', userId: target.userId});
+    if (res.status !== 200) { addToast(accountError(res, 'The confirmation email was not sent.'), true); return false; }
+    addToast('Confirmation email sent. The user must open the link in it to confirm the address.');
+    return true;
+  }
+  // Deactivate (accounts are kept: job orders reference their numeric id).
   function deleteUser(id) {
     if (!allow(can(currentUser,'users.admin'))) return;
-    if (currentUser && currentUser.id === id) { addToast('Cannot delete your own account.', true); return; }
-    setUsers(prev => {
-      const next = prev.filter(u => u.id !== id);
-      persistUsers(next);
-      return next;
+    if (currentUser && currentUser.id === id) { addToast('Cannot deactivate your own account.', true); return; }
+    const target = users.find(u => u.id === id);
+    if (!target || !target.userId) { addToast('Account not found.', true); return; }
+    serverFunction('admin-users', {action: 'set_active', userId: target.userId, active: false}).then(async res => {
+      await loadUsers();
+      if (res.status !== 200) { addToast(accountError(res, unsavedMsg(['users'])), true); return; }
+      addToast('User deactivated. The account can no longer sign in; its job orders keep their references.');
     });
-    addToast('User deleted.');
   }
 
-  // ── Permission guard for user actions (FEATURE_PLAN §12.2; load-time writes are not gated)
+  // ── Recovery links (only while signed out). A reset link sets a new password through complete-recovery, which also
+  //    clears a pending forced change; the link's session is ended afterwards and the user signs in normally.
+  async function completeRecovery(newPw) {
+    if (!link || link.kind !== 'recovery' || link.error) return {ok: false, message: 'This link is not valid any more. Request a new one.'};
+    const err = validatePassword(newPw);
+    if (err) return {ok: false, message: err};
+    try {
+      const {error} = await sb.auth.setSession({access_token: link.accessToken, refresh_token: link.refreshToken});
+      if (error) return {ok: false, message: 'This link is not valid any more. Request a new one.'};
+    } catch (_) { return {ok: false, message: 'The server could not be reached. Try again.'}; }
+    const res = await serverFunction('complete-recovery', {newPassword: newPw});
+    try { await sb.auth.signOut({scope: 'local'}); } catch (_) {}
+    if (res.status !== 200) return {ok: false, message: res.status === 400 && res.body && res.body.error ? res.body.error : 'The password was not changed. Request a new link.'};
+    return {ok: true};
+  }
+  async function verifyRecoveryEmail() {
+    if (!link || link.kind !== 'verify-email' || !link.verifyToken) return {ok: false};
+    const res = await serverFunction('verify-recovery-email', {token: link.verifyToken});
+    return {ok: res.status === 200};
+  }
+
+  // ── Permission guard for user actions (FEATURE_PLAN §12.2). The server checks again; this avoids pointless requests.
+  // While a forced password change is pending, every guarded action is refused except the own password change, whose
+  // condition evaluates to the FORCED_CHANGE_ALLOWED marker.
   function allow(ok) {
-    if (ok) return true; addToast('You do not have permission for this action.', true); return false;
+    if (mustChangePassword(currentUser) && ok !== FORCED_CHANGE_ALLOWED) { addToast('Change your temporary password first.', true); return false; }
+    if (ok) return true; addToast(MSG_NO_PERMISSION, true); return false;
   }
 
   // ── Toast
   function addToast(msg, err=false) {
-    const id = Date.now();
+    const id = Date.now() + Math.random();
     setToasts(t => [...t, {id, msg, err}]);
     setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3200);
   }
 
-  // ── Asset mutations
+  // ── Asset mutations (whole-list save; Admin / Assistant Engineer, enforced by the database)
   function updateAssetStatus(num, status) {
     if (!allow(can(currentUser,'asset.status'))) return;
     const normStatus = status.toUpperCase().replace('UNDER MAINT.','UNDER MAINTENANCE');
@@ -1722,72 +1986,51 @@ function App() {
     setAssetModal(null);
   }
 
-  // ── JO mutations
-  function saveJO(jo, editJobNo) {
+  // ── JO mutations: each one is a checked server function (backend/sql/0002_functions.sql)
+  async function saveJO(jo, editJobNo) {
     if (!allow(editJobNo ? (can(currentUser,'jo.edit.request') || can(currentUser,'jo.edit.work')) : can(currentUser,'jo.create'))) return;
-    let nextJOs, nextCounter = joCounter;
     if (editJobNo) {
       const stored = jobOrders.find(j => j.jobNo===editJobNo);
       if (!allow(!!stored && mayEditJO(currentUser, stored))) return;
-      if (!(can(currentUser,'jo.edit.request') && can(currentUser,'jo.edit.work'))) {
-        if (can(currentUser,'jo.edit.work')) jo = {...stored, ...pickFields(jo, JO_WORK_FIELDS.filter(k => k !== 'section'))};   // Job Card Editor: sections 4-7 except Section Assigned
-        else {                                                                                           // Department User, own OPEN JO
-          jo = {...stored, ...pickFields(jo, JO_REQUEST_FIELDS), requester: stored.requester, dept: stored.dept};
-          const a = assets.find(x => x.num === jo.assetNum);
-          if (!allow(!!a && canSeeAsset(currentUser, a))) return;
-          if (jo.repairType !== DU_REPAIR_TYPE) { addToast('Department Users can only raise Unplanned repairs.', true); return; }
-        }
+      if (isDeptUser(currentUser)) {                                                                     // Department User, own OPEN JO
+        const a = assets.find(x => x.num === (jo.assetNum || stored.assetNum));
+        if (!allow(!!a && canSeeAsset(currentUser, a))) return;
+        if (jo.repairType !== DU_REPAIR_TYPE) { addToast('Department Users can only raise Unplanned repairs.', true); return; }
       }
-      jo = withStoredFields(jo, stored, JO_CONTROL_FIELDS);       // status, closure and approval only change through their own actions
-      jo = resetApprovalIfChanged(stored, jo, currentUser);       // §4.3 / inv. 7
-      if (isApproved(stored) && !isApproved(jo)) addToast(`${editJobNo}: completion details changed — approval reset to pending.`, true);
-      nextJOs = jobOrders.map(j => j.jobNo===editJobNo ? jo : j);
-      addToast(`Job Order ${editJobNo} updated.`);
+      setJoModal(null);
+      const r = await serverChange('jo_update', {p_job_no: editJobNo, p_fields: jo}, ['jobOrders'], `Job Order ${editJobNo} updated.`);
+      const now = r && r.fresh.jobOrders && r.fresh.jobOrders.find(j => j.jobNo === editJobNo);
+      if (now && isApproved(stored) && !isApproved(now)) addToast(`${editJobNo}: completion details changed — approval reset to pending.`, true);
     } else {
       if (isDeptUser(currentUser)) {                                                                     // D5: restricted request form
         const a = assets.find(x => x.num === jo.assetNum);
         if (!allow(!!a && canSeeAsset(currentUser, a) && DEPARTMENTS.includes(currentUser.department))) return;
         if (jo.repairType !== DU_REPAIR_TYPE) { addToast('Department Users can only raise Unplanned repairs.', true); return; }
-        jo = {...jo, ...JO_WORK_BLANK, requester: currentUser.fullName, dept: currentUser.department, status: 'OPEN'};
       }
-      nextCounter = joCounter + 1;
-      setJoCounter(nextCounter);
-      jo = {...withStoredFields(jo, {}, JO_CONTROL_FIELDS), status: 'OPEN', jobNo: `JO-${nextCounter}`, requesterId: currentUser.id};
-      nextJOs = [...jobOrders, jo];
-      addToast(`Job Order ${jo.jobNo} saved.`);
+      setJoModal(null);
+      await serverChange('jo_create', {p_jo: jo}, ['jobOrders'], jobNo => `Job Order ${jobNo} saved.`);
     }
-    setJobOrders(nextJOs);
-    queueSave('jobOrders', nextJOs);
-    setJoModal(null);
   }
 
-  function updateJOStatus(jobNo, status, assignment) {
+  async function updateJOStatus(jobNo, status, assignment) {
     if (!allow((status==='IN PROGRESS' ? can(currentUser,'jo.start') : status==='COMPLETED' ? can(currentUser,'jo.complete') : false) && canSeeJO(currentUser, (jobOrders.find(j => j.jobNo===jobNo))))) return;
     const from = {'IN PROGRESS':'OPEN', 'COMPLETED':'IN PROGRESS'}[status];
     const cur = jobOrders.find(j => j.jobNo===jobNo);
     if (!cur || cur.status !== from) { addToast(`${jobNo}: ${cur ? cur.status : 'not found'} → ${status} is not a valid step.`, true); return; }
     if (!jceSectionAllows(currentUser, cur, status==='IN PROGRESS' ? 'start' : 'progress')) { addToast(`${jobNo} belongs to the ${cur.section || 'unassigned'} section. You can only work on ${currentUser.section || 'your own'} section job orders.`, true); return; }
-    // Starting work assigns it (owner decision 2026-10-11). A Job Card Editor assigns it to themselves; Admin/AE must choose an
-    // active Job Card Editor. Assignment and status change are ONE update and ONE save.
-    let assign = {};
+    // Starting work assigns it (owner decision 2026-10-11): a Job Card Editor takes it; Admin/AE choose an active Job Card
+    // Editor. Assignment and status change are ONE server step.
+    let assigneeId = null;
     if (status==='IN PROGRESS') {
       if (isJobCardEditor(currentUser)) {
-        const me = users.find(u => u.id === currentUser.id && u.username === currentUser.username);
-        if (!isEligibleEditor(me)) { addToast('Your Job Card Editor account needs an active status and a section before you can start work. Ask an Admin.', true); return; }
-        assign = {assignedTo: me.fullName, assignedToId: me.id, recvName: me.fullName, section: me.section};
+        if (!isEligibleEditor(currentUser)) { addToast('Your Job Card Editor account needs an active status and a section before you can start work. Ask an Admin.', true); return; }
       } else {
         const ed = assignment && users.find(u => u.id === assignment.assigneeId);
         if (!isEligibleEditor(ed)) { addToast(`${jobNo}: select an active Job Card Editor (with a section) to assign the work to before moving it to IN PROGRESS.`, true); return; }
-        assign = {assignedTo: ed.fullName, assignedToId: ed.id, recvName: currentUser.fullName, section: ed.section};
+        assigneeId = ed.id;
       }
     }
-    setJobOrders(prev => {
-      // Completing never approves: it opens a PENDING approval (§4.4 inv. 1)
-      const next = prev.map(j => j.jobNo!==jobNo || j.status!==from ? j : status==='COMPLETED' ? {...withoutApprover(j), status, approvalStatus:'PENDING'} : {...j, status, ...assign});
-      queueSave('jobOrders', next);
-      return next;
-    });
-    addToast(`${jobNo} → ${status}`);
+    await serverChange('jo_set_status', {p_job_no: jobNo, p_status: status, p_assignee_legacy_id: assigneeId}, ['jobOrders'], `${jobNo} → ${status}`);
   }
 
   function deleteAsset(num) {
@@ -1801,76 +2044,40 @@ function App() {
   }
   function clearAllAssets() {
     if (!allow(can(currentUser,'asset.clearAll'))) return;
-    setAssets([]);
-    queueSave('assets', []);
-    addToast('All assets cleared. You can now import a fresh list.');
+    clearTimeout(saveTimer.current); delete pendingSaves.current.assets;
+    serverChange('asset_clear_all', {p_confirm: 'DELETE ALL ASSETS'}, ['assets'], 'All assets cleared. You can now import a fresh list.');
   }
 
   function deleteJO(jobNo) {
     if (!allow(can(currentUser,'jo.delete') && canSeeJO(currentUser, (jobOrders.find(j => j.jobNo===jobNo))))) return;
-    setJobOrders(prev => {
-      const next = prev.filter(j => j.jobNo !== jobNo);
-      queueSave('jobOrders', next);
-      return next;
-    });
-    addToast(`${jobNo} deleted.`);
+    serverChange('jo_delete', {p_job_no: jobNo}, ['jobOrders'], `${jobNo} deleted.`);
   }
   // F5: approval and closing are two separate actions (§4.3). Role-based only (jo.approve / jo.close are non-grantable).
   function approveJO(jobNo) {
     if (!allow(can(currentUser,'jo.approve') && canSeeJO(currentUser, (jobOrders.find(j => j.jobNo===jobNo))))) return;
     if (!canApproveJO(jobOrders.find(j => j.jobNo===jobNo))) { addToast(`${jobNo}: only a COMPLETED job order that is not yet approved can be approved.`, true); return; }
-    const ev = approvalEvent(currentUser, 'APPROVED');
-    setJobOrders(prev => {
-      const next = prev.map(j => j.jobNo===jobNo && canApproveJO(j) ? {...j, approvalStatus:'APPROVED', approvedBy:ev.by, approvedById:ev.byId, approverDesignation:ev.designation, approvedAt:ev.at, approvalHistory:[...historyOf(j), ev]} : j);
-      queueSave('jobOrders', next);
-      return next;
-    });
-    addToast(`${jobNo} completion approved. It can now be closed.`);
+    serverChange('jo_approve', {p_job_no: jobNo}, ['jobOrders'], `${jobNo} completion approved. It can now be closed.`);
   }
   function closeJO(jobNo, closure) {
     if (!allow(can(currentUser,'jo.close') && canSeeJO(currentUser, (jobOrders.find(j => j.jobNo===jobNo))))) return;
     if (!canCloseJO(jobOrders.find(j => j.jobNo===jobNo))) { addToast(`${jobNo}: approve the completion before closing.`, true); return; }
     const closedDate = closure && /^\d{4}-\d{2}-\d{2}$/.test(closure.closedDate) ? closure.closedDate : '';
     if (!closedDate) { addToast('Please select the closed date.', true); return; }
-    const cev = approvalEvent(currentUser, 'CLOSED', '', {closedDate});   // `at` = automatic time of the action; closedDate = the date selected
-    setJobOrders(prev => {
-      const next = prev.map(j => j.jobNo===jobNo && canCloseJO(j) ? {...j, status:'CLOSED', closedBy:currentUser.fullName, closerDesignation:DESIGNATIONS[currentUser.role] || currentUser.role, closedDate, approvalHistory:[...historyOf(j), cev]} : j);
-      queueSave('jobOrders', next);
-      return next;
-    });
-    addToast(`${jobNo} closed.`);
+    serverChange('jo_close', {p_job_no: jobNo, p_closed_date: closedDate}, ['jobOrders'], `${jobNo} closed.`);
   }
   function revertJO(jobNo) {
     if (!allow(can(currentUser,'jo.revert') && canSeeJO(currentUser, (jobOrders.find(j => j.jobNo===jobNo))))) return;
     if ((jobOrders.find(j => j.jobNo===jobNo) || {}).status !== 'CLOSED') { addToast(`${jobNo}: only a CLOSED job order can be reverted.`, true); return; }
-    setJobOrders(prev => {
-      // §4.3: closure cleared, approval and approval history KEPT (legacy JOs have none, so they need approval again)
-      const rev = approvalEvent(currentUser, 'REVERTED', 'reverted to COMPLETED');
-      const next = prev.map(j => j.jobNo===jobNo && j.status==='CLOSED' ? {...j, status:'COMPLETED', closedBy:'', closerDesignation:'', closedDate:'', approvalHistory:[...historyOf(j), rev]} : j);
-      queueSave('jobOrders', next);
-      return next;
-    });
-    addToast(`${jobNo} reverted to COMPLETED.`);
+    serverChange('jo_revert', {p_job_no: jobNo}, ['jobOrders'], `${jobNo} reverted to COMPLETED.`);
   }
 
-  // ── Employees
+  // ── Employees: status updates (Admin, AE) and administration (Admin) are separate server functions
   const [employees, setEmployees] = useState(BASE_EMPLOYEES);
-  function persistEmployees(next) { saveNow('employees', next); }   // N1: no browser copy of employee data
   function saveEmployee(emp, editId) {
     if (!allow(can(currentUser,'emp.admin'))) return;
-    setEmployees(prev => {
-      let next;
-      if (editId) {
-        next = prev.map(e => e.empId===editId ? {...emp, empId:editId} : e);
-      } else {
-        next = [...prev, emp];
-      }
-      persistEmployees(next);
-      return next;
-    });
-    addToast(editId ? 'Employee updated.' : 'Employee added.');
+    serverChange('employee_save', {p_emp: emp, p_edit_id: editId || null}, ['employees'], editId ? 'Employee updated.' : 'Employee added.');
   }
-  // ── PM Schedule
+  // ── PM Schedule (whole-list save; Admin / Assistant Engineer, enforced by the database)
   const [pm, setPM] = useState(BASE_PM);
   function savePMItem(item, editId) {
     if (!allow(can(currentUser,'pm.edit'))) return;
@@ -1919,23 +2126,16 @@ function App() {
     });
   }
 
+  // Status fields + ONE new leave-history entry (the server appends it; history is append-only).
   function updateEmployeeStatus(empId, updates) {
     if (!allow(can(currentUser,'emp.statusUpdate'))) return;
-    setEmployees(prev => {
-      const next = prev.map(e => e.empId===empId ? {...e, ...updates} : e);
-      persistEmployees(next);
-      return next;
-    });
-    addToast('Employee record updated.');
+    const {leaveHistory, ...fields} = updates || {};
+    const entry = Array.isArray(leaveHistory) && leaveHistory.length ? leaveHistory[leaveHistory.length - 1] : null;
+    serverChange('employee_set_status', {p_emp_id: empId, p_updates: fields, p_entry: entry}, ['employees'], 'Employee record updated.');
   }
   function deleteEmployee(empId) {
     if (!allow(can(currentUser,'emp.admin'))) return;
-    setEmployees(prev => {
-      const next = prev.filter(e => e.empId !== empId);
-      persistEmployees(next);
-      return next;
-    });
-    addToast('Employee removed.');
+    serverChange('employee_delete', {p_emp_id: empId}, ['employees'], 'Employee removed.');
   }
   function importEmployeesFromData(newEmps) {
     if (!allow(can(currentUser,'emp.admin'))) return {added:0, updated:0};
@@ -1943,68 +2143,24 @@ function App() {
     let added = 0, updated = 0;
     newEmps.forEach(ne => { if (byId.has(ne.empId)) updated++; else added++; });
     if (!added && !updated) { addToast('CSV has no valid records.'); return {added:0,updated:0}; }
-    const today = new Date().toISOString().split('T')[0];
-    setEmployees(prev => {
-      const next = prev.map(e => {
-        const ne = newEmps.find(n => n.empId===e.empId);
-        if (!ne) return e;
-        const normCsv = ne.siteStatus==='OD'?'ON DUTY':ne.siteStatus==='OL'?'ON LEAVE':ne.siteStatus==='OS'?'OFF SITE':ne.siteStatus;
-        const hasActiveLeave = e.leaveStart && e.leaveStart<=today && (!e.leaveEnd||e.leaveEnd>=today);
-        const hasActiveOffsite = e.offsiteStart && (!e.offsiteEnd||e.offsiteEnd>=today);
-        const keepStatus = normCsv==='ON DUTY' && (hasActiveLeave||hasActiveOffsite);
-        return {
-          ...e,
-          name: ne.name||e.name,
-          designation: ne.designation||e.designation,
-          section: ne.section||e.section,
-          nationality: ne.nationality||e.nationality,
-          ...(ne.siteStatus && !keepStatus?{siteStatus:ne.siteStatus}:{}),
-          ...(ne.leaveType?{leaveType:ne.leaveType}:{}),
-          ...(ne.leaveStart?{leaveStart:ne.leaveStart}:{}),
-          ...(ne.leaveEnd?{leaveEnd:ne.leaveEnd}:{}),
-          ...(ne.exitDate?{exitDate:ne.exitDate}:{}),
-        };
-      });
-      const existingIds = new Set(prev.map(e=>e.empId));
-      const toAdd = newEmps.filter(ne=>!existingIds.has(ne.empId));
-      const final = [...next,...toAdd];
-      persistEmployees(final);
-      return final;
-    });
+    serverChange('employee_import', {p_rows: newEmps}, ['employees']);   // same merge rules, applied by the server
     return {added, updated};
   }
   function fixEmployeeStatusFromDates() {
     if (!allow(can(currentUser,'emp.admin'))) return;
-    setEmployees(prev => {
-      const next = applyStatusFromDates(prev);
-      persistEmployees(next);
-      return next;
-    });
-    addToast('Statuses recalculated from leave/off-site dates.');
+    serverChange('employee_apply_date_rules', {}, ['employees'], 'Statuses recalculated from leave/off-site dates.');
   }
   function resetData() {
     if (!allow(can(currentUser,'data.reset'))) return;
     isResetting.current = true; // block realtime broadcasts during reset
     clearTimeout(saveTimer.current); pendingSaves.current = {};
-    setAssets([]);
-    setJobOrders([]);
-    setJoCounter(1000);
-    setPM([]);
-    setEmployees([]);
-    setCustomPlants([]);
-    // N2: user accounts are NOT touched (as the Reset screen states). Default accounts are never recreated.
-    Promise.all(['assets','jobOrders','pm','employees','customPlants'].map(k => dbSave(k, [])))
-      .then(errs => {
-        const failed = ['assets','jobOrders','pm','employees','customPlants'].filter((k, i) => errs[i]);
-        if (failed.length) addToast(unsavedMsg(failed), true);
-        // Re-enable realtime after writes propagate
-        setTimeout(() => { isResetting.current = false; }, 3000);
-      });
-    addToast('All data has been reset.');
+    // N2: user accounts are NOT touched (as the Reset screen states). The server empties the datasets in one step.
+    serverChange('admin_reset_data', {p_confirm: 'RESET ALL DATA'}, DATA_KEYS.slice(), 'All data has been reset.')
+      .finally(() => setTimeout(() => { isResetting.current = false; }, 3000));
   }
 
   // ── Custom Plants
-  const [customPlants, setCustomPlants] = useState([...PLANTS].sort());
+  const [customPlants, setCustomPlants] = useState([]);
   const categories = useMemo(() => allCategories(assets, customPlants), [assets, customPlants]);
   // Department User assignment uses ONLY the Asset Registry categories (those the assets actually use). A stored category
   // with no asset (production: a stale "12 Vessel" entry) is never offered or accepted for assignment. The asset form and
@@ -2022,40 +2178,17 @@ function App() {
       return next;
     });
   }
+  // Categories, asset categories, job-order categories and Department User categories change together, on the server.
   function renameCustomPlant(oldName, newName) {
     if (!allow(can(currentUser,'asset.category.manage'))) return;
     const upper = newName.trim().toUpperCase();
     if (!upper || upper === oldName) return;
+    // Any current category may be renamed: one the assets use or one in the stored list (case-insensitive, as category_rename).
     const same = x => String(x == null ? '' : x).toUpperCase() === String(oldName).toUpperCase();
     if (!categories.some(same)) { addToast(`Category "${oldName}" not found — rename cancelled.`, true); return; }
     if (categories.some(p => !same(p) && p === upper)) { addToast(`Category "${upper}" already exists — rename cancelled.`, true); return; }
-    const syncWarn = what => e => { if (e) addToast(`⚠ Cloud sync failed for ${what} — the rename is NOT stored. Reload and try again.`, true); };
-    setCustomPlants(prev => {
-      if (!prev.some(same)) return prev;   // a category used only by assets: the stored list does not change
-      const next = prev.map(p => same(p) ? upper : p);
-      dbSave('customPlants', next).then(syncWarn('categories'));
-      return next;
-    });
-    // One renamed JO list for both state and the debounced save. (Previously the combined save wrote the PRE-rename
-    // jobOrders ~800 ms later, overwriting the renamed JOs in the database.)
-    // Deliberately two datasets (assets AND job orders): both are queued into the same save batch.
-    const nextJOs = jobOrders.map(j => same(j.assetCategory) ? {...j, assetCategory:upper} : j);
-    setJobOrders(nextJOs);
-    queueSave('jobOrders', nextJOs);
-    setAssets(prev => {
-      const next = prev.map(a => same(a.plant) ? {...a, plant:upper} : a);
-      queueSave('assets', next);
-      return next;
-    });
-    // Department Users' assigned categories follow the rename (FEATURE_PLAN §7 gate 8); other users and fields untouched.
-    const hit = u => Array.isArray(u.assignedCategories) && u.assignedCategories.some(c => String(c).toUpperCase() === oldName.toUpperCase());
-    setUsers(prev => {
-      if (!prev.some(hit)) return prev;
-      const next = prev.map(u => hit(u) ? {...u, assignedCategories: [...new Set(u.assignedCategories.map(c => String(c).toUpperCase() === oldName.toUpperCase() ? upper : c))]} : u);
-      dbSave('users', next).then(syncWarn('user categories'));
-      return next;
-    });
-    addToast(`Renamed "${oldName}" → "${upper}"`);
+    if (pendingSaves.current.assets) runBatch();   // a waiting asset save goes first, so it cannot undo the rename
+    serverChange('category_rename', {p_old: oldName, p_new: upper}, ['customPlants', 'assets', 'jobOrders', 'users'], `Renamed "${oldName}" → "${upper}"`);
   }
   function importAssetsFromCSV(file) {
     if (!allow(can(currentUser,'asset.import'))) return;
@@ -2084,19 +2217,11 @@ function App() {
     importCSVFile(file, rows => {
       const newJOs = rows.map(v=>({jobNo:v[0]||'',date:v[1]||'',assetNum:v[2]||'',assetDesc:v[3]||'',assetCategory:v[4]||'',location:v[5]||'',eqcode:v[6]||'',dept:v[7]||'',requester:v[8]||'',priority:v[9]||'High',repairType:v[10]||'Planned',problem:v[11]||'',status:v[12]||'OPEN',target:v[13]||'',section:v[14]||'',tech1:v[15]||'',tech1h:v[16]||'',tech2:v[17]||'',tech2h:v[18]||'',workDone:v[19]||'',workStatus:v[20]||'',eval:v[21]||'',downtime:v[22]||'',accept:v[23]||'Accepted',completionDate:v[24]||'',recvName:v[25]||'',approved:v[26]||'',parts:[]})).filter(j=>j.jobNo&&j.assetNum);
       // §8 / D16 / D20: only OPEN, IN PROGRESS and COMPLETED are imported; COMPLETED arrives PENDING approval; the free-text
-      // `approved` column never approves. Anything else (incl. CLOSED) is rejected and listed.
+      // `approved` column never approves. Anything else (incl. CLOSED) is rejected and listed. The server applies the same rules.
       const IMPORTABLE = ['OPEN','IN PROGRESS','COMPLETED'];
       const rejected = newJOs.filter(j => !IMPORTABLE.includes(j.status));
-      const accepted = newJOs.filter(j => IMPORTABLE.includes(j.status)).map(j => j.status==='COMPLETED' ? {...j, approvalStatus:'PENDING'} : j);
       if (rejected.length) alert(`${rejected.length} row(s) not imported (status must be OPEN, IN PROGRESS or COMPLETED; CLOSED is never imported):\n` + rejected.map(j => `${j.jobNo}: ${j.status}`).join('\n'));
-      setJobOrders(prev => {
-        const existing = new Set(prev.map(j=>j.jobNo));
-        const toAdd = accepted.filter(j=>!existing.has(j.jobNo));
-        const next = [...prev, ...toAdd];
-        queueSave('jobOrders', next);
-        addToast(`Imported ${toAdd.length} job orders.`);
-        return next;
-      });
+      serverChange('jo_import', {p_rows: newJOs.filter(j => IMPORTABLE.includes(j.status))}, ['jobOrders'], res => `Imported ${(res && res.added || []).length} job orders.`);
     });
   }
 
@@ -2112,7 +2237,10 @@ function App() {
   if (loadIssue && loadIssue.kind !== 'partial') return (
     <><style>{CSS}</style><DataUnavailable kind={loadIssue.kind}/></>
   );
-  // Refresh with a tab session: never the sign-in form while it is being checked (no login flash).
+  if (!currentUser && link) return (
+    <><style>{CSS}</style><RecoveryLanding link={link} onSetPassword={completeRecovery} onVerify={verifyRecoveryEmail} onBack={()=>setLink(null)}/></>
+  );
+  // Refresh / direct load with a stored session: never the sign-in form while it is being checked (no login flash).
   if (!currentUser && restoring) return (
     <><style>{CSS}</style><SplashScreen text="Restoring your session…"/></>
   );
@@ -2120,6 +2248,11 @@ function App() {
     <><style>{CSS}</style><LoginPage onLogin={handleLogin}/>
       {/* N2: messages raised at sign-out (account deactivated, change not saved) stay visible on the login page */}
       <div className="toast-wrap">{toasts.map(t => <div key={t.id} className={`toast-msg${t.err?' err':''}`}>{t.msg}</div>)}</div></>
+  );
+
+  // Phase 2B-2: a forced password change blocks the whole application (no navigation, no pages, no actions) until it succeeds.
+  if (mustChangePassword(currentUser)) return (
+    <><style>{CSS}</style><ForcePasswordChange user={currentUser} onSubmit={changeOwnPassword} onLogout={handleLogout}/></>
   );
 
   if (!dbLoaded) return (
@@ -2145,6 +2278,7 @@ function App() {
           <div className="topbar-right">
             <div className="badge">{clock}</div>
             <div className="badge">MALE', MALDIVES</div>
+            {notificationsFor(currentUser) && <NotificationBell jobOrders={visibleJobOrders} onOpenJO={jo=>setJoViewModal(jo)}/>}
             <ThemeToggle className="topbar-theme"/>
             <button className="btn-logout" onClick={handleLogout}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}>
@@ -2191,7 +2325,7 @@ function App() {
             {page==='pmschedule' && can(currentUser,'nav.pm') && <PMSchedulePage pm={pm} assets={assets} setJoModal={setJoModal} onSavePM={savePMItem} onRecordService={recordPMService} onImportPM={importPMFromCSV} onExportPM={()=>exportPMCSV(pm, currentUser)} currentUser={currentUser}/>}
             {page==='employees' && can(currentUser,'nav.employees') && <EmployeesPage employees={employees} onSaveEmployee={saveEmployee} onUpdateStatus={updateEmployeeStatus} onImportEmployees={importEmployeesFromData} onDeleteEmployee={deleteEmployee} onFixStatus={fixEmployeeStatusFromDates} currentUser={currentUser}/>}
             {page==='reports'   && can(currentUser,'nav.reports') && <ReportsPage assets={visibleAssets} jobOrders={visibleJobOrders} currentUser={currentUser}/>}
-            {page==='settings'  && can(currentUser,'settings.profile') && <SettingsPage users={users} customPlants={assetCategories} currentUser={currentUser} onSaveUser={saveUser} onChangePassword={changeOwnPassword} onDeleteUser={deleteUser} onResetData={resetData}/>}
+            {page==='settings'  && can(currentUser,'settings.profile') && <SettingsPage users={users} customPlants={assetCategories} currentUser={currentUser} onSaveUser={saveUser} onChangePassword={changeOwnPassword} onDeleteUser={deleteUser} onResetData={resetData} onResetPassword={resetUserPassword} onResendVerification={resendVerification}/>}
             </div>
           </div>
         </div>
@@ -2234,6 +2368,64 @@ function App() {
   );
 }
 
+// Notification bell (p2/sql/0008): the caller's own notifications from my_notifications; the server takes the identity from
+// the session and computes the recipients. Polling every 10 s and 1.5 s after a job-order change (decision N-D3).
+function NotificationBell({jobOrders, onOpenJO}) {
+  const [items, setItems] = useState([]), [open, setOpen] = useState(false), [phase, setPhase] = useState('loading');
+  const wrapRef = useRef(null);
+  const load = useCallback(async () => {
+    try {
+      const r = await serverCall('my_notifications', {p_limit: 50}); const data = r.data, error = r.error;
+      if (error) throw error;
+      setItems(Array.isArray(data) ? data : []); setPhase('ready');
+    } catch (_) { setPhase('error'); }
+  }, []);
+  useEffect(() => { load(); const id = setInterval(load, 10000); return () => clearInterval(id); }, [load]);
+  const joSig = (jobOrders || []).map(j => j.jobNo + ':' + j.status).join('|');   // stable across re-renders (the clock re-renders every second)
+  useEffect(() => { const id = setTimeout(load, 1500); return () => clearTimeout(id); }, [joSig, load]);   // after job-order changes
+  useEffect(() => {
+    if (!open) return;
+    const away = e => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    const esc = e => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', away); document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc); };
+  }, [open]);
+  async function markRead(ids) {
+    setItems(prev => prev.map(n => ids === null || ids.includes(n.id) ? {...n, read: true} : n));
+    await serverCall('notification_mark_read', {p_ids: ids});   // the server changes only the caller's own items
+    load();
+  }
+  const unread = unreadCount(items);
+  const when = at => { try { return new Date(at).toLocaleString('en-GB', {day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'}); } catch (_) { return ''; } };
+  return (
+    <div className="notif-wrap" ref={wrapRef}>
+      <button type="button" className="notif-bell" aria-haspopup="dialog" aria-expanded={open} aria-label={`Notifications, ${unread} unread`} title="Notifications"
+        onClick={()=>{ setOpen(o => !o); if (!open) load(); }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+        {unread > 0 && <span className="notif-badge" aria-hidden="true">{unread > 99 ? '99+' : unread}</span>}
+      </button>
+      {open && <div className="notif-panel" role="dialog" aria-label="Notifications">
+        <div className="notif-head"><span>Notifications</span>
+          <button type="button" className="login-link" disabled={!unread} onClick={()=>markRead(null)}>Mark all as read</button></div>
+        <div className="notif-list">
+          {phase === 'loading' && <div className="notif-empty">Loading…</div>}
+          {phase === 'error' && <div className="notif-empty notif-err">Notifications could not be loaded.</div>}
+          {phase === 'ready' && !items.length && <div className="notif-empty">No notifications.</div>}
+          {phase !== 'error' && items.map(n => (
+            <button type="button" key={n.id} className={`notif-item${n.read ? '' : ' unread'}`} data-jo={n.jobNo} data-event={n.event}
+              onClick={()=>{ if (!n.read) markRead([n.id]); const jo = (jobOrders || []).find(j => j.jobNo === n.jobNo); setOpen(false); if (jo) onOpenJO(jo); }}>
+              <span className={`notif-dot ev-${String(n.event).toLowerCase()}`} aria-hidden="true"/>
+              <span className="notif-body">
+                <span className="notif-title"><strong>{n.jobNo}</strong> · {NOTIFY_EVENT_LABEL[n.event] || n.event}{n.read ? '' : <span className="sr-only"> (unread)</span>}</span>
+                <span className="notif-sub">{[n.assetNum, n.assetDesc, n.dept].filter(Boolean).join(' · ')}</span>
+                <span className="notif-time">{when(n.at)}</span>
+              </span>
+            </button>))}
+        </div>
+      </div>}
+    </div>
+  );
+}
 // Neutral full-screen state while the session is restored or data is loading (role=status: announced, nothing interactive).
 function SplashScreen({text}) {
   return <div className="splash-screen" role="status" aria-live="polite" style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',background:'var(--navy)',flexDirection:'column',gap:16}}>
@@ -2270,96 +2462,9 @@ function ThemeToggle({className=''}) {
   </button>;
 }
 
-// ─── LOGIN CIRCUIT (2026-10-14) ─────────────────────────────────────────────────
-// Pure layout of the login background: circuit traces from the page edges that converge on a "socket" around the login
-// card (45° bends, vias, pads, a few components). Coordinates are CSS pixels of the login page; card = {l,t,r,b} of the
-// card relative to the page. Deterministic for a seed. Decorative only (aria-hidden).
-function circuitTraces(w, h, card, seed = 7, opts = {}) {
-  // Board routing: horizontal/vertical runs with short 45° corners, fanned so that NO two traces cross (the trace that
-  // ends farther from the card's centre turns closer to the card). opts.topBound: keep everything below this y (the
-  // stacked layout's introduction); no top traces then.
-  let st = seed >>> 0; const rnd = () => { st = (Math.imul(st, 1664525) + 1013904223) >>> 0; return st / 4294967296; };
-  const r1 = v => Math.round(v * 10) / 10, clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-  const top = Math.max(0, opts.topBound || 0), g = 16, S = {l: card.l - g, t: card.t - g, r: card.r + g, b: card.b + g}, traces = [];
-  const spread = (a, b, n) => Array.from({length: n}, (_, i) => a + (b - a) * (i + 1) / (n + 1));
-  const count = len => Math.max(2, Math.min(8, Math.round(len / 60)));
-  const cy = (S.t + S.b) / 2, cx = (S.l + S.r) / 2;
-  // one side: pads along the side, starts fanned out, jog positions nested (outermost jog nearest the card)
-  function side(name, pads, centre, fanLo, fanHi, room, jogFrom, dir) {
-    if (room <= 50 || !pads.length) return;
-    const half = Math.max(1, Math.max(...pads.map(p => Math.abs(p - centre))));
-    const k = Math.min(1.9, Math.max(0, (Math.min(centre - fanLo, fanHi - centre) - 14) / half - 1));   // outermost start stays 14px inside the bounds
-    const order = pads.map(p => Math.abs(p - centre));
-    const ranks = order.map(d => order.filter(e => e > d + 0.01).length);          // 0 = outermost
-    const gap = Math.max(6, Math.min(26, (room - 44) / Math.max(1, pads.length / 2 + 1)));
-    pads.forEach((p, i) => {
-      const s = clamp(centre + (p - centre) * (1 + k), fanLo + 6, fanHi - 6);
-      const dlt = s - p, c = Math.min(10, Math.abs(dlt) / 2), sg = Math.sign(dlt);
-      const lo = (name === 'top' ? top : 0) + 8 + c, hi = (name === 'left' || name === 'right' ? w : h) - 8 - c;
-      const jog = clamp(jogFrom + dir * (30 + ranks[i] * gap + (rnd() - 0.5) * 4), lo, hi);   // dir: -1 = towards the page edge on left/top
-      if (name === 'left' || name === 'right') {
-        const edge = name === 'left' ? 0 : w, inX = name === 'left' ? 1 : -1;   // inX: direction towards the card
-        const d = c ? `M${r1(edge)} ${r1(s)}H${r1(jog - inX * c)}L${r1(jog)} ${r1(s - sg * c)}V${r1(p + sg * c)}L${r1(jog + inX * c)} ${r1(p)}H${r1(name === 'left' ? S.l : S.r)}`
-                    : `M${r1(edge)} ${r1(p)}H${r1(name === 'left' ? S.l : S.r)}`;
-        traces.push({side: name, d, start: [r1(edge), r1(c ? s : p)], pad: [r1(name === 'left' ? S.l : S.r), r1(p)], vias: c ? [[r1(jog), r1(s - sg * c)], [r1(jog), r1(p + sg * c)]] : [],
-                     part: name === 'right' && w - jog > 170 ? {x: r1(jog + (w - jog) * 0.55), y: r1(c ? s : p), horizontal: true} : null});
-      } else {
-        const edge = name === 'top' ? top : h, inY = name === 'top' ? 1 : -1;
-        const d = c ? `M${r1(s)} ${r1(edge)}V${r1(jog - inY * c)}L${r1(s - sg * c)} ${r1(jog)}H${r1(p + sg * c)}L${r1(p)} ${r1(jog + inY * c)}V${r1(name === 'top' ? S.t : S.b)}`
-                    : `M${r1(p)} ${r1(edge)}V${r1(name === 'top' ? S.t : S.b)}`;
-        traces.push({side: name, d, start: [r1(c ? s : p), r1(edge)], pad: [r1(p), r1(name === 'top' ? S.t : S.b)], vias: c ? [[r1(s - sg * c), r1(jog)], [r1(p + sg * c), r1(jog)]] : [],
-                     part: name === 'bottom' && h - jog > 170 ? {x: r1(c ? s : p), y: r1(jog + (h - jog) * 0.55), horizontal: false} : null});
-      }
-    });
-  }
-  const vPads = spread(S.t, S.b, count(S.b - S.t)), hPads = spread(S.l + 18, S.r - 18, count(S.r - S.l));
-  side('left', vPads, cy, top, h, S.l, S.l, -1);
-  side('right', vPads, cy, top, h, w - S.r, S.r, 1);
-  if (!top) side('top', hPads, cx, S.l, S.r, S.t, S.t, -1);   // stays within the card's width: never crosses the side traces
-  side('bottom', hPads, cx, S.l, S.r, h - S.b, S.b, 1);
-  return {socket: {l: r1(S.l), t: r1(S.t), r: r1(S.r), b: r1(S.b)}, traces};
-}
-
-// Pure: timing of the light signals on the circuit (all values in seconds / px). ONE constant speed everywhere. A left
-// trace and the right trace that ends on the SAME pad row form a pair: the light runs IN along the left trace, passes
-// hidden behind the card for the socket width (same speed, nothing is drawn over the card), then runs OUT along the
-// right trace to the page edge. Pairs share duration and delay, so in and out are one connected flow. Traces without a
-// partner (top, bottom, or left when there is no room on the right) run in only. lengths[i] = length of traces[i].
-const SIGNAL_SPEED = 150, SIGNAL_PAUSE = 2.4;   // px/s and s between runs (login board light signals)
-function signalSchedule(traces, lengths, socketWidth, opts = {}) {
-  // 2026-10-18: slower and calmer (was 260 px/s with a 1.4 s pause: every cycle is now ~1.75x longer).
-  const v = opts.speed || SIGNAL_SPEED, pause = opts.pause == null ? SIGNAL_PAUSE : opts.pause, out = traces.map(() => null);
-  const rightByRow = new Map();
-  traces.forEach((t, i) => { if (t.side === 'right') rightByRow.set(t.pad[1], i); });
-  traces.forEach((t, i) => {
-    if (t.side === 'right') return;
-    const j = t.side === 'left' && rightByRow.has(t.pad[1]) ? rightByRow.get(t.pad[1]) : null;
-    const tin = lengths[i] / v, tc = j === null ? 0 : socketWidth / v, tout = j === null ? 0 : lengths[j] / v;
-    const T = tin + tc + tout + pause + (i % 5) * 0.4, delay = -((i * 1.7) % T);
-    out[i] = {duration: T, delay, from: 0, to: tin / T, dir: 'in', pair: j, speed: v};
-    if (j !== null) out[j] = {duration: T, delay, from: (tin + tc) / T, to: (tin + tc + tout) / T, dir: 'out', pair: i, speed: v};
-  });
-  traces.forEach((t, i) => {   // a right trace without a left partner (not produced by circuitTraces) still runs out
-    if (out[i]) return;
-    const T = lengths[i] / v + pause;
-    out[i] = {duration: T, delay: -((i * 1.7) % T), from: 0, to: (lengths[i] / v) / T, dir: 'out', pair: null, speed: v};
-  });
-  return out;
-}
-// Keyframes (Web Animations) for one signal: a dash of `dash` px on a path of `len` px. The trace path runs from the
-// page edge to the pad: 'in' moves the dash edge -> pad, 'out' moves it pad -> edge. Outside [from, to] the dash sits
-// beyond an end of the path, i.e. it is invisible (no flash anywhere, in particular never over the card).
-function signalKeyframes(s, len, dash = 26) {
-  const a = s.dir === 'in' ? dash : -len, b = s.dir === 'in' ? -len : dash;
-  return [{offset: 0, strokeDashoffset: a}, {offset: s.from, strokeDashoffset: a}, {offset: s.to, strokeDashoffset: b}, {offset: 1, strokeDashoffset: b}];
-}
-// Pad glow: peaks when the light ARRIVES at a left/top/bottom pad and when it LEAVES a right pad.
-function glowKeyframes(s, base = 0.12, peak = 0.85) {
-  const p = s.dir === 'in' ? s.to : s.from, r = Math.min(0.45 / s.duration, 0.2);
-  const lo = Math.max(0, p - r), hi = Math.min(1, p + 1.6 * r);
-  return [{offset: 0, opacity: base}, {offset: lo, opacity: base}, {offset: p, opacity: peak}, {offset: hi, opacity: base}, {offset: 1, opacity: base}];
-}
-
+// Decorative circuit board behind the login (aria-hidden). Traces are laid out from the REAL card position, so they
+// converge on the card at every size; re-measured on resize. CSS animation (signals travelling to the card); none for
+// prefers-reduced-motion.
 function LoginCircuit({pageRef, cardRef}) {
   const [box, setBox] = useState(null);
   const [reduced, setReduced] = useState(() => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { return false; } });
@@ -2426,7 +2531,7 @@ function LoginCircuit({pageRef, cardRef}) {
   </>;
 }
 
-function LoginPage({onLogin}) {
+function LoginPage({onLogin, recoveryService=RECOVERY_SERVICE}) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -2434,19 +2539,34 @@ function LoginPage({onLogin}) {
   const [showPw, setShowPw] = useState(false);
   const [missing, setMissing] = useState({id: false, pw: false});   // field-level validation state
   const [caps, setCaps] = useState(false);
+  const [view, setView] = useState('signin');                       // 'signin' | 'recover'
+  const [rec, setRec] = useState({phase: 'idle', message: ''});
+  const [recId, setRecId] = useState('');
   const pageRef = useRef(null), cardRef = useRef(null);
 
   function capsFrom(e) { try { setCaps(!!(e.getModifierState && e.getModifierState('CapsLock'))); } catch (_) {} }
+  function openRecover() { setView('recover'); setRec(recoveryStep(null, {type: 'reset'})); setRecId(EMPLOYEE_ID_RE.test(username.trim()) ? username.trim() : ''); setError(''); }
+  function closeRecover() { setView('signin'); setRec(recoveryStep(null, {type: 'reset'})); }
+  async function submitRecover(e) {
+    e.preventDefault();
+    const next = recoveryStep(rec, {type: 'submit', employeeId: recId, serviceAvailable: !!recoveryService});
+    setRec(next);
+    if (next.phase !== 'sending') return;
+    let ok = false;
+    try { const r = await recoveryService.requestReset(recId.trim().toUpperCase()); ok = !!(r && r.ok); } catch (_) { ok = false; }
+    setRec(prev => recoveryStep(prev, {type: 'result', ok}));
+  }
+
   function handleSubmit(e) {
     e.preventDefault();
     setError('');
     const miss = {id: !username.trim(), pw: !password};
     setMissing(miss);
-    if (miss.id || miss.pw) { setError('Please enter your username and password.'); return; }
+    if (miss.id || miss.pw) { setError('Please enter your Employee ID and password.'); return; }
     setLoading(true);
     setTimeout(async () => {
       const res = await onLogin(username.trim(), password);
-      if (!res || !res.ok) { setError(res && res.reason === 'unavailable' && res.message ? res.message : 'Invalid username or password. Please try again.'); setLoading(false); }
+      if (!res || !res.ok) { setError(res && res.reason === 'unavailable' && res.message ? res.message : SIGN_IN_FAILED); setLoading(false); }
     }, 350);
   }
 
@@ -2483,13 +2603,38 @@ function LoginPage({onLogin}) {
       </section>
       <main className="login-main">
         <div className="login-card" ref={cardRef}>
+          {view === 'recover' ? <>
+          <div className="login-card-head">
+            <h2 className="login-welcome">Reset password</h2>
+            <p className="login-instr">Enter your Employee ID. If your account has a verified recovery email, a reset link is sent to that address.</p>
+          </div>
+          <form onSubmit={submitRecover} autoComplete="off" className="recover-form" noValidate>
+            <div className="login-field">
+              <label htmlFor="recover-id">Employee ID</label>
+              <div className={`login-input${rec.phase === 'invalid' ? ' invalid' : ''}`}>
+                <input id="recover-id" type="text" value={recId} maxLength={EMPLOYEE_ID_MAX} onChange={e=>{ setRecId(e.target.value); if (rec.phase !== 'idle' && rec.phase !== 'sending') setRec(recoveryStep(null, {type: 'reset'})); }}
+                  placeholder="Enter your Employee ID" autoComplete="username" autoFocus aria-invalid={rec.phase === 'invalid'} aria-describedby="recover-msg" style={{paddingLeft:14}} disabled={rec.phase === 'sending' || rec.phase === 'sent'}/>
+              </div>
+            </div>
+            <div id="recover-msg" aria-live="polite">
+              {rec.phase === 'invalid' && <div className="login-error" role="alert">{rec.message}</div>}
+              {rec.phase === 'error' && <div className="login-error" role="alert">{rec.message}</div>}
+              {rec.phase === 'unavailable' && <div className="login-info" role="status">{rec.message}</div>}
+              {rec.phase === 'sent' && <div className="login-success" role="status">{rec.message}</div>}
+            </div>
+            {rec.phase !== 'sent' && rec.phase !== 'unavailable' && <button type="submit" className="login-btn" disabled={rec.phase === 'sending'} aria-busy={rec.phase === 'sending'}>
+              {rec.phase === 'sending' ? <><span className="login-spinner" aria-hidden="true"/>Sending…</> : 'Send reset link'}
+            </button>}
+            <button type="button" className="login-link login-back" onClick={closeRecover}>← Back to sign in</button>
+          </form>
+          </> : <>
           <div className="login-card-head">
             <h2 className="login-welcome">Welcome back</h2>
-            <p className="login-instr">Sign in with your username and password.</p>
+            <p className="login-instr">Sign in with your Employee ID and password.</p>
           </div>
           <form onSubmit={handleSubmit} autoComplete="on" noValidate>
             <div className="login-field">
-              <label htmlFor="login-username">Username</label>
+              <label htmlFor="login-username">Employee ID</label>
               <div className={`login-input${missing.id ? ' invalid' : ''}`}>
                 <svg className="li-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
                 <input
@@ -2497,7 +2642,8 @@ function LoginPage({onLogin}) {
                   type="text"
                   value={username}
                   onChange={e=>{ setUsername(e.target.value); if (missing.id) setMissing(m => ({...m, id: false})); }}
-                  placeholder="Enter your username"
+                  placeholder="Enter your Employee ID"
+                  maxLength={EMPLOYEE_ID_MAX}
                   autoFocus
                   autoComplete="username"
                   aria-invalid={missing.id}
@@ -2527,11 +2673,14 @@ function LoginPage({onLogin}) {
               </div>
             </div>
             {caps && <div className="login-caps" id="login-caps" role="status">Caps Lock is on.</div>}
+            <div className="login-aux"><button type="button" className="login-link" onClick={openRecover}>Forgot password?</button></div>
             {error && <div className="login-error" role="alert">{error}</div>}
             <button type="submit" className="login-btn" disabled={loading} aria-busy={loading}>
               {loading ? <><span className="login-spinner" aria-hidden="true"/>Signing in…</> : 'Sign In'}
             </button>
+            <p className="login-temp-note">First sign-in or password reset by an administrator? Use the temporary password you were given: you will be asked to choose a new password straight away.</p>
           </form>
+          </>}
           <div className="login-footer">
             COMPUTERIZED MAINTENANCE MANAGEMENT SYSTEM<br/>
             © VHPL TIC · MALE', MALDIVES
@@ -3420,8 +3569,9 @@ function assignmentSummary(u, onView) {
   return '—';
 }
 
-function SettingsPage({users, currentUser, onSaveUser, onDeleteUser, onResetData, onChangePassword, customPlants=[]}) {
+function SettingsPage({users, currentUser, onSaveUser, onDeleteUser, onResetData, onChangePassword, onResetPassword, onResendVerification, customPlants=[]}) {
   const [pwModal, setPwModal] = useState(false);
+  const [tempShown, setTempShown] = useState(null);   // {name, password}: shown once, in memory only; cleared on close
   const canAdminUsers = can(currentUser,'users.admin'), canResetData = can(currentUser,'data.reset');
   const [tab, setTab] = useState(canAdminUsers?'users':'profile');
   const [userModal, setUserModal] = useState(null);
@@ -3456,7 +3606,7 @@ function SettingsPage({users, currentUser, onSaveUser, onDeleteUser, onResetData
             <div className="tbl-wrap">
               <table>
                 <thead><tr>
-                  <th>#</th><th>Full Name</th><th>Username</th><th>Email</th><th>Role</th><th>Assignment</th><th>Status</th><th>Actions</th>
+                  <th>#</th><th>Full Name</th><th>Employee ID</th><th>Recovery email</th><th>Role</th><th>Assignment</th><th>Status</th><th>Actions</th>
                 </tr></thead>
                 <tbody>
                   {users.map(u=>(
@@ -3466,15 +3616,20 @@ function SettingsPage({users, currentUser, onSaveUser, onDeleteUser, onResetData
                         <strong>{u.fullName}</strong>
                         {u.id===currentUser.id&&<span style={{fontSize:10,color:'var(--accent)',fontFamily:'var(--fm)',marginLeft:7,letterSpacing:1}}>(YOU)</span>}
                       </td>
-                      <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)'}}>{u.username}</td>
-                      <td style={{fontSize:12,color:'var(--gray)'}}>{u.email||'—'}</td>
+                      <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)'}}>{u.employeeId||'—'}</td>
+                      <td style={{fontSize:12,color:'var(--gray)'}}>{u.recoveryEmail ? <>{u.recoveryEmail} <span className={`sb-base ${u.recoveryEmailVerified?'so':'sm'}`} title={u.recoveryEmailVerified?'Confirmed by the user':'Waiting for the user to confirm it'}>{u.recoveryEmailVerified?'VERIFIED':'UNVERIFIED'}</span></> : '—'}{u.mustChangePassword&&<div className="pw-hint">Temporary password: change pending</div>}</td>
                       <td>{roleBadge(u.role)}</td>
                       <td className="assign-cell">{assignmentSummary(u, ()=>setAssignView(u))}</td>
                       <td><span className={`sb-base ${u.active!==false?'so':'sb'}`}>{u.active!==false?'ACTIVE':'INACTIVE'}</span></td>
                       <td>
                         <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
                           <button className="btn btn-warning btn-sm" onClick={()=>setUserModal({mode:'edit',user:u})}>✏ Edit</button>
-                          {u.id!==currentUser.id&&<button className="btn btn-danger btn-sm" onClick={()=>setDeleteConfirm(u.id)}>✕ Delete</button>}
+                          {canAdminUsers&&u.id!==currentUser.id&&u.active!==false&&<button className="btn btn-primary btn-sm" title="Reset password: a new temporary password, to be changed at the next sign-in" onClick={async ()=>{
+                            if (!window.confirm(`Reset the password of ${u.fullName}? A new temporary password will be generated and must be changed at the next sign-in.`)) return;
+                            const temp = await onResetPassword(u.id); if (temp) setTempShown({name: u.fullName, password: temp});
+                          }}>🔑 Reset</button>}
+                          {EMAIL_FEATURES&&canAdminUsers&&u.active!==false&&u.recoveryEmail&&!u.recoveryEmailVerified&&<button className="btn btn-ghost btn-sm" title="Send the confirmation email again to this account's recovery address (nothing else changes)" onClick={()=>onResendVerification(u.id)}>✉ Resend confirmation</button>}
+                          {u.id!==currentUser.id&&u.active!==false&&<button className="btn btn-danger btn-sm" onClick={()=>setDeleteConfirm(u.id)}>⊘ Deactivate</button>}
                         </div>
                       </td>
                     </tr>
@@ -3486,7 +3641,7 @@ function SettingsPage({users, currentUser, onSaveUser, onDeleteUser, onResetData
           <div className="panel" style={{marginTop:0}}>
             <div className="panel-body" style={{padding:'12px 20px'}}>
               <div style={{fontSize:11,fontFamily:'var(--fm)',color:'var(--gray)',letterSpacing:.5}}>
-                Passwords are stored as hashes. Each user can change their own password under My Profile; roles, status and assignments are managed here.
+                Sign-in is by Employee ID through Supabase Auth; the CMMS never sees or stores passwords. New accounts and resets get a temporary password, shown once, that must be changed at the first sign-in. Password reset by email goes only to a confirmed recovery address. Accounts are deactivated, never deleted, so their job orders keep their references.
               </div>
             </div>
           </div>
@@ -3554,15 +3709,16 @@ function SettingsPage({users, currentUser, onSaveUser, onDeleteUser, onResetData
       )}
 
       {pwModal && <ChangePasswordModal onClose={()=>setPwModal(false)} onSubmit={async (cur, nw) => { if (await onChangePassword(cur, nw)) setPwModal(false); }}/>}
+      {tempShown && <TempPasswordNotice name={tempShown.name} password={tempShown.password} onClose={()=>setTempShown(null)}/>}
       {userModal && (
         <UserFormModal
           mode={userModal.mode}
           user={userModal.user}
-          selfOnly={!canAdminUsers}
+          selfOnly={!canAdminUsers || (userModal.mode === 'edit' && !!userModal.user && !!currentUser && userModal.user.id === currentUser.id)}
           customPlants={customPlants}
           users={users}
           onClose={()=>setUserModal(null)}
-          onSave={u=>{onSaveUser(u, userModal.mode==='edit'?userModal.user.id:null);setUserModal(null);}}
+          onSave={async u=>{ const id = userModal.mode==='edit'?userModal.user.id:null; setUserModal(null); const r = await onSaveUser(u, id); if (r && r.temporaryPassword) setTempShown({name: r.name, password: r.temporaryPassword}); }}
         />
       )}
 
@@ -3599,17 +3755,17 @@ function SettingsPage({users, currentUser, onSaveUser, onDeleteUser, onResetData
         <div className="modal-overlay" onClick={()=>setDeleteConfirm(null)}>
           <div className="modal" style={{width:420}} onClick={e=>e.stopPropagation()}>
             <div className="modal-head">
-              <div className="modal-title">Confirm Delete User</div>
+              <div className="modal-title">Confirm Deactivate User</div>
               <button className="modal-close" onClick={()=>setDeleteConfirm(null)}>×</button>
             </div>
             <div className="modal-body">
               <p style={{marginBottom:20,color:'var(--gray)',fontSize:14}}>
-                Are you sure you want to delete <strong style={{color:'var(--white)'}}>{users.find(u=>u.id===deleteConfirm)?.fullName}</strong>?
-                This action cannot be undone.
+                Deactivate <strong style={{color:'var(--white)'}}>{users.find(u=>u.id===deleteConfirm)?.fullName}</strong>? The account can no longer sign in and its
+                sessions end. It is kept (job orders reference it) and can be activated again with Edit.
               </p>
               <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
                 <button className="btn btn-ghost" onClick={()=>setDeleteConfirm(null)}>Cancel</button>
-                <button className="btn btn-danger" onClick={()=>{onDeleteUser(deleteConfirm);setDeleteConfirm(null);}}>Delete User</button>
+                <button className="btn btn-danger" onClick={()=>{onDeleteUser(deleteConfirm);setDeleteConfirm(null);}}>Deactivate User</button>
               </div>
             </div>
           </div>
@@ -4273,6 +4429,106 @@ function JOViewModal({jo, onClose, onEdit, currentUser={}}) {
 
 // ─── USER FORM MODAL ──────────────────────────────────────────────────────────
 // Change own password (Department User, Job Card Editor). Only the password is sent; the App checks the current one.
+// Recovery / verification link landing (designed for Supabase Auth recovery emails). NOT CONNECTED: the link cannot be
+// used yet. The URL fragment (which would hold tokens) was already removed by App before rendering; nothing is stored.
+function RecoveryLanding({link, onSetPassword, onVerify, onBack}) {
+  const pageRef = useRef(null), cardRef = useRef(null);
+  const [nw, setNw] = useState(''), [cf, setCf] = useState(''), [phase, setPhase] = useState('form'), [msg, setMsg] = useState('');
+  const verify = link && link.kind === 'verify-email';
+  useEffect(() => { if (verify) { setPhase('busy'); onVerify().then(r => { setPhase(r && r.ok ? 'verified' : 'error'); }); } }, []);
+  async function submit(e) {
+    e.preventDefault(); setMsg('');
+    if (nw !== cf) { setMsg('The new passwords do not match.'); return; }
+    const v = validatePassword(nw); if (v) { setMsg(v); return; }
+    setPhase('busy');
+    const r = await onSetPassword(nw);
+    if (r && r.ok) setPhase('done'); else { setPhase('form'); setMsg((r && r.message) || 'The password was not changed.'); }
+  }
+  return (
+    <div className="login-page recovery-landing" ref={pageRef}>
+      <LoginCircuit pageRef={pageRef} cardRef={cardRef}/>
+      <ThemeToggle className="login-theme"/>
+      <main className="login-main" style={{gridColumn:'1 / -1'}}>
+        <div className="login-card" ref={cardRef} role="region" aria-labelledby="rl-title">
+          <div className="login-card-head">
+            <h2 className="login-welcome" id="rl-title">{verify ? 'Email confirmation' : 'Choose a new password'}</h2>
+          </div>
+          {verify ? <div className={phase === 'error' ? 'login-error' : 'login-info'} role="status">
+              {phase === 'busy' ? 'Confirming…' : phase === 'verified' ? 'If the link was valid, your recovery email address is now confirmed. You can close this page or sign in.' : 'The confirmation could not be sent. Check your connection and open the link again.'}</div>
+          : link.error ? <div className="login-error" role="alert">This reset link is invalid or has expired. Request a new one with "Forgot password?" on the sign-in page.</div>
+          : phase === 'done' ? <div className="login-success" role="status">Your password was changed. Sign in with your Employee ID and the new password.</div>
+          : <form onSubmit={submit} autoComplete="off">
+              <div className="login-field"><label htmlFor="rl-new">New password</label><div className="login-input"><input id="rl-new" type="password" value={nw} onChange={e=>setNw(e.target.value)} autoComplete="new-password" style={{paddingLeft:14}}/></div><div className="pw-hint">{PASSWORD_HINT}</div></div>
+              <div className="login-field"><label htmlFor="rl-confirm">Confirm new password</label><div className="login-input"><input id="rl-confirm" type="password" value={cf} onChange={e=>setCf(e.target.value)} autoComplete="new-password" style={{paddingLeft:14}}/></div></div>
+              <ul className="pw-checklist" aria-label="Password requirements">
+                {PASSWORD_RULES.map(r => { const ok = r.test(nw); return <li key={r.id} className={ok ? 'ok' : ''}><span aria-hidden="true">{ok ? '✓' : '○'}</span> {r.text}{ok ? <span className="sr-only"> (met)</span> : null}</li>; })}
+                <li className={nw && nw === cf ? 'ok' : ''}><span aria-hidden="true">{nw && nw === cf ? '✓' : '○'}</span> both new passwords match</li>
+              </ul>
+              {msg && <div className="login-error" role="alert">{msg}</div>}
+              <button type="submit" className="login-btn" disabled={phase === 'busy'} aria-busy={phase === 'busy'}>{phase === 'busy' ? <><span className="login-spinner" aria-hidden="true"/>Saving…</> : 'Set new password'}</button>
+            </form>}
+          <button type="button" className="login-btn" style={{marginTop:18}} onClick={onBack}>Back to sign in</button>
+        </div>
+      </main>
+    </div>
+  );
+}
+// Phase 2B-2: forced first-login change. Rendered INSTEAD of the application while must_change_password is set.
+function ForcePasswordChange({user, onSubmit, onLogout}) {
+  const [cur, setCur] = useState(''), [nw, setNw] = useState(''), [cf, setCf] = useState('');
+  const [err, setErr] = useState(''), [busy, setBusy] = useState(false);
+  async function submit(e) {
+    e.preventDefault(); setErr('');
+    if (!cur) { setErr('Enter your temporary password.'); return; }
+    if (nw !== cf) { setErr('The new passwords do not match.'); return; }
+    const v = validateNewPassword(nw, cur); if (v) { setErr(v); return; }
+    setBusy(true);
+    const ok = await onSubmit(cur, nw);
+    if (!ok) { setErr('The password was not changed. Check your temporary password and try again.'); setBusy(false); }
+  }
+  const pageRef = useRef(null), cardRef = useRef(null);
+  return (
+    <div className="login-page force-change" ref={pageRef}>
+      <LoginCircuit pageRef={pageRef} cardRef={cardRef}/>
+      <main className="login-main" style={{gridColumn:'1 / -1'}}>
+        <div className="login-card" role="dialog" aria-labelledby="fc-title" ref={cardRef}>
+          <div className="login-card-head">
+            <h2 className="login-welcome" id="fc-title">Change your password</h2>
+            <p className="login-instr">{user.fullName}, your account has a temporary password. Choose a new password to continue.</p>
+          </div>
+          <form onSubmit={submit} autoComplete="off">
+            <div className="login-field"><label htmlFor="fc-current">Temporary password</label><div className="login-input"><input id="fc-current" type="password" value={cur} onChange={e=>setCur(e.target.value)} autoComplete="current-password" style={{paddingLeft:14}}/></div></div>
+            <div className="login-field"><label htmlFor="fc-new">New password</label><div className="login-input"><input id="fc-new" type="password" value={nw} onChange={e=>setNw(e.target.value)} autoComplete="new-password" style={{paddingLeft:14}}/></div><div className="pw-hint">{PASSWORD_HINT}</div></div>
+            <div className="login-field"><label htmlFor="fc-confirm">Confirm new password</label><div className="login-input"><input id="fc-confirm" type="password" value={cf} onChange={e=>setCf(e.target.value)} autoComplete="new-password" style={{paddingLeft:14}}/></div></div>
+            <ul className="pw-checklist" aria-label="Password requirements">
+              {PASSWORD_RULES.map(r => { const ok = r.test(nw); return <li key={r.id} className={ok ? 'ok' : ''}><span aria-hidden="true">{ok ? '✓' : '○'}</span> {r.text}{ok ? <span className="sr-only"> (met)</span> : null}</li>; })}
+              <li className={nw && nw === cf ? 'ok' : ''}><span aria-hidden="true">{nw && nw === cf ? '✓' : '○'}</span> both new passwords match</li>
+            </ul>
+            {err && <div className="login-error" role="alert">{err}</div>}
+            <button type="submit" className="login-btn" disabled={busy} aria-busy={busy}>{busy ? <><span className="login-spinner" aria-hidden="true"/>Saving…</> : 'Change password'}</button>
+            <button type="button" className="btn btn-ghost" style={{width:'100%',marginTop:10}} onClick={onLogout}>Sign out</button>
+          </form>
+        </div>
+      </main>
+    </div>
+  );
+}
+// Shows a server-generated temporary password ONCE (component state, never stored) for the Admin to deliver (decision D5).
+function TempPasswordNotice({name, password, onClose}) {
+  return (
+    <div className="modal-overlay">
+      <div className="modal temp-pw-notice" style={{width:'min(460px,94vw)'}} role="dialog" aria-label="Temporary password">
+        <div className="modal-head"><div className="modal-title">Temporary password</div><button className="modal-close" onClick={onClose}>×</button></div>
+        <div className="modal-body">
+          <p style={{fontSize:13,marginBottom:10}}>New temporary password for <strong>{name}</strong>:</p>
+          <input className="temp-pw" readOnly value={password} onFocus={e=>e.target.select()} style={{fontFamily:'var(--fm)',fontSize:16,letterSpacing:1}}/>
+          <div className="pw-hint">Shown only once and never stored in plaintext. Give it to the user privately: they must change it when they first sign in.</div>
+          <div style={{display:'flex',justifyContent:'flex-end',marginTop:16}}><button className="btn btn-accent" onClick={onClose}>Done</button></div>
+        </div>
+      </div>
+    </div>
+  );
+}
 function ChangePasswordModal({onClose, onSubmit}) {
   const [cur, setCur] = useState(''), [nw, setNw] = useState(''), [cf, setCf] = useState('');
   function submit() {
@@ -4322,55 +4578,45 @@ function CategoryPicker({categories=[], selected=[], disabled=false, onChange}) 
 }
 
 function UserFormModal({mode, user, onClose, onSave, selfOnly=false, customPlants=[], users=[]}) {
-  // selfOnly: a non-admin editing their own profile. Username, role and status are shown read-only;
-  // saveUser enforces the same rule independently (only name, email and password are stored).
-  const [f, setF] = useState(user ? {...user, password:''} : {
-    username:'', password:'', fullName:'', email:'', role:'Assistant Engineer', active:true
-  });
+  // selfOnly: editing the own profile (name only; the server enforces the same). Passwords are never entered here: a new
+  // account gets a server-generated temporary password, shown once after saving.
+  const [f, setF] = useState(user ? {...user} : {employeeId:'', fullName:'', recoveryEmail:'', role:'Assistant Engineer', active:true});
 
   function handleSave() {
-    if (!f.fullName.trim()) { alert('Full name is required'); return; }
-    if (!f.username.trim()) { alert('Username is required'); return; }
-    if (mode==='add' && !f.password) { alert('Password is required for new users'); return; }
+    if (!String(f.fullName || '').trim()) { alert('Full name is required'); return; }
     if (!selfOnly) {
       const err = validateUserRecord(f, customPlants, {users, editId: mode==='edit' && user ? user.id : undefined, isNew: mode==='add'});
-      if (err) { alert(err); return; }
-      if (f.password) { const pe = validatePassword(f.password); if (pe) { alert(pe); return; } }
+      if (err) { alert(err); return; }   // includes the mandatory, valid, unique email for a new account
     }
-    onSave(f);
+    onSave(f.recoveryEmail == null ? f : {...f, recoveryEmail: String(f.recoveryEmail).trim()});
   }
 
   return (
     <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="modal user-form" style={{width:700}}>
         <div className="modal-head">
-          <div className="modal-title">{mode==='add'?'Add New User':`Edit User — ${user?.username}`}</div>
+          <div className="modal-title">{mode==='add'?'Add New User':`Edit User — ${user?.employeeId || user?.fullName}`}</div>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         <div className="modal-body">
-          {mode==='edit'&&<div className="edit-mode-banner">{selfOnly?'✏ Editing your profile — you can change your name and email. Use Change Password for your password. Username, role, status and assignments are managed by an Admin.':'✏ Editing user account — leave password blank to keep current password'}</div>}
+          {mode==='edit'&&<div className="edit-mode-banner">{selfOnly?'✏ Editing your profile — you can change your name. Use Change Password for your password. Employee ID, recovery email, role, status and assignments are managed by an Admin (for your own Admin account: by another Admin).':'✏ Editing user account — passwords are not entered here: use Reset for a new temporary password'}</div>}
           <div className="form-row">
             <div className="form-group">
               <label>Full Name</label>
               <input value={f.fullName||''} onChange={e=>setF({...f,fullName:e.target.value})} placeholder="Full name"/>
             </div>
-            <div className="form-group">
-              <label>Username</label>
-              <input value={f.username||''} onChange={e=>setF({...f,username:e.target.value})} placeholder="Login username" readOnly={selfOnly} disabled={selfOnly}/>
-            </div>
           </div>
-          <div className="form-row">
-            {!selfOnly&&(
+          <div className="form-row single">
             <div className="form-group">
-              <label>{mode==='edit'?'New Password (leave blank to keep current)':'Password'}</label>
-              <input type="password" value={f.password||''} onChange={e=>setF({...f,password:e.target.value})} placeholder={mode==='edit'?'Leave blank to keep current':'Set password'} autoComplete="new-password"/>
-              <div className="pw-hint">{PASSWORD_HINT}</div>
+              <label>{mode==='add'?'Employee ID *':'Employee ID'}</label>
+              <input value={f.employeeId||''} onChange={e=>setF({...f,employeeId:e.target.value.toUpperCase()})} placeholder="e.g. 0123, 12345 or EX001" maxLength={EMPLOYEE_ID_MAX} readOnly={selfOnly || mode==='edit'} disabled={selfOnly || mode==='edit'} autoComplete="off"/>
+              {mode==='edit'&&!selfOnly&&<div className="pw-hint">The Employee ID is the sign-in name and cannot be changed.</div>}
             </div>
-            )}
-            <div className="form-group">
-              <label>{mode==='add'?'Email Address *':'Email Address'}</label>
-              <input type="email" value={f.email||''} onChange={e=>setF({...f,email:e.target.value})} placeholder="name@example.com" required={mode==='add'} aria-required={mode==='add'}/>
-            </div>
+            {!selfOnly&&<div className="form-group">
+              <label>Recovery email (optional)</label>
+              <input type="email" value={f.recoveryEmail||''} onChange={e=>setF({...f,recoveryEmail:e.target.value})} placeholder="A real, personal address" autoComplete="off"/>
+              <div className="pw-hint">{EMAIL_FEATURES ? 'The user must confirm it from the email they receive before it can be used.' : 'Not needed to sign in. A forgotten password is reset by an Admin (temporary password).'}</div>
+            </div>}
           </div>
           <div className="form-row">
             <div className="form-group">
