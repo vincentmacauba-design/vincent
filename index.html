@@ -1110,6 +1110,16 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
 .login-temp-note{font-size:11px;line-height:1.5;color:var(--gray);margin-top:14px;text-align:center;}
 .pw-checklist{list-style:none;margin:-6px 0 14px;padding:0;display:grid;gap:3px;font-size:12px;color:var(--gray);}
 .pw-checklist li.ok{color:var(--green);}
+/* forced password change: a compact card (three fields + the live checklist) that fits a desktop or phone screen */
+.force-change .login-card{padding:22px 24px 18px;}
+.force-change .login-card-head{margin-bottom:12px;}
+.force-change .login-welcome{font-size:22px;}
+.force-change .login-instr{font-size:12px;margin-top:2px;}
+.force-change .login-field{margin-bottom:10px;}
+.force-change .login-field label{margin-bottom:4px;}
+.force-change .login-field input{padding-top:9px;padding-bottom:9px;}
+.force-change .pw-checklist{margin:2px 0 10px;grid-template-columns:1fr 1fr;gap:2px 12px;font-size:11px;}
+@media(max-width:480px){ .force-change .pw-checklist{grid-template-columns:1fr;} .force-change .login-welcome{font-size:20px;} }
 :root[data-theme="light"] .pw-checklist li.ok{color:#047857;}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
 .notif-wrap{position:relative;}
@@ -2673,12 +2683,13 @@ function LoginPage({onLogin, recoveryService=RECOVERY_SERVICE}) {
               </div>
             </div>
             {caps && <div className="login-caps" id="login-caps" role="status">Caps Lock is on.</div>}
-            <div className="login-aux"><button type="button" className="login-link" onClick={openRecover}>Forgot password?</button></div>
+            {/* offered only where password recovery by email actually works (RECOVERY_SERVICE: sign-in domain + email features on) */}
+            {recoveryService && <div className="login-aux"><button type="button" className="login-link" onClick={openRecover}>Forgot password?</button></div>}
             {error && <div className="login-error" role="alert">{error}</div>}
             <button type="submit" className="login-btn" disabled={loading} aria-busy={loading}>
               {loading ? <><span className="login-spinner" aria-hidden="true"/>Signing in…</> : 'Sign In'}
             </button>
-            <p className="login-temp-note">First sign-in or password reset by an administrator? Use the temporary password you were given: you will be asked to choose a new password straight away.</p>
+            <p className="login-temp-note">First sign-in or a reset by an Admin? Use your temporary password; you will choose a new one next.</p>
           </form>
           </>}
           <div className="login-footer">
@@ -3606,7 +3617,7 @@ function SettingsPage({users, currentUser, onSaveUser, onDeleteUser, onResetData
             <div className="tbl-wrap">
               <table>
                 <thead><tr>
-                  <th>#</th><th>Full Name</th><th>Employee ID</th><th>Recovery email</th><th>Role</th><th>Assignment</th><th>Status</th><th>Actions</th>
+                  <th>#</th><th>Full Name</th><th>Employee ID</th><th>Role</th><th>Assignment</th><th>Status</th><th>Actions</th>
                 </tr></thead>
                 <tbody>
                   {users.map(u=>(
@@ -3615,9 +3626,9 @@ function SettingsPage({users, currentUser, onSaveUser, onDeleteUser, onResetData
                       <td>
                         <strong>{u.fullName}</strong>
                         {u.id===currentUser.id&&<span style={{fontSize:10,color:'var(--accent)',fontFamily:'var(--fm)',marginLeft:7,letterSpacing:1}}>(YOU)</span>}
+                        {u.mustChangePassword&&<div className="pw-hint">Temporary password: change pending</div>}
                       </td>
                       <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--accent)'}}>{u.employeeId||'—'}</td>
-                      <td style={{fontSize:12,color:'var(--gray)'}}>{u.recoveryEmail ? <>{u.recoveryEmail} <span className={`sb-base ${u.recoveryEmailVerified?'so':'sm'}`} title={u.recoveryEmailVerified?'Confirmed by the user':'Waiting for the user to confirm it'}>{u.recoveryEmailVerified?'VERIFIED':'UNVERIFIED'}</span></> : '—'}{u.mustChangePassword&&<div className="pw-hint">Temporary password: change pending</div>}</td>
                       <td>{roleBadge(u.role)}</td>
                       <td className="assign-cell">{assignmentSummary(u, ()=>setAssignView(u))}</td>
                       <td><span className={`sb-base ${u.active!==false?'so':'sb'}`}>{u.active!==false?'ACTIVE':'INACTIVE'}</span></td>
@@ -3654,7 +3665,7 @@ function SettingsPage({users, currentUser, onSaveUser, onDeleteUser, onResetData
             <div className="profile-avatar">{currentUser.fullName.charAt(0).toUpperCase()}</div>
             <div>
               <div className="profile-name">{currentUser.fullName}</div>
-              <div className="profile-meta">{currentUser.email||'No email set'}</div>
+              <div className="profile-meta">{currentUser.employeeId ? 'Employee ID ' + currentUser.employeeId : ''}</div>
               <div style={{marginTop:10}}>{roleBadge(currentUser.role)}</div>
             </div>
           </div>
@@ -3663,7 +3674,11 @@ function SettingsPage({users, currentUser, onSaveUser, onDeleteUser, onResetData
             <div className="panel-body">
               <div className="detail-grid">
                 {[['Full Name',currentUser.fullName],['Username',currentUser.username],
-                  ['Email',currentUser.email||'—'],['Role',currentUser.role],
+                  ['Recovery email', currentUser.recoveryEmail
+                    ? <>{currentUser.recoveryEmail} <span className={`sb-base ${currentUser.recoveryEmailVerified?'so':'sm'}`}>{currentUser.recoveryEmailVerified?'VERIFIED':'UNVERIFIED'}</span>
+                        {!currentUser.recoveryEmailVerified&&<div className="pw-hint">Unverified: this address has not completed the verification step, so it cannot be used for password recovery.</div>}</>
+                    : 'None set'],
+                  ['Role',currentUser.role],
                   ['Account Status',currentUser.active!==false?'Active':'Inactive'],
                   ...(isDeptUser(currentUser)?[['Department',currentUser.department||'—'],['Asset Categories',isAllCategories(currentUser.assignedCategories) ? 'All' : (currentUser.assignedCategories||[]).join(', ')||'—']]:[]),
                   ...(isJobCardEditor(currentUser)?[['Section',currentUser.section||'—']]:[]),
@@ -3677,7 +3692,8 @@ function SettingsPage({users, currentUser, onSaveUser, onDeleteUser, onResetData
                   {can(currentUser,'profile.edit')&&<button className="btn btn-warning" onClick={()=>setUserModal({mode:'edit',user:currentUser})}>✏ Edit My Profile</button>}
                   {can(currentUser,'profile.password')&&<button className="btn btn-ghost" onClick={()=>setPwModal(true)}>🔑 Change Password</button>}
                 </div>
-                <div className="profile-note">{can(currentUser,'users.admin') ? 'As an Admin you manage roles, status and assignments in the Users tab.' : can(currentUser,'profile.edit') ? 'You can change your name and email. Your role, status and assignments are managed by an Admin.' : 'Your name, role, department, categories and section are managed by an Admin.'}</div>
+                <div className="profile-note">{can(currentUser,'users.admin') ? 'As an Admin you manage roles, status and assignments in the Users tab.' : can(currentUser,'profile.edit') ? 'You can change your name. Your recovery email, role, status and assignments are managed by an Admin.' : 'Your name, role, department, categories and section are managed by an Admin.'}
+                  {' '}{EMAIL_FEATURES ? 'Your recovery email is set by an Admin (Settings → Users → Edit).' : 'Password recovery by email is not available: if you forget your password, an Admin resets it with a new temporary password.'}</div>
               </div>
             </div>
           </div>
@@ -4498,7 +4514,7 @@ function ForcePasswordChange({user, onSubmit, onLogout}) {
           </div>
           <form onSubmit={submit} autoComplete="off">
             <div className="login-field"><label htmlFor="fc-current">Temporary password</label><div className="login-input"><input id="fc-current" type="password" value={cur} onChange={e=>setCur(e.target.value)} autoComplete="current-password" style={{paddingLeft:14}}/></div></div>
-            <div className="login-field"><label htmlFor="fc-new">New password</label><div className="login-input"><input id="fc-new" type="password" value={nw} onChange={e=>setNw(e.target.value)} autoComplete="new-password" style={{paddingLeft:14}}/></div><div className="pw-hint">{PASSWORD_HINT}</div></div>
+            <div className="login-field"><label htmlFor="fc-new">New password</label><div className="login-input"><input id="fc-new" type="password" value={nw} onChange={e=>setNw(e.target.value)} autoComplete="new-password" style={{paddingLeft:14}}/></div></div>
             <div className="login-field"><label htmlFor="fc-confirm">Confirm new password</label><div className="login-input"><input id="fc-confirm" type="password" value={cf} onChange={e=>setCf(e.target.value)} autoComplete="new-password" style={{paddingLeft:14}}/></div></div>
             <ul className="pw-checklist" aria-label="Password requirements">
               {PASSWORD_RULES.map(r => { const ok = r.test(nw); return <li key={r.id} className={ok ? 'ok' : ''}><span aria-hidden="true">{ok ? '✓' : '○'}</span> {r.text}{ok ? <span className="sr-only"> (met)</span> : null}</li>; })}
@@ -4506,7 +4522,7 @@ function ForcePasswordChange({user, onSubmit, onLogout}) {
             </ul>
             {err && <div className="login-error" role="alert">{err}</div>}
             <button type="submit" className="login-btn" disabled={busy} aria-busy={busy}>{busy ? <><span className="login-spinner" aria-hidden="true"/>Saving…</> : 'Change password'}</button>
-            <button type="button" className="btn btn-ghost" style={{width:'100%',marginTop:10}} onClick={onLogout}>Sign out</button>
+            <button type="button" className="btn btn-ghost" style={{width:'100%',marginTop:6}} onClick={onLogout}>Sign out</button>
           </form>
         </div>
       </main>
