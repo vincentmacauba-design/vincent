@@ -296,6 +296,27 @@ function allCategories(assets, stored) {
   (Array.isArray(stored) ? stored : []).forEach(c => { const u = String(c == null ? '' : c).trim().toUpperCase(); if (u && u !== ALL_CATEGORIES) out.add(u); });
   return [...out].sort();
 }
+// The categories a user sees listed (Dashboard "Assets by Category", Asset Registry filter), 2026-10-27: every configured
+// category, including ones with no assets yet. A Department User with "All" (['*']) gets every one of them, also any added
+// later; one with individual categories gets only those. Same rule as canSeeAsset, so a listed category never shows assets
+// the user may not see.
+function visibleCategories(user, categories) { return (Array.isArray(categories) ? categories : []).filter(c => canSeeAsset(user, {plant: c})); }
+// Dashboard per-category counts. Every listed category gets a row (zeros when it has no assets); an asset counts in the
+// category its plant names, trimmed and case-insensitive, as allCategories lists it.
+function categoryStats(assets, jobOrders, categories) {
+  const up = s => String(s || '').trim().toUpperCase();
+  const byNum = new Map(); (assets || []).forEach(a => { if (a && !byNum.has(a.num)) byNum.set(a.num, a); });   // first match, as before
+  return (categories || []).map(cat => {
+    const ca = (assets || []).filter(a => a && up(a.plant) === cat);
+    return {
+      cat,
+      operational: ca.filter(a=>a.status==='OPERATIONAL').length,
+      breakdown:   ca.filter(a=>a.status==='BREAKDOWN').length,
+      maintenance: ca.filter(a=>a.status==='UNDER MAINTENANCE').length,
+      openJOs:     (jobOrders || []).filter(j=>{ const a=byNum.get(j.assetNum); return a&&up(a.plant)===cat&&j.status!=='CLOSED'; }).length,
+    };
+  });
+}
 function canSeeJO(user, j) { return !isDeptUser(user) || (!!j && !!user.department && j.dept === user.department); }
 // Who may open the edit form for this JO (UI) and save it (saveJO).
 function mayEditJO(user, jo) {
@@ -2241,6 +2262,7 @@ function App() {
   // Scoped views for DISPLAY only (FEATURE_PLAN §7 gate 1); every save still uses the full arrays.
   const visibleAssets = assets.filter(a => canSeeAsset(currentUser, a));
   const visibleJobOrders = jobOrders.filter(j => canSeeJO(currentUser, j));
+  const shownCategories = visibleCategories(currentUser, categories);   // configured categories, incl. empty ones, in the user's scope
   const eligibleEditors = users.filter(isEligibleEditor).map(u => ({id: u.id, fullName: u.fullName, section: u.section}));   // no hashes passed on
 
   // N1: an inaccessible or empty database is never treated as "no data": the app stops here and writes nothing.
@@ -2329,8 +2351,8 @@ function App() {
             <div className="main-toolbar">
               <button className="sidebar-toggle" onClick={toggleSidebar} title={sidebarCollapsed?'Expand sidebar':'Collapse sidebar'} aria-label={sidebarCollapsed?'Expand sidebar':'Collapse sidebar'} aria-expanded={!sidebarCollapsed}>{sidebarCollapsed?'☰':'«'}</button>
             </div>
-            {page==='dashboard' && can(currentUser,'nav.dashboard') && <DashboardPage assets={visibleAssets} jobOrders={visibleJobOrders} setPage={setPage} setJoModal={setJoModal} customPlants={customPlants} employees={can(currentUser,'nav.employees') ? employees : []}/>}
-            {page==='assets'    && can(currentUser,'nav.assets') && <AssetsPage assets={visibleAssets} setAssetModal={setAssetModal} setJoModal={setJoModal} onStatusChange={updateAssetStatus} onDeleteAsset={deleteAsset} onClearAssets={clearAllAssets} customPlants={customPlants} onExportCSV={()=>exportAssetsCSV(visibleAssets, currentUser)} onImportCSV={importAssetsFromCSV} currentUser={currentUser}/>}
+            {page==='dashboard' && can(currentUser,'nav.dashboard') && <DashboardPage assets={visibleAssets} jobOrders={visibleJobOrders} setPage={setPage} setJoModal={setJoModal} categories={shownCategories} employees={can(currentUser,'nav.employees') ? employees : []}/>}
+            {page==='assets'    && can(currentUser,'nav.assets') && <AssetsPage assets={visibleAssets} setAssetModal={setAssetModal} setJoModal={setJoModal} onStatusChange={updateAssetStatus} onDeleteAsset={deleteAsset} onClearAssets={clearAllAssets} categories={shownCategories} onExportCSV={()=>exportAssetsCSV(visibleAssets, currentUser)} onImportCSV={importAssetsFromCSV} currentUser={currentUser}/>}
             {page==='joborders' && can(currentUser,'nav.jobOrders') && <JobOrdersPage assets={visibleAssets} jobOrders={visibleJobOrders} eligibleEditors={eligibleEditors} setJoModal={setJoModal} setJoViewModal={setJoViewModal} onStatusChange={updateJOStatus} onDeleteJO={deleteJO} onExportCSV={()=>exportJobOrdersCSV(visibleJobOrders, currentUser)} onImportCSV={importJOsFromCSV} onApproveJO={approveJO} onCloseJO={closeJO} onRevertJO={revertJO} currentUser={currentUser}/>}
             {page==='pmschedule' && can(currentUser,'nav.pm') && <PMSchedulePage pm={pm} assets={assets} setJoModal={setJoModal} onSavePM={savePMItem} onRecordService={recordPMService} onImportPM={importPMFromCSV} onExportPM={()=>exportPMCSV(pm, currentUser)} currentUser={currentUser}/>}
             {page==='employees' && can(currentUser,'nav.employees') && <EmployeesPage employees={employees} onSaveEmployee={saveEmployee} onUpdateStatus={updateEmployeeStatus} onImportEmployees={importEmployeesFromData} onDeleteEmployee={deleteEmployee} onFixStatus={fixEmployeeStatusFromDates} currentUser={currentUser}/>}
@@ -2821,19 +2843,9 @@ function AssetDoughnutChart({assets}) {
   );
 }
 
-function DashboardPage({assets, jobOrders, setPage, setJoModal, customPlants=[], employees=[]}) {
+function DashboardPage({assets, jobOrders, setPage, setJoModal, categories=[], employees=[]}) {
   const today = new Date().toISOString().split('T')[0];
-  const allCats = [...new Set(assets.map(a=>(a.plant||'').toUpperCase()).filter(Boolean))].sort();
-  const catStats = allCats.map(cat => {
-    const ca = assets.filter(a=>a.plant===cat);
-    return {
-      cat,
-      operational: ca.filter(a=>a.status==='OPERATIONAL').length,
-      breakdown:   ca.filter(a=>a.status==='BREAKDOWN').length,
-      maintenance: ca.filter(a=>a.status==='UNDER MAINTENANCE').length,
-      openJOs:     jobOrders.filter(j=>{ const a=assets.find(x=>x.num===j.assetNum); return a&&a.plant===cat&&j.status!=='CLOSED'; }).length,
-    };
-  });
+  const catStats = categoryStats(assets, jobOrders, allCategories(assets, categories));   // every listed category; 0 when empty
   const recent = [...jobOrders].reverse().slice(0, 5);   // the five most recent
   return (
     <div>
@@ -2906,7 +2918,7 @@ function DashboardPage({assets, jobOrders, setPage, setJoModal, customPlants=[],
 }
 
 // ─── ASSETS PAGE ─────────────────────────────────────────────────────────────
-function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDeleteAsset, onClearAssets, customPlants=[], onExportCSV, onImportCSV, currentUser={}}) {
+function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDeleteAsset, onClearAssets, categories=[], onExportCSV, onImportCSV, currentUser={}}) {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('');
   const [status, setStatus] = useState('');
@@ -2915,11 +2927,12 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
 
   // Deduplicate assets by num before any display
   const uniqueAssets = [...new Map(assets.map(a=>[a.num,a])).values()];
-  // Only show categories that have actual assets
-  const allCats = [...new Set(uniqueAssets.map(a=>(a.plant||'').toUpperCase()).filter(Boolean))].sort();
+  // Filter: every listed category, also those with no assets yet (2026-10-27); the subtitle counts the categories in use
+  const allCats = allCategories(uniqueAssets, categories);
+  const usedCats = allCategories(uniqueAssets, []);
   const filtered = uniqueAssets.filter(a => {
     const hay = [a.num,(a.plant||''),(a.desc||''),(a.code||''),(a.model||''),(a.loc||''),(a.serial||'')].join(' ').toLowerCase();
-    return (!q||hay.includes(q.toLowerCase())) && (!cat||(a.plant||'').toUpperCase()===cat) && (!status||(a.status||'').toUpperCase().replace('MAINT.','MAINTENANCE')===status);
+    return (!q||hay.includes(q.toLowerCase())) && (!cat||String(a.plant||'').trim().toUpperCase()===cat) && (!status||(a.status||'').toUpperCase().replace('MAINT.','MAINTENANCE')===status);
   });
   const sorted = sortByAssetNum(filtered);
   const total = Math.ceil(sorted.length/PER_PAGE);
@@ -2933,7 +2946,7 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
       <div className="page-header" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
         <div>
           <div className="page-title">ASSET <span>REGISTRY</span></div>
-          <div className="page-sub">{uniqueAssets.length} ASSETS ACROSS {allCats.length} CATEGORIES</div>
+          <div className="page-sub">{uniqueAssets.length} ASSETS ACROSS {usedCats.length} CATEGORIES</div>
         </div>
         <div className="controls">
           <input className="search-box" value={q} onChange={e=>{setQ(e.target.value);setPg(1);}} placeholder="🔍 Search assets..."/>
