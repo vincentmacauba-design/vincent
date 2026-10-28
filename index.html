@@ -270,7 +270,7 @@ function can(user, cap) {
 // ─── SCOPE (FEATURE_PLAN §2.2, §3.2, D7) ──────────────────────────────────────
 // Display filters only: saves always use the full arrays (§7 gate 1). Department match is exact (D21: no alias map yet).
 // The authoritative department list (owner, 2026-10-15). Stored records are never rewritten to match it.
-const DEPARTMENTS = Object.freeze(['Cement Plant','LPG / Oxygen Plant','Fuel Farm','Roofing Plant','General Store','Accounts','HR','Housekeeping','F&B','Loss Prevention']);
+const DEPARTMENTS = Object.freeze(['Cement Plant','LPG / Oxygen Plant','Fuel Farm','Roofing Plant','General Store','Accounts','HR','Housekeeping','F&B','Loss Prevention','Administration']);
 const JO_REQUEST_FIELDS = Object.freeze(['date','requester','dept','assetNum','assetDesc','assetCategory','location','eqcode','problem','priority','repairType']);
 const JO_WORK_FIELDS = Object.freeze(['recvName','section','target','manpower','parts','workDone','workStatus','eval','downtime','accept','completionDate']);
 const JO_WORK_BLANK = Object.freeze({recvName:'',section:'',target:'',manpower:[],parts:[],workDone:'',workStatus:'',eval:'',downtime:'',accept:'Accepted',completionDate:''});
@@ -3561,7 +3561,7 @@ function ReportsPage({assets, jobOrders, currentUser=null}) {
 // ─── SETTINGS PAGE ────────────────────────────────────────────────────────────
 // Settings → Users: compact assignment summary. Display only; reads the stored fields, never changes them.
 // Short labels: display only (tooltips and the View dialog always show the full names).
-const DEPT_ABBR = Object.freeze({'Cement Plant':'CEM','LPG / Oxygen Plant':'LPG/OXY','Fuel Farm':'FUEL','Roofing Plant':'ROOF','General Store':'STORE','Accounts':'ACC','HR':'HR','Housekeeping':'HK','F&B':'F&B','Loss Prevention':'LP'});
+const DEPT_ABBR = Object.freeze({'Cement Plant':'CEM','LPG / Oxygen Plant':'LPG/OXY','Fuel Farm':'FUEL','Roofing Plant':'ROOF','General Store':'STORE','Accounts':'ACC','HR':'HR','Housekeeping':'HK','F&B':'F&B','Loss Prevention':'LP','Administration':'ADMIN'});
 const SECTION_ABBR = Object.freeze({electrical:'ELE',mechanical:'MEC',maintenance:'MNT'});   // keyed by normSection()
 function deptAbbr(d) { return DEPT_ABBR[d] || String(d); }
 function sectionAbbr(sec) { return SECTION_ABBR[normSection(sec)] || String(sec); }
