@@ -1336,6 +1336,61 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
 .report-card-desc{font-size:13px;color:var(--gray);line-height:1.65;flex:1;}
 .report-card-meta{font-family:var(--fm);font-size:11px;color:var(--accent);letter-spacing:.5px;padding:6px 10px;background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.15);border-radius:4px;display:inline-block;}
 @media(max-width:900px){.report-grid{grid-template-columns:1fr;}}
+/* ── Phones and tablets (2026-10-28). Layout only: same pages, data, permissions and actions. Several containers keep their
+      desktop layout in inline styles, so these overrides use !important inside the media queries only. */
+@media(max-width:900px){
+  .dash-pair{grid-template-columns:1fr!important;}
+  .mobile-nav-btn,.notif-bell,.theme-toggle{width:40px;height:40px;}
+  .btn-logout{min-height:40px;}
+  .btn{min-height:40px;}
+  .btn-sm{min-height:36px;padding:6px 12px;}
+  .btn-icon{min-width:40px;min-height:40px;}
+  .main select,.main input:not([type=checkbox]):not([type=radio]),.modal select,.modal input:not([type=checkbox]):not([type=radio]),.modal textarea{min-height:40px;font-size:16px!important;}   /* 16px: phones do not zoom into the field */
+  .tabbar{flex-direction:column;}
+  .tabbar-tabs{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+  .tabbar-tabs::-webkit-scrollbar{display:none;}
+  .tabbar-tabs>button{flex:0 0 auto;min-height:44px;}
+  .tabbar-tools{border-left:none!important;border-top:1px solid var(--border);flex-wrap:wrap;margin-left:0!important;}
+  .tabbar-tools>input:not([type=date]){flex:1 1 100%;min-width:0!important;}
+  .tabbar-tools>input[type=date],.tabbar-tools>select{flex:1 1 140px;width:auto!important;min-width:0!important;}
+  .tbl-toolbar{flex-wrap:wrap;justify-content:stretch!important;}
+  .tbl-toolbar>*{flex:1 1 140px;min-width:0!important;}
+  .tbl-toolbar>input{flex-basis:100%;}
+}
+@media(max-width:640px){
+  .stat-strip{grid-template-columns:repeat(3,1fr)!important;}
+  .grid3{grid-template-columns:1fr 1fr!important;}
+  .stat-strip .stat-card div:last-child{font-size:11px!important;}
+  /* list pages scroll as one page instead of a fixed-height panel with an inner scroller */
+  .fill-page{height:auto!important;}
+  .fill-page .panel{overflow:visible!important;flex:none!important;}
+  .fill-page .tbl-wrap{overflow:visible!important;flex:none!important;}
+  /* data tables become cards: each row a card, each cell "label · value" (labels copied from the column headers in App) */
+  .tbl-wrap:has(table.card-table){overflow:visible;}
+  table.card-table{display:block;width:100%!important;min-width:0!important;}
+  table.card-table thead{display:none;}
+  table.card-table tbody{display:block;}
+  table.card-table tr{display:block;margin:0 0 10px;padding:6px 14px;border:1px solid var(--border);border-radius:10px;background:var(--hl-03,rgba(255,255,255,.03));}
+  /* label in the left column; everything the cell holds stacks in the right column */
+  table.card-table td{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:14px;row-gap:2px;padding:7px 0!important;border:none!important;
+    border-bottom:1px solid var(--hl-07,rgba(255,255,255,.07))!important;text-align:right!important;white-space:normal!important;width:auto!important;max-width:none!important;font-size:14px;}
+  table.card-table td>*{grid-column:2;justify-self:end;}
+  table.card-table td:last-child{border-bottom:none!important;}
+  table.card-table td::before{content:attr(data-label);grid-column:1;grid-row:1;align-self:start;padding-top:2px;max-width:42vw;text-align:left;font-family:var(--fm);font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--gray);}
+  table.card-table td:not([data-label]),table.card-table td[data-label=""]{grid-template-columns:minmax(0,1fr);}
+  table.card-table td:not([data-label])>*,table.card-table td[data-label=""]>*{grid-column:1;}
+  table.card-table td:not([data-label])::before,table.card-table td[data-label=""]::before{content:none;}
+  table.card-table td.col-hide-md{display:none!important;}
+  table.card-table td:first-child{font-size:16px;font-weight:700;}
+  table.card-table td.cell-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;padding-top:10px!important;}
+  table.card-table td.cell-actions::before{content:none;}
+  table.card-table td:not(.cell-actions) button{min-height:36px;}   /* e.g. the status chip that opens the status menu */
+  table.card-table td[colspan]{display:block;text-align:center!important;}
+  table.card-table td[colspan]::before{content:none;}
+  .modal-overlay{align-items:flex-end;}
+  .modal{width:100vw!important;max-width:100vw!important;max-height:94dvh;border-radius:14px 14px 0 0;}
+}
+@media(max-width:400px){ .stat-strip{grid-template-columns:repeat(2,1fr)!important;} }
 `;
 
 // ─── ASSET PDF ───────────────────────────────────────────────────────────────
@@ -1521,6 +1576,27 @@ class ErrorBoundary extends React.Component {
 }
 
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
+// Card tables on phones (2026-10-28): every list table on a page (not the dashboard's category matrix, not tables inside a
+// modal) gets class card-table; each cell gets its column header as data-label, and a cell holding only buttons gets
+// cell-actions. Only attributes are written; the CSS decides when the cards are used (max-width 640px).
+function labelCardTables(root) {
+  for (const t of root.querySelectorAll('.tbl-wrap:not(.cat-table) > table')) {
+    if (t.closest('.modal')) continue;
+    t.classList.add('card-table');
+    const heads = [...t.querySelectorAll('thead th')].map(th => th.textContent.replace(/\s+/g, ' ').trim());
+    for (const tr of t.querySelectorAll('tbody tr')) {
+      let col = 0;
+      for (const td of tr.children) {
+        const label = heads[col] || '';
+        if (td.colSpan <= 1 && td.getAttribute('data-label') !== label) td.setAttribute('data-label', label);
+        const btns = [...td.querySelectorAll('button')], squash = x => x.replace(/\s+/g, '');
+        const actions = td === tr.lastElementChild && btns.length > 0 && squash(td.textContent).length === squash(btns.map(b => b.textContent).join('')).length;   // the row's last cell, all its text inside buttons
+        td.classList.toggle('cell-actions', actions);
+        col += td.colSpan || 1;
+      }
+    }
+  }
+}
 function App() {
   const [page, setPage] = useState(() => { try { return pageFromHash(window.location.hash) || 'dashboard'; } catch (_) { return 'dashboard'; } });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === '1'; } catch(e) { return false; } });
@@ -1534,6 +1610,16 @@ function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [mobileNav]);
+  // Phones (2026-10-28): list tables are shown as cards by CSS; this copies each column header into its cells' data-label.
+  // Display only: it reads the headers and sets attributes, and never changes data or handlers.
+  useEffect(() => {
+    let queued = false;
+    const run = () => { queued = false; labelCardTables(document); };
+    const mo = new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(run); } });
+    mo.observe(document.body, {childList: true, subtree: true});
+    run();
+    return () => mo.disconnect();
+  }, []);
   const [assets, setAssets] = useState([]);
   const [jobOrders, setJobOrders] = useState([]);
   const [joCounter, setJoCounter] = useState(1000);   // the number previewed in a new form; the server assigns the real one
@@ -2862,7 +2948,7 @@ function DashboardPage({assets, jobOrders, setPage, setJoModal, categories=[], e
       </div>
 
       {/* Side-by-side: Recent JOs | Assets by Category */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20,marginBottom:0,alignItems:'stretch'}}>
+      <div className="dash-pair" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20,marginBottom:0,alignItems:'stretch'}}>
         {/* contain:size — the Assets by Category panel sets the row height; this panel matches it (never taller) */}
         <div className="panel recent-jo-panel" style={{display:'flex',flexDirection:'column',contain:'size',minHeight:260}}>
           <div className="panel-head">
@@ -3117,7 +3203,7 @@ function JobOrdersPage({assets, jobOrders, eligibleEditors=[], setJoModal, setJo
   }
 
   return (
-    <div style={{display:'flex',flexDirection:'column',height:'calc(100vh - 58px)'}}>
+    <div className="fill-page" style={{display:'flex',flexDirection:'column',height:'calc(100vh - 58px)'}}>
       {/* Header row */}
       <div className="page-header" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',flexWrap:'wrap',gap:12,flexShrink:0}}>
         <div>
@@ -3135,7 +3221,7 @@ function JobOrdersPage({assets, jobOrders, eligibleEditors=[], setJoModal, setJo
       </div>
 
       {/* Compact stat row */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10,marginBottom:16,flexShrink:0}}>
+      <div className="stat-strip" style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10,marginBottom:16,flexShrink:0}}>
         {[['Total',jobOrders.length,light?'#1a56db':'#3b82f6','sc-blue'],['Open',counts['OPEN'],TABS[0].color,'sc-yellow'],['In Progress',counts['IN PROGRESS'],TABS[1].color,'sc-orange'],['Completed',counts['COMPLETED'],TABS[2].color,'sc-purple'],['Closed',counts['CLOSED'],TABS[3].color,'sc-green']].map(([lbl,num,c,cls])=>(
           <div key={lbl} className={`stat-card ${cls}`} style={{padding:'8px 14px'}}>
             <div style={{fontFamily:'var(--fh)',fontSize:24,fontWeight:700,color:c,lineHeight:1}}>{num}</div>
@@ -3145,8 +3231,8 @@ function JobOrdersPage({assets, jobOrders, eligibleEditors=[], setJoModal, setJo
       </div>
 
       {/* Tab bar + inline search */}
-      <div style={{display:'flex',alignItems:'stretch',borderBottom:'2px solid var(--border)',flexShrink:0,background:'var(--navy2)',borderRadius:'8px 8px 0 0',overflow:'hidden'}}>
-        <div style={{display:'flex',flex:1}}>
+      <div className="tabbar" style={{display:'flex',alignItems:'stretch',borderBottom:'2px solid var(--border)',flexShrink:0,background:'var(--navy2)',borderRadius:'8px 8px 0 0',overflow:'hidden'}}>
+        <div className="tabbar-tabs" style={{display:'flex',flex:1}}>
           {TABS.map(t=>{
             const active = activeTab===t.id;
             return (
@@ -3177,7 +3263,7 @@ function JobOrdersPage({assets, jobOrders, eligibleEditors=[], setJoModal, setJo
           })}
         </div>
         {/* Search + date on right side of tab bar */}
-        <div style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderLeft:'1px solid var(--border)'}}>
+        <div className="tabbar-tools" style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderLeft:'1px solid var(--border)'}}>
           <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search job orders..." style={{fontSize:12,padding:'5px 10px',minWidth:180,background:'var(--hl-05)',border:'1px solid var(--hl-12)',color:'var(--white)',borderRadius:5,outline:'none'}}/>
           <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} title="From date" style={{fontSize:12,padding:'5px 8px',width:130}}/>
           <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} title="To date" style={{fontSize:12,padding:'5px 8px',width:130}}/>
@@ -4283,7 +4369,7 @@ function JOViewModal({jo, onClose, onEdit, currentUser={}}) {
       <div className="val" style={{fontSize:13,fontFamily:mono?'var(--fm)':'inherit',color:green?'var(--green)':accent?'var(--accent)':'inherit'}}>{val||'—'}</div>
     </div>
   );
-  const Grid3 = ({children}) => <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>{children}</div>;
+  const Grid3 = ({children}) => <div className="grid3" style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>{children}</div>;
   const mpRows = (jo.manpower||[]).filter(m=>m.empId||m.name);
   const partsRows = (jo.parts||[]).filter(p=>p.desc||p.itemCode);
   return (
@@ -4795,7 +4881,7 @@ function PMSchedulePage({pm, assets, setJoModal, onSavePM, onRecordService, onIm
   };
 
   return (
-    <div style={{display:'flex',flexDirection:'column',height:'calc(100vh - 58px)'}}>
+    <div className="fill-page" style={{display:'flex',flexDirection:'column',height:'calc(100vh - 58px)'}}>
       {/* Header row — title + action buttons */}
       <div className="page-header" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',flexWrap:'wrap',gap:12,flexShrink:0}}>
         <div>
@@ -4813,7 +4899,7 @@ function PMSchedulePage({pm, assets, setJoModal, onSavePM, onRecordService, onIm
       </div>
 
       {/* Stats */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:16,flexShrink:0}}>
+      <div className="stat-strip" style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:16,flexShrink:0}}>
         {[['Total',pm.length,'var(--blue)','sc-blue'],['Overdue',overdueN,'var(--red)','sc-red'],['Due Soon',dueSoonN,'var(--yellow)','sc-yellow'],['Up to Date',upToDateN,'var(--green)','sc-green']].map(([l,n,c,cls])=>(
           <div key={l} className={`stat-card ${cls}`} style={{padding:'10px 14px'}}>
             <div style={{fontFamily:'var(--fh)',fontSize:24,fontWeight:700,color:c,lineHeight:1}}>{n}</div>
@@ -4823,7 +4909,7 @@ function PMSchedulePage({pm, assets, setJoModal, onSavePM, onRecordService, onIm
       </div>
 
       {/* Search + filter toolbar above table */}
-      <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:6,padding:'6px 12px',background:'var(--navy2)',borderRadius:'8px 8px 0 0',borderBottom:'2px solid var(--border)',flexShrink:0}}>
+      <div className="tbl-toolbar" style={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:6,padding:'6px 12px',background:'var(--navy2)',borderRadius:'8px 8px 0 0',borderBottom:'2px solid var(--border)',flexShrink:0}}>
         <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search assets..." style={{fontSize:12,padding:'5px 10px',minWidth:180,background:'var(--hl-05)',border:'1px solid var(--hl-12)',color:'var(--white)',borderRadius:5,outline:'none'}}/>
         <select value={filterFreq} onChange={e=>setFilterFreq(e.target.value)} style={{fontSize:12,padding:'5px 8px'}}>
           <option value="">All Frequencies</option>
@@ -5152,7 +5238,7 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
       </div>
 
       {/* Stats */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8,marginBottom:18}}>
+      <div className="stat-strip" style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8,marginBottom:18}}>
         {[['Total Active',total,'var(--blue)','sc-blue'],['On Duty',onDuty,'var(--green)','sc-green'],['On Leave',onLeave,'var(--yellow)','sc-yellow'],['Off Site',offSite,'#60a5fa','sc-offsite'],['Pending Resignation',resignCount,'var(--red)','sc-red']].map(([l,n,c,cls])=>(
           <div key={l} className={`stat-card ${cls}`} style={{padding:'8px 12px',height:60,display:'flex',flexDirection:'column',justifyContent:'center'}}>
             <div style={{fontFamily:'var(--fh)',fontSize:22,fontWeight:700,color:c,lineHeight:1}}>{n}</div>
@@ -5162,8 +5248,8 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
       </div>
 
       {/* Tabs + inline filters */}
-      <div style={{display:'flex',alignItems:'stretch',borderBottom:'2px solid var(--border)',background:'var(--navy2)',borderRadius:'8px 8px 0 0',overflow:'hidden'}}>
-        <div style={{display:'flex'}}>
+      <div className="tabbar" style={{display:'flex',alignItems:'stretch',borderBottom:'2px solid var(--border)',background:'var(--navy2)',borderRadius:'8px 8px 0 0',overflow:'hidden'}}>
+        <div className="tabbar-tabs" style={{display:'flex'}}>
           <div className={`settings-tab${tab==='active'?' active':''}`}
             style={{color:tab==='active'?'var(--green)':'',borderBottom:tab==='active'?'2px solid var(--green)':'2px solid transparent',marginBottom:-2}}
             onClick={()=>{setTab('active');setFilterStatus('');}}>
@@ -5177,7 +5263,7 @@ function EmployeesPage({employees, onSaveEmployee, onUpdateStatus, onImportEmplo
             <span style={{fontFamily:'var(--fm)',fontSize:11,marginLeft:5,opacity:.75}}>({employees.filter(e=>!isActive(e)).length})</span>
           </div>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',marginLeft:'auto',borderLeft:'1px solid var(--border)'}}>
+        <div className="tabbar-tools" style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',marginLeft:'auto',borderLeft:'1px solid var(--border)'}}>
           <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔍 Search..." style={{fontSize:12,padding:'5px 10px',minWidth:160,background:'var(--hl-18)',border:'1px solid var(--hl-35)',color:'var(--white)',borderRadius:5,outline:'none'}}/>
           <select value={filterSection} onChange={e=>setFilterSection(e.target.value)} style={{fontSize:12,minWidth:140}}>
             <option value="">All Sections</option>
