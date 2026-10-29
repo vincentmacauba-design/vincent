@@ -988,7 +988,7 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
 @media(max-width:900px){.sidebar-toggle,.main-toolbar{display:none;}.main-content .page-header{padding-left:0;}.main{padding:16px;}.stats-row{grid-template-columns:1fr 1fr;}.dash-grid{grid-template-columns:1fr;}}
 /* Navigation by width (2026-10-28): desktop sidebar above 900px; an icon rail on tablets (641-900px); a bottom bar with a
    "More" sheet on phones (640px and below). Rules: the phone/tablet block at the end of this stylesheet. */
-.bottom-nav,.more-sheet,.more-backdrop{display:none;}
+.bottom-nav,.acct,.logo-phone,.fab-wrap{display:none;}   /* phone-only parts (2026-10-29): shown by the phone rules below */
 /* Asset Registry tools (2026-10-29): inline on tablets and desktops (the wrappers take no layout part); a menu on phones */
 .toolbar-more,.toolbar-tools{display:contents;}
 .tools-toggle{display:none;}
@@ -1410,15 +1410,6 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
   .bn-item.active{color:var(--accent);border-top-color:var(--accent);background:var(--hl-05);}
   .bn-icon{font-size:20px;line-height:1;}
   .bn-label{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .more-backdrop{display:block;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:160;}
-  .more-sheet{display:flex;flex-direction:column;position:fixed;left:0;right:0;bottom:calc(60px + env(safe-area-inset-bottom,0px));z-index:170;max-height:calc(100dvh - 140px);overflow-y:auto;
-    background:var(--navy2);border:1px solid var(--border);border-bottom:none;border-radius:16px 16px 0 0;padding:8px 12px 12px;box-shadow:0 -12px 30px rgba(0,0,0,.4);}
-  .more-user{display:flex;align-items:center;gap:12px;padding:10px 4px 14px;border-bottom:1px solid var(--border);margin-bottom:6px;}
-  .more-user-name{font-family:var(--fh);font-size:16px;font-weight:700;color:var(--white);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .more-user-role{font-family:var(--fm);font-size:11px;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;}
-  .more-close{margin-left:auto;width:40px;height:40px;flex-shrink:0;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--gray);font-size:16px;cursor:pointer;}
-  .more-item{display:flex;align-items:center;gap:14px;min-height:52px;padding:0 12px;border:none;border-radius:10px;background:none;color:var(--white);font-family:var(--fh);font-size:16px;font-weight:600;text-align:left;cursor:pointer;}
-  .more-item.active{color:var(--accent);background:var(--hl-07);}
   /* page toolbars: search full width, filters two per row, buttons after them */
   .page-header .controls{width:100%;}
   .controls>.search-box{flex:1 1 100%;min-width:0;}
@@ -1431,7 +1422,7 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
   .toast-wrap{bottom:calc(76px + env(safe-area-inset-bottom,0px));left:12px;right:12px;align-items:stretch;}
   .toast-msg{max-width:none;}
   /* touch targets: 44 x 44 CSS px for the controls used most (the clickable box itself, not just the icon) */
-  .notif-bell,.theme-toggle,.btn-logout,.more-close{width:44px;height:44px;min-height:44px;}
+  .notif-bell,.theme-toggle,.btn-logout{width:44px;height:44px;min-height:44px;}
   .btn,.btn-sm{min-height:44px;}
   .btn-icon{min-width:44px;min-height:44px;}
   .main select,.main input:not([type=checkbox]):not([type=radio]),.modal select,.modal input:not([type=checkbox]):not([type=radio]),.modal textarea{min-height:44px;}
@@ -1455,7 +1446,6 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
   .main input[type=checkbox],.modal input[type=checkbox]{width:20px;height:20px;flex-shrink:0;}
   /* staging only: its fixed 24px banner sits at the very bottom, so the bar and the reserved room move up by 24px */
   body:has(.staging-banner) .bottom-nav{bottom:24px;}
-  body:has(.staging-banner) .more-sheet{bottom:calc(84px + env(safe-area-inset-bottom,0px));}
   body:has(.staging-banner) .layout .main{padding-bottom:calc(112px + env(safe-area-inset-bottom,0px));}
   body:has(.staging-banner) .toast-wrap{bottom:calc(100px + env(safe-area-inset-bottom,0px));}
 }
@@ -1517,6 +1507,86 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
 }
 @media(max-width:380px){ .jo-raise-rest{display:none;} }
 @media(max-width:400px){ .pm-add-rest{display:none;} }   /* "＋ Add PM" on narrow phones; the full name stays in the markup */   /* "＋ Raise" on the narrowest phones; the full name stays in the markup */
+/* Phones v3 (2026-10-29): account menu in the header, six-page bottom bar, floating "+" on Job Orders and PM Schedule,
+   compact asset toolbar and pagination, status pills, rounded action icons (30px shapes inside 44 x 44 buttons). */
+@media(max-width:640px){
+  /* header: "CMMS", notifications and the account button (theme, Settings, Logout are in its menu) */
+  .logo-text,.logo-sub,.logo-icon{display:none!important;}
+  .logo-phone{display:block;font-family:var(--fh);font-size:20px;font-weight:700;letter-spacing:2px;color:var(--white);}
+  .topbar-theme,.btn-logout{display:none!important;}
+  .acct{display:block;position:relative;}
+  .acct-btn{width:44px;height:44px;padding:0;border-radius:50%;border:6px solid transparent;background:linear-gradient(135deg,var(--blue),var(--accent)) padding-box;
+    color:#fff;font-family:var(--fh);font-size:15px;font-weight:700;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;}
+  .acct-btn[aria-expanded="true"]{box-shadow:0 0 0 2px var(--accent);}
+  .acct-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:300;min-width:220px;max-width:calc(100vw - 24px);padding:6px;
+    background:var(--navy2);border:1px solid var(--border);border-radius:12px;box-shadow:0 14px 34px rgba(0,0,0,.45);}
+  .acct-who{padding:8px 10px 10px;margin-bottom:4px;border-bottom:1px solid var(--border);}
+  .acct-name{font-family:var(--fh);font-size:15px;font-weight:700;color:var(--white);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .acct-role{font-family:var(--fm);font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--gray);margin-top:2px;}
+  .acct-item{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 10px;border:none;border-radius:8px;background:none;
+    color:var(--white);font-family:var(--fh);font-size:15px;font-weight:600;text-align:left;cursor:pointer;}
+  .acct-item:hover,.acct-item:focus-visible{background:var(--hl-07);outline:none;}
+  .acct-item.active{color:var(--accent);}
+  .acct-logout{color:var(--red);}
+  .acct-icon{width:20px;text-align:center;}
+  /* bottom bar: up to six pages, equal widths, a little shorter (still at least 44px tall) */
+  .bn-item{min-height:54px;gap:2px;padding:3px 1px 5px;font-size:10px;letter-spacing:0;}
+  .bn-icon{font-size:18px;}
+  .more-sheet{display:none!important;}
+  .layout .main{padding-bottom:calc(80px + env(safe-area-inset-bottom,0px));}
+  body:has(.staging-banner) .layout .main{padding-bottom:calc(104px + env(safe-area-inset-bottom,0px));}
+  /* floating "+": above the bar and the safe area; pages with it keep room so the last card ends above it */
+  .fab-wrap{display:block;position:fixed;z-index:140;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(68px + env(safe-area-inset-bottom,0px));}
+  body:has(.staging-banner) .fab-wrap{bottom:calc(92px + env(safe-area-inset-bottom,0px));}
+  .layout .main:has(.fab-wrap){padding-bottom:calc(140px + env(safe-area-inset-bottom,0px));}
+  body:has(.staging-banner) .layout .main:has(.fab-wrap){padding-bottom:calc(164px + env(safe-area-inset-bottom,0px));}
+  .fab{width:56px;height:56px;padding:0;border:none;border-radius:50%;background:var(--accent);color:#0a1628;font-size:30px;font-weight:700;line-height:1;
+    display:flex;align-items:center;justify-content:center;box-shadow:0 8px 22px rgba(0,0,0,.4);cursor:pointer;}
+  .fab span{transition:transform .15s;}
+  .fab.open span{transform:rotate(45deg);}
+  .fab-menu{position:absolute;right:0;bottom:calc(100% + 10px);min-width:210px;padding:6px;background:var(--navy2);border:1px solid var(--border);border-radius:12px;box-shadow:0 14px 34px rgba(0,0,0,.45);}
+  .fab-item{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:none;border-radius:8px;background:none;
+    color:var(--white);font-family:var(--fh);font-size:15px;font-weight:600;text-align:left;cursor:pointer;}
+  .fab-item:hover,.fab-item:focus-visible{background:var(--hl-07);outline:none;}
+  .fab-item-icon{width:20px;text-align:center;color:var(--accent);}
+  body:has(.fab-wrap) .toast-wrap{bottom:calc(140px + env(safe-area-inset-bottom,0px));}
+  .jo-toolbar,.pm-toolbar{display:none!important;}   /* their actions are behind the "+" on phones */
+  /* Asset Registry: search | Add | Actions on one row, the two filters below */
+  .asset-controls{display:grid!important;grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:"search add more" "cat status status";gap:6px!important;align-items:center;}
+  .asset-controls>.search-box{grid-area:search;}
+  .asset-controls>select:nth-of-type(1){grid-area:cat;}
+  .asset-controls>select:nth-of-type(2){grid-area:status;}
+  .asset-controls>.btn-accent{grid-area:add;}
+  .asset-controls>.toolbar-more{grid-area:more;}
+  .asset-controls>.search-box,.asset-controls>select{min-height:40px!important;height:40px;}
+  .asset-controls>.btn-accent,.asset-controls .tools-toggle{min-height:40px!important;height:40px;padding:0 12px!important;font-size:13px!important;}
+  /* pagination: one slim row; page buttons keep 44 x 44 tap areas around 30px shapes */
+  .page-foot{padding:2px 8px 2px 12px!important;gap:6px;}
+  .page-foot .page-info-txt{font-size:11px;}
+  .page-foot .pagination{padding-top:0;gap:0;}
+  .page-foot .page-btn{min-width:44px;min-height:44px;padding:0;border:7px solid transparent;border-radius:14px;background-clip:padding-box;box-shadow:inset 0 0 0 1px var(--border);font-size:13px;}
+  /* asset cards: smaller type and gaps; status chips 26px high (36px tap area) */
+  table.assets-tbl.card-table tr:not(:has(td[colspan])){padding:6px 10px 0!important;margin-bottom:6px!important;}
+  table.assets-tbl.card-table td:nth-child(1){font-size:12px!important;}
+  table.assets-tbl.card-table td:nth-child(3){font-size:14px;}
+  table.assets-tbl.card-table td:nth-child(2),table.assets-tbl.card-table td:nth-child(7){font-size:11px!important;}
+  table.assets-tbl.card-table select.sb-base{min-height:36px!important;height:36px;padding:0 8px!important;border:5px solid transparent!important;border-radius:12px;
+    background-clip:padding-box;box-shadow:inset 0 0 0 1px currentColor;font-size:11px!important;letter-spacing:.3px;}
+  /* job-order status: a tinted, outlined pill (40px tap area) */
+  .fill-page table.card-table td[data-label="Status"] .sb-base{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 12px!important;
+    border:5px solid transparent!important;border-radius:999px;background-clip:padding-box;background-color:color-mix(in srgb,currentColor 14%,transparent)!important;
+    box-shadow:inset 0 0 0 1.5px currentColor;font-size:12px!important;font-weight:700;letter-spacing:.5px;}
+  /* action icons: a 30px rounded shape with a subtle edge, centred inside the 44 x 44 button */
+  table.card-table td.cell-actions .btn-icon{width:44px;height:44px;min-width:44px;min-height:44px;padding:0!important;border:7px solid transparent!important;border-radius:15px;
+    background-clip:padding-box!important;box-shadow:inset 0 0 0 1px var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:14px;line-height:1;}
+}
+/* Job Orders search and both dates on one row where they fit legibly (from 396px); narrower phones keep two rows */
+@media(min-width:396px) and (max-width:640px){
+  .fill-page .tabbar-tools{flex-wrap:nowrap!important;}
+  .fill-page .tabbar-tools>input:not([type=date]){flex:1 1 auto!important;min-width:84px!important;}
+  .fill-page .tabbar-tools>input[type=date]{flex:0 0 128px!important;}
+}
+@media(max-width:400px){ .add-asset-rest{display:none;} }   /* "+ Add" on narrow phones; the full name stays in the markup */
 `;
 
 // ─── ASSET PDF ───────────────────────────────────────────────────────────────
@@ -1732,47 +1802,27 @@ function App() {
   const [page, setPage] = useState(() => { try { return pageFromHash(window.location.hash) || 'dashboard'; } catch (_) { return 'dashboard'; } });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === '1'; } catch(e) { return false; } });
   function toggleSidebar() { setSidebarCollapsed(c => { const n = !c; try { localStorage.setItem(SIDEBAR_KEY, n ? '1' : '0'); } catch(e) {} return n; }); }
-  // Phone navigation (2026-10-28): a bottom bar with a "More" sheet (CSS shows it only on phones). Choosing a page closes
-  // the sheet and starts the page at the top; the close button, Escape, a tap outside and Back also close it.
-  // Back (Android / browser): opening the sheet adds ONE history entry with the same address, so Back only closes the sheet.
-  // Closing it any other way first removes that entry (history.back()) and runs the chosen action (page, logout) once the
-  // browser has done so. Pages never add entries (they replace the address), so Back with the sheet closed is unchanged.
-  const [moreOpen, setMoreOpen] = useState(false);
-  const moreEntry = useRef(false);   // our history entry is on top
-  const afterPop = useRef(null);     // the action waiting for the history.back() started here
-  const moreBtn = useRef(null);
-  function openMore() {
-    if (afterPop.current) return;    // still removing the previous entry (a very fast second tap)
-    try { history.pushState({cmmsMore: true}, '', window.location.href); moreEntry.current = true; } catch (_) {}
-    setMoreOpen(true);
-  }
-  function closeMore(then) {
-    const inSheet = !!(document.activeElement && document.activeElement.closest && document.activeElement.closest('.more-sheet'));
-    setMoreOpen(false);
-    if (inSheet && moreBtn.current) moreBtn.current.focus();   // keyboard focus returns to "More"
-    if (!moreEntry.current) { if (then) then(); return; }
-    moreEntry.current = false;
-    const job = {run: then || null};
-    afterPop.current = job;
-    try { history.back(); } catch (_) { afterPop.current = null; if (then) then(); return; }
-    setTimeout(() => { if (afterPop.current === job) { afterPop.current = null; if (job.run) job.run(); } }, 700);   // no popstate arrived: act anyway
-  }
+  // Phones (2026-10-29): the header's account button opens a menu with the theme, Settings and Logout (the same actions as
+  // the desktop header). It closes on a page change, a tap outside it, Escape and sign-out; the theme choice keeps it open.
+  // Arrow keys move between its items; Escape returns focus to the button.
+  const [acctOpen, setAcctOpen] = useState(false);
+  const acctRef = useRef(null);
+  const theme = useTheme();
   useEffect(() => {
-    const onPop = () => {
-      if (afterPop.current) { const job = afterPop.current; afterPop.current = null; if (job.run) job.run(); return; }
-      if (moreEntry.current) { moreEntry.current = false; setMoreOpen(false); }   // Back while the sheet was open: close it only
+    if (!acctOpen) return;
+    const items = () => [...document.querySelectorAll('.acct-menu [role=menuitem]')];
+    if (items()[0]) items()[0].focus();
+    const away = e => { if (acctRef.current && !acctRef.current.contains(e.target)) setAcctOpen(false); };
+    const keys = e => {
+      if (e.key === 'Escape') { setAcctOpen(false); const b = acctRef.current && acctRef.current.querySelector('.acct-btn'); if (b) b.focus(); return; }
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      const list = items(), i = list.indexOf(document.activeElement), n = list[(i + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length];
+      if (n) { n.focus(); e.preventDefault(); }
     };
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-  }, []);
-  useEffect(() => {
-    if (!moreOpen) { if (moreEntry.current) closeMore(); return; }   // closed elsewhere (e.g. sign-out): remove our entry too
-    const close = document.querySelector('.more-sheet .more-close'); if (close) close.focus();
-    const onKey = e => { if (e.key === 'Escape') closeMore(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [moreOpen]);
-  function go(p) { closeMore(() => { setPage(p); try { window.scrollTo(0, 0); } catch (_) {} }); }
+    document.addEventListener('pointerdown', away); window.addEventListener('keydown', keys);
+    return () => { document.removeEventListener('pointerdown', away); window.removeEventListener('keydown', keys); };
+  }, [acctOpen]);
+  function go(p) { setPage(p); setAcctOpen(false); try { window.scrollTo(0, 0); } catch (_) {} }
   // Phones (2026-10-28): list tables are shown as cards by CSS; this copies each column header into its cells' data-label.
   // Display only: it reads the headers and sets attributes, and never changes data or handlers.
   useEffect(() => {
@@ -2083,7 +2133,7 @@ function App() {
     setAssets([]); setJobOrders([]); setPM([]); setEmployees([]); setCustomPlants([]);
     writableKeys.clear(); isLoaded.current = false; setDbLoaded(false); setLoadIssue(null); setDeferredFix({employees: false});
     setAssetModal(null); setJoModal(null); setJoViewModal(null); setAssetImport(null);   // nothing opened by this user survives
-    setPage('dashboard'); setMoreOpen(false);
+    setPage('dashboard'); setAcctOpen(false);
     // A normal logout clears the page from the address (the next sign-in starts on the dashboard); after a FORCED one (session
     // ended, account changed) it is kept, so signing in again returns to the same page.
     try { if (forced !== true && window.location.hash) history.replaceState(null, '', window.location.pathname + window.location.search); } catch(_) {}
@@ -2540,8 +2590,8 @@ function App() {
     <><style>{CSS}</style><SplashScreen text="Loading data..."/></>
   );
 
-  // The pages this account may open, in navigation order: the sidebar shows all of them; on phones the bottom bar shows the
-  // first four and "More" the rest. The same checks as before decide visibility (Settings is always available).
+  // The pages this account may open, in navigation order: the sidebar shows all of them; on phones the bottom bar shows all
+  // but Settings, which is in the account menu. The same checks as before decide visibility (Settings is always available).
   const navItems = [
     {id:'dashboard', icon:'🏠', label:'Dashboard', short:'Dashboard', ok:can(currentUser,'nav.dashboard')},
     {id:'assets', icon:'🗂️', label:'Asset Registry', short:'Assets', ok:can(currentUser,'nav.assets')},
@@ -2551,8 +2601,7 @@ function App() {
     {id:'reports', icon:'📊', label:'Reports', short:'Reports', ok:can(currentUser,'nav.reports')},
     {id:'settings', icon:'👥', label:'Settings', short:'Settings', ok:true},
   ].filter(n => n.ok);
-  const barItems = navItems.slice(0, 4), moreItems = navItems.slice(4);
-  const moreActive = moreItems.some(n => n.id === page);
+  const barItems = navItems.filter(n => n.id !== 'settings');
 
   return (
     <>
@@ -2565,6 +2614,7 @@ function App() {
             <div className="logo-icon">CMMS</div>
             <div>
               <div className="logo-text">VHPL TIC</div>
+              <div className="logo-phone">CMMS</div>
               <div className="logo-sub">CMMS — ENGINEERING SOLUTIONS DEPARTMENT</div>
             </div>
           </div>
@@ -2573,6 +2623,26 @@ function App() {
             <div className="badge">{clock}</div>
             <div className="badge">MALE', MALDIVES</div>
             {notificationsFor(currentUser) && <NotificationBell jobOrders={visibleJobOrders} onOpenJO={jo=>setJoViewModal(jo)}/>}
+            <div className="acct" ref={acctRef}>
+              <button type="button" className="acct-btn" onClick={()=>setAcctOpen(v=>!v)} aria-haspopup="menu" aria-expanded={acctOpen} aria-controls="acct-menu" aria-label={`Account menu: ${currentUser.fullName}`}>{currentUser.fullName.charAt(0).toUpperCase()}</button>
+              {acctOpen && (
+                <div className="acct-menu" id="acct-menu" role="menu" aria-label="Account">
+                  <div className="acct-who">
+                    <div className="acct-name">{currentUser.fullName}</div>
+                    <div className="acct-role">{currentUser.role}{currentUser.department ? ` · ${currentUser.department}` : ''}</div>
+                  </div>
+                  <button type="button" role="menuitem" className="acct-item" onClick={()=>setTheme(theme==='dark'?'light':'dark')}>
+                    <span className="acct-icon" aria-hidden="true">{theme==='dark'?'☀':'☾'}</span>{theme==='dark'?'Light theme':'Dark theme'}
+                  </button>
+                  <button type="button" role="menuitem" className={`acct-item${page==='settings'?' active':''}`} onClick={()=>go('settings')}>
+                    <span className="acct-icon" aria-hidden="true">⚙</span>Settings
+                  </button>
+                  <button type="button" role="menuitem" className="acct-item acct-logout" onClick={()=>{ setAcctOpen(false); handleLogout(); }}>
+                    <span className="acct-icon" aria-hidden="true">⎋</span>Logout
+                  </button>
+                </div>
+              )}
+            </div>
             <ThemeToggle className="topbar-theme"/>
             <button className="btn-logout" onClick={handleLogout} aria-label="Logout">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}>
@@ -2624,30 +2694,7 @@ function App() {
               <span className="bn-icon" aria-hidden="true">{n.icon}</span><span className="bn-label">{n.short}</span>
             </button>
           ))}
-          {moreItems.length > 0 && (
-            <button type="button" className={`bn-item${moreActive||moreOpen?' active':''}`} ref={moreBtn} onClick={()=>moreOpen?closeMore():openMore()} aria-label="More" aria-haspopup="dialog" aria-expanded={moreOpen} aria-controls="more-sheet">
-              <span className="bn-icon" aria-hidden="true">⋯</span><span className="bn-label">More</span>
-            </button>
-          )}
         </nav>
-        {moreOpen && <div className="more-backdrop" onClick={()=>closeMore()} aria-hidden="true"/>}
-        {moreOpen && (
-          <div className="more-sheet" id="more-sheet" role="dialog" aria-modal="true" aria-label="More">
-            <div className="more-user">
-              <div className="sidebar-avatar" aria-hidden="true">{currentUser.fullName.charAt(0).toUpperCase()}</div>
-              <div style={{minWidth:0}}>
-                <div className="more-user-name">{currentUser.fullName}</div>
-                <div className="more-user-role">{currentUser.role}{currentUser.department ? ` · ${currentUser.department}` : ''}</div>
-              </div>
-              <button type="button" className="more-close" onClick={()=>closeMore()} aria-label="Close">✕</button>
-            </div>
-            {moreItems.map(n => (
-              <button type="button" key={n.id} className={`more-item${page===n.id?' active':''}`} onClick={()=>go(n.id)} aria-current={page===n.id?'page':undefined}>
-                <span className="bn-icon" aria-hidden="true">{n.icon}</span>{n.label}
-              </button>
-            ))}
-          </div>
-        )}
 
         {/* MODALS */}
         {assetModal && (
@@ -3246,7 +3293,7 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
           <div className="page-title">ASSET <span>REGISTRY</span></div>
           <div className="page-sub">{uniqueAssets.length} ASSETS ACROSS {usedCats.length} CATEGORIES</div>
         </div>
-        <div className="controls">
+        <div className="controls asset-controls">
           <input className="search-box" value={q} onChange={e=>{setQ(e.target.value);setPg(1);}} placeholder="🔍 Search assets..."/>
           <select value={cat} onChange={e=>{setCat(e.target.value);setPg(1);}}>
             <option value="">All Categories</option>
@@ -3260,7 +3307,7 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
             <option value="IDLE">IDLE</option>
             <option value="TRANSFERRED">TRANSFERRED</option>
           </select>
-          {canAddAsset&&<button className="btn btn-accent" onClick={()=>setAssetModal({mode:'add'})}>＋ Add Asset</button>}
+          {canAddAsset&&<button className="btn btn-accent" onClick={()=>setAssetModal({mode:'add'})}>＋ Add<span className="add-asset-rest"> Asset</span></button>}
           <div className="toolbar-more" ref={toolsRef}>
             {(can(currentUser,'asset.export')||canImportAssets||canClearAll)&&<button type="button" className="btn btn-csv btn-sm tools-toggle" aria-haspopup="true" aria-expanded={toolsOpen} aria-controls="asset-tools" onClick={()=>setToolsOpen(v=>!v)}>⋯ Actions</button>}
             <div className={`toolbar-tools${toolsOpen?' open':''}`} id="asset-tools" onClick={()=>setToolsOpen(false)}>
@@ -3314,7 +3361,7 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
             </tbody>
           </table>
         </div>
-        <div style={{padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',borderTop:'1px solid var(--border)'}}>
+        <div className="page-foot" style={{padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',borderTop:'1px solid var(--border)'}}>
           <div className="page-info-txt">Showing {sorted.length===0?0:Math.min((pg-1)*PER_PAGE+1,sorted.length)}–{Math.min(pg*PER_PAGE,sorted.length)} of {sorted.length} assets</div>
           <div className="pagination">
             {pg>1&&<button className="page-btn" onClick={()=>setPg(pg-1)}>‹</button>}
@@ -3331,6 +3378,33 @@ function AssetsPage({assets, setAssetModal, setJoModal, onStatusChange, onDelete
 }
 
 // ─── JOB ORDERS PAGE ─────────────────────────────────────────────────────────
+// Phones (2026-10-29): a page's add / file actions behind one floating "+" (CSS shows it on phones only; the page toolbar
+// keeps them on wider screens). With menu items (administrators: users.admin) it opens a small menu; otherwise "+" runs onPrimary directly. Every
+// item comes from the page with its own permission check and handler. Closes on a choice, a tap outside it or Escape.
+function FabActions({label, primaryLabel, onPrimary, menu}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const items = (menu || []).filter(Boolean);
+  useEffect(() => {
+    if (!open) return;
+    const first = ref.current && ref.current.querySelector('[role=menuitem]'); if (first) first.focus();
+    const away = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const esc = e => { if (e.key === 'Escape') { setOpen(false); const b = ref.current && ref.current.querySelector('.fab'); if (b) b.focus(); } };
+    document.addEventListener('pointerdown', away); window.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', away); window.removeEventListener('keydown', esc); };
+  }, [open]);
+  if (!items.length && !onPrimary) return null;
+  const asMenu = items.length > 0;
+  return <div className="fab-wrap" ref={ref}>
+    {asMenu && open && <div className="fab-menu" role="menu" aria-label={label}>
+      {items.map(it => <button key={it.label} type="button" role="menuitem" className="fab-item" onClick={()=>{ setOpen(false); it.run(); }}>
+        <span className="fab-item-icon" aria-hidden="true">{it.icon}</span>{it.label}</button>)}
+    </div>}
+    <button type="button" className={`fab${open?' open':''}`} aria-label={asMenu ? label : primaryLabel}
+      aria-haspopup={asMenu ? 'menu' : undefined} aria-expanded={asMenu ? open : undefined}
+      onClick={()=>asMenu ? setOpen(v=>!v) : onPrimary()}><span aria-hidden="true">＋</span></button>
+  </div>;
+}
 function JobOrdersPage({assets, jobOrders, eligibleEditors=[], setJoModal, setJoViewModal, onStatusChange, onDeleteJO, onExportCSV, onImportCSV, onApproveJO, onCloseJO, onRevertJO, currentUser={}}) {
   const [q, setQ] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -3421,6 +3495,13 @@ function JobOrdersPage({assets, jobOrders, eligibleEditors=[], setJoModal, setJo
 
   return (
     <div className="fill-page" style={{display:'flex',flexDirection:'column',height:'calc(100vh - 58px)'}}>
+      <FabActions label="Job order actions" primaryLabel="Raise Job Order" onPrimary={canRaiseJO ? ()=>setJoModal({mode:'add'}) : null}
+        menu={can(currentUser,'users.admin') ? [
+          canRaiseJO && {icon:'＋', label:'Raise Job Order', run:()=>setJoModal({mode:'add'})},
+          can(currentUser,'jo.export') && {icon:'↓', label:'Export', run:onExportCSV},
+          canImportJO && {icon:'↑', label:'Import', run:()=>{ if (importRef.current) importRef.current.click(); }},
+          canImportJO && {icon:'⬇', label:'Template', run:downloadJOTemplate},
+        ] : null}/>
       {/* Header row */}
       <div className="page-header" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',flexWrap:'wrap',gap:12,flexShrink:0}}>
         <div>
@@ -5099,6 +5180,13 @@ function PMSchedulePage({pm, assets, setJoModal, onSavePM, onRecordService, onIm
 
   return (
     <div className="fill-page" style={{display:'flex',flexDirection:'column',height:'calc(100vh - 58px)'}}>
+      <FabActions label="PM schedule actions" primaryLabel="Add PM Schedule" onPrimary={canEditPM ? openAdd : null}
+        menu={can(currentUser,'users.admin') ? [
+          canEditPM && {icon:'＋', label:'Add PM Schedule', run:openAdd},
+          can(currentUser,'pm.export') && {icon:'↓', label:'Export', run:onExportPM},
+          canImportPM && {icon:'↑', label:'Import', run:()=>{ if (pmImportRef.current) pmImportRef.current.click(); }},
+          canImportPM && {icon:'⬇', label:'Template', run:downloadPMTemplate},
+        ] : null}/>
       {/* Header row — title + action buttons */}
       <div className="page-header" style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',flexWrap:'wrap',gap:12,flexShrink:0}}>
         <div>
