@@ -831,6 +831,7 @@ const CSS = `
   --green:#10b981;--red:#ef4444;--yellow:#f59e0b;--orange:#f97316;
   --gray:#94a3b8;--light:#e2e8f0;--white:#f8fafc;
   --panel:rgba(15,32,68,0.85);--border:rgba(255,255,255,0.07);
+  --card-edge:rgba(148,163,184,.30);   /* phone list cards (2026-10-29): visible on the dark background, still subtle */
   /* U3 theme tokens (dark values = the original colours) */
   --on-accent:#0a1628;--accent-fill:#f59e0b;--sky:#60a5fa;--violet:#a78bfa;
   --hl-02:rgba(255,255,255,.02);--hl-03:rgba(255,255,255,.03);--hl-04:rgba(255,255,255,.04);--hl-05:rgba(255,255,255,.05);--hl-06:rgba(255,255,255,.06);--hl-07:rgba(255,255,255,.07);--hl-12:rgba(255,255,255,.12);--hl-18:rgba(255,255,255,.18);--hl-35:rgba(255,255,255,.35);
@@ -846,6 +847,7 @@ const CSS = `
   --green:#047857;--red:#dc2626;--yellow:#b45309;--orange:#c2410c;
   --gray:#4b5b73;--light:#1e293b;--white:#0f2044;
   --panel:rgba(255,255,255,.96);--border:rgba(15,32,68,.13);
+  --card-edge:rgba(15,32,68,.24);
   --sky:#1d4ed8;--violet:#6d28d9;
   --hl-02:rgba(15,32,68,0.018);--hl-03:rgba(15,32,68,0.027);--hl-04:rgba(15,32,68,0.036);--hl-05:rgba(15,32,68,0.045);--hl-06:rgba(15,32,68,0.054);--hl-07:rgba(15,32,68,0.063);--hl-12:rgba(15,32,68,0.108);--hl-18:rgba(15,32,68,0.162);--hl-35:rgba(15,32,68,0.315);
   --input-bg:#ffffff;--overlay:rgba(15,23,42,.45);--shadow-lg:0 20px 60px rgba(15,32,68,.2);--shadow-bar:0 1px 10px rgba(15,32,68,.08);
@@ -1587,6 +1589,22 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
   .fill-page .tabbar-tools>input[type=date]{flex:0 0 128px!important;}
 }
 @media(max-width:400px){ .add-asset-rest{display:none;} }   /* "+ Add" on narrow phones; the full name stays in the markup */
+/* Phones v4 (2026-10-29): dashboard cards in two rows, tighter action icons, visible card edges in both themes. */
+@media(max-width:640px){
+  /* Dashboard: five summary cards as 3 + 2 (six-column grid: 2 + 2 + 2, then 3 + 3) */
+  .stats-row:has(> .stat-card:nth-child(5):last-child){grid-template-columns:repeat(6,minmax(0,1fr))!important;gap:8px!important;}
+  .stats-row:has(> .stat-card:nth-child(5):last-child) > .stat-card{grid-column:span 2;padding:10px 10px 9px;min-width:0;}
+  .stats-row:has(> .stat-card:nth-child(5):last-child) > .stat-card:nth-child(n+4){grid-column:span 3;}
+  .stats-row:has(> .stat-card:nth-child(5):last-child) .stat-num{font-size:24px;}
+  .stats-row:has(> .stat-card:nth-child(5):last-child) .stat-label{font-size:10px;letter-spacing:.5px;line-height:1.2;margin-top:3px;}
+  /* card action icons: wider visible shapes inside the same 44 x 44 buttons, so the gaps between them shrink (8px) */
+  table.card-table td.cell-actions,table.card-table td.cell-actions>div{gap:0!important;}   /* the inner wrapper has an inline 4px gap */
+  table.card-table td.cell-actions .btn-icon{border-width:6px 4px!important;border-radius:12px;}
+  /* list cards (assets, job orders, PM): a visible edge in both themes; inline status edges (e.g. overdue PM) keep their colour */
+  table.card-table tr{border-color:var(--card-edge);}
+  .stat-card,.stat-strip .stat-card{border-color:var(--card-edge);}
+  table.card-table td.cell-actions .btn-icon{box-shadow:inset 0 0 0 1px var(--card-edge);}
+}
 `;
 
 // ─── ASSET PDF ───────────────────────────────────────────────────────────────
