@@ -12,6 +12,17 @@
      bar, the login screen and the report/print header (LOGO_SRC). -->
 <link rel="preload" as="image" href="cmms-logo.93ad6d44.png" fetchpriority="high"/>
 <link rel="icon" type="image/png" href="cmms-logo.93ad6d44.png"/>
+<!-- Startup screen (static HTML, shown while the libraries load and the app compiles in the browser). It sits inside
+     #root, so React's first render replaces it; the error handler below also replaces it. Colours follow data-theme. -->
+<style>
+#boot-splash{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#0a1628;color:#94a3b8;font:13px/1.4 sans-serif;letter-spacing:.5px;}
+#boot-splash img{display:block;width:96px;height:96px;}
+#boot-splash .boot-bar{width:120px;height:3px;border-radius:2px;background:rgba(148,163,184,.25);overflow:hidden;}
+#boot-splash .boot-bar::after{content:"";display:block;width:40%;height:100%;border-radius:2px;background:#f59e0b;animation:boot-slide 1.2s ease-in-out infinite;}
+@keyframes boot-slide{0%{transform:translateX(-100%);}100%{transform:translateX(250%);}}
+:root[data-theme="light"] #boot-splash{background:#f1f5f9;color:#475569;}
+@media (prefers-reduced-motion:reduce){#boot-splash .boot-bar::after{animation:none;width:100%;}}
+</style>
 <!-- CDN versions are pinned — update intentionally, never use floating tags -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.js"></script>
 <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
@@ -22,7 +33,7 @@
 <script>
 window.onerror = function(msg, src, line, col, err) {
   var root = document.getElementById('root');
-  if (root && !root.hasChildNodes()) {
+  if (root && (!root.hasChildNodes() || document.getElementById('boot-splash'))) {   // empty, or only the startup screen
     root.innerHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a1628;flex-direction:column;gap:16px;padding:32px;font-family:sans-serif"><div style="font-size:20px;color:#f59e0b;font-weight:700">CMMS — Application Error</div><div style="font-size:12px;color:#ef4444;max-width:540px;text-align:center;word-break:break-word">'+String(msg).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];})+'</div><div style="font-size:12px;color:#94a3b8">Please refresh. If the problem persists, contact your administrator.</div><button onclick="location.reload()" style="margin-top:8px;padding:8px 20px;background:#f59e0b;color:#0a1628;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:14px">Reload Page</button></div>';
   }
 };
@@ -100,7 +111,15 @@ window.onunhandledrejection = function(e) { console.error('Unhandled rejection:'
 </script>
 </head>
 <body>
-<div id="root"></div>
+<div id="root"><div id="boot-splash" role="status" aria-live="polite"><img src="cmms-logo.93ad6d44.png" width="96" height="96" alt="CMMS"/><div class="boot-bar" aria-hidden="true"></div><div>Loading CMMS…</div></div></div>
+<script>
+// If a library from the CDN failed to load, the app can never start: after the page has loaded, show the error screen
+// instead of leaving the startup screen up. (When the libraries are there, React replaces the startup screen itself.)
+window.addEventListener('load', function () {
+  if (document.getElementById('boot-splash') && !(window.React && window.ReactDOM && window.Babel && window.supabase))
+    window.onerror('The application could not be loaded (a required library did not download).');
+});
+</script>
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
