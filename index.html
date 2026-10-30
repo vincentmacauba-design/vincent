@@ -211,6 +211,10 @@ const DATA_LABELS = Object.freeze({assets:'assets', jobOrders:'job orders', pm:'
 // else changes only through a server function, one checked step at a time.
 const DIRECT_WRITE_KEYS = Object.freeze(['assets','pm','customPlants']);
 const writableKeys = new Set();
+// 2026-10-30: the stored version (app_data.updated_at) of each whole list this screen shows. A whole-list save applies
+// only if the stored list is still that version, so a list changed by someone else since it was read (Realtime is off in
+// production, so no update arrives) is never overwritten with this screen's older copy.
+const datasetVersion = {};
 // N2: NO application write happens before a successful sign-in (and a completed forced password change).
 const writeGate = {signedIn: false};
 const recentWrites = {};   // key -> last few written values (stable JSON), to recognise our own Realtime echoes
@@ -222,14 +226,32 @@ async function dbSave(key, value) {
   if (!DIRECT_WRITE_KEYS.includes(key)) { console.warn('dbSave blocked: changed only through server functions', key); return new Error('no direct write: ' + key); }
   if (!writableKeys.has(key)) { console.warn('dbSave blocked: dataset was not loaded', key); return new Error('dataset not loaded: ' + key); }
   if (!Array.isArray(value)) return new Error('a dataset is a list');
+  if (!hasOwn(datasetVersion, key)) { console.warn('dbSave blocked: stored version unknown', key); return new Error('version unknown: ' + key); }
   (recentWrites[key] = (recentWrites[key] || []).slice(-4)).push(stableJson(value));
-  try {
-    const {data, error} = await sb.from('app_data').update({value, updated_at: new Date().toISOString()}).eq('key', key).select('key');
-    if (error) { console.warn('dbSave error', key, error.code || ''); return error; }
-    if (!Array.isArray(data) || data.length !== 1) { console.warn('dbSave refused by the server', key); return new Error('not saved: ' + key); }
-    return null;
-  } catch(e) { console.warn('dbSave failed', key); return e; }
+  // Saves of one list run one after another, each on the version the previous one left. A save made before an earlier
+  // save of the same list met a newer stored list (conflict) was made on the same old list, so it is refused too.
+  const gen = saveGen[key] || 0;
+  const run = async () => {
+    if ((saveGen[key] || 0) !== gen) return conflictError(key);
+    const version = datasetVersion[key];   // null = the stored row has no updated_at yet: saved once unchecked, which sets one
+    try {
+      let q = sb.from('app_data').update({value, updated_at: new Date().toISOString()}).eq('key', key);
+      if (version !== null) q = q.eq('updated_at', version);
+      const {data, error} = await q.select('key,updated_at');
+      if (error) { console.warn('dbSave error', key, error.code || ''); return error; }
+      if (Array.isArray(data) && data.length === 1) { datasetVersion[key] = data[0].updated_at; return null; }
+      // Nothing updated: either the stored list changed since it was read (conflict) or the server refused the write.
+      const now = await sb.from('app_data').select('updated_at').eq('key', key).maybeSingle();
+      if (version !== null && !now.error && now.data && now.data.updated_at !== version) { console.warn('dbSave conflict: changed elsewhere', key); saveGen[key] = gen + 1; return conflictError(key); }
+      console.warn('dbSave refused by the server', key); return new Error('not saved: ' + key);
+    } catch(e) { console.warn('dbSave failed', key); return e; }
+  };
+  const p = (saveChains[key] || Promise.resolve()).then(run, run);
+  saveChains[key] = p.then(() => {}, () => {});
+  return p;
 }
+const saveChains = {}, saveGen = {};   // per list: the save queue, and a counter raised by a conflict
+const conflictError = key => Object.assign(new Error('changed elsewhere: ' + key), {conflict: true});
 const MSG_NO_PERMISSION = 'You do not have permission for this action.';
 function serverError(e) {
   const code = e && e.code ? String(e.code) : '', message = e && typeof e.message === 'string' ? e.message : '';
@@ -777,9 +799,9 @@ async function readDatasets(user, keys) {
   const direct = keys.filter(k => !(isDeptUser(user) && scoped[k])), viaFn = keys.filter(k => isDeptUser(user) && scoped[k]);
   const rows = []; let failures = 0, attempts = 0;
   const jobs = [];
-  if (direct.length) { attempts++; jobs.push(Promise.resolve(sb.from('app_data').select('key,value').in('key', direct)).then(r => {
+  if (direct.length) { attempts++; jobs.push(Promise.resolve(sb.from('app_data').select('key,value,updated_at').in('key', direct)).then(r => {
     if (r.error || !Array.isArray(r.data)) { failures++; return; }
-    r.data.forEach(x => { if (x && direct.includes(x.key)) rows.push({key: x.key, value: x.value}); });
+    r.data.forEach(x => { if (x && direct.includes(x.key)) rows.push({key: x.key, value: x.value, version: x.updated_at}); });
   }, () => { failures++; })); }
   viaFn.forEach(k => { attempts++; jobs.push(Promise.resolve(sb.rpc(scoped[k])).then(r => {
     if (r.error) { failures++; return; }
@@ -1949,6 +1971,8 @@ function App() {
     const plan = planDataLoad(result, {expected});
     if (plan.action === 'fail') { setLoadIssue({kind: plan.reason}); setSyncStatus('error'); setDbLoaded(true); return; }
     plan.loaded.forEach(k => writableKeys.add(k));
+    Object.keys(datasetVersion).forEach(k => { delete datasetVersion[k]; });
+    result.data.forEach(row => { if (plan.loaded.includes(row.key) && row.version !== undefined) datasetVersion[row.key] = row.version; });
     expected.filter(k => !plan.loaded.includes(k)).forEach(k => applyDataset(k, []));   // shown EMPTY, never built-in data; read-only
     plan.loaded.forEach(k => applyDataset(k, plan.values[k]));
     if (plan.action === 'partial') setLoadIssue({kind: 'partial', keys: [...plan.missing, ...plan.invalid]});
@@ -1963,7 +1987,10 @@ function App() {
     const out = {};
     if (want.length) {
       const r = await readDatasets(currentUser, want);
-      if (!r.error) r.data.forEach(row => { if (Array.isArray(row.value) && writableKeys.has(row.key)) { applyDataset(row.key, row.value); out[row.key] = row.value; } });
+      if (!r.error) r.data.forEach(row => { if (Array.isArray(row.value) && writableKeys.has(row.key)) {
+        // a change of this list still waiting to be saved keeps the version it was made on, so it cannot overwrite this newer list
+        if (row.version !== undefined && !(row.key in pendingSaves.current)) datasetVersion[row.key] = row.version;
+        applyDataset(row.key, row.value); out[row.key] = row.value; } });
     }
     if (keys.includes('users')) await loadUsers();
     return out;
@@ -2005,6 +2032,7 @@ function App() {
         if (!isLoaded.current || !row || !writableKeys.has(row.key) || !Array.isArray(row.value)) return;   // N1
         // N2: our own write coming back is ignored; another user's change wins over a local change still waiting in the queue.
         const act = realtimeAction(row.value, row.key in pendingSaves.current, recentWrites[row.key]);
+        if (row.updated_at) datasetVersion[row.key] = row.updated_at;   // the list now shown (or our own write) is this version
         if (act === 'echo') return;
         if (act === 'conflict') {
           delete pendingSaves.current[row.key];
@@ -2087,17 +2115,22 @@ function App() {
   //    category lists are saved at once. A failed write is reported by dataset name and never shown as saved.
   const pendingSaves = useRef({});
   const unsavedMsg = keys => `⚠ Not saved: ${keys.map(k => DATA_LABELS[k] || k).join(', ')}. The change is shown on this screen but is NOT stored. Reload and try again.`;
+  const conflictMsg = keys => `⚠ Someone else changed ${keys.map(k => DATA_LABELS[k] || k).join(', ')} since this screen loaded it. Your change was NOT saved; the latest data is shown. Please make it again.`;
+  const refreshRef = useRef(null);   // the latest refresh() for runBatch (a callback created once)
+  refreshRef.current = refresh;      // function declaration: hoisted, so already defined here
   const runBatch = useCallback(async () => {   // writes everything waiting; reports per dataset
     clearTimeout(saveTimer.current);
     const batch = pendingSaves.current; pendingSaves.current = {};
     const keys = Object.keys(batch);
     if (!keys.length) return;
     const errs = await Promise.all(keys.map(k => dbSave(k, batch[k])));   // dbSave checks the write gate synchronously, at call time
-    const failed = keys.filter((k, i) => errs[i]);
-    setSyncStatus(failed.length ? 'error' : 'ok');
+    const conflicted = keys.filter((k, i) => errs[i] && errs[i].conflict);
+    const failed = keys.filter((k, i) => errs[i] && !errs[i].conflict);
+    setSyncStatus(failed.length || conflicted.length ? 'error' : 'ok');
+    if (conflicted.length) { addToast(conflictMsg(conflicted), true); refreshRef.current && refreshRef.current(conflicted); }
     // A refused save may mean the account was deactivated or changed elsewhere: re-read it (signs out a deactivated user).
     if (failed.length) { addToast(unsavedMsg(failed), true); recheckProfile(); }
-    else addToast('✓ Saved');
+    if (!failed.length && !conflicted.length) addToast('✓ Saved');
   }, []);
   const queueSave = useCallback((key, value) => {
     if (!isLoaded.current) { addToast(unsavedMsg([key]), true); return; }   // N2: never a silent drop
@@ -2107,7 +2140,10 @@ function App() {
     saveTimer.current = setTimeout(runBatch, 800);
   }, []);
   // Immediate save of one whole list (PM, categories), with a visible error on failure.
-  function saveNow(key, next) { return dbSave(key, next).then(e => { if (e) { setSyncStatus('error'); addToast(unsavedMsg([key]), true); } return e; }); }
+  function saveNow(key, next) { return dbSave(key, next).then(e => {
+    if (e && e.conflict) { setSyncStatus('error'); addToast(conflictMsg([key]), true); refresh([key]); }
+    else if (e) { setSyncStatus('error'); addToast(unsavedMsg([key]), true); }
+    return e; }); }
   // A checked server operation that changes `keys`. The screen then shows what the server stored. On a refusal the
   // server's reason is shown (permission or validation) and nothing changes.
   async function serverChange(fn, args, keys, okMsg) {
