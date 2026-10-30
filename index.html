@@ -6,7 +6,8 @@
 <title>CMMS - VHPL TIC</title>
 <!-- U3 theme: 'dark' (default) or 'light', per browser. Only the word 'light'/'dark' is stored. -->
 <script>(function(){var t='dark';try{if(localStorage.getItem('cmms_vg_theme')==='light')t='light';}catch(e){}document.documentElement.setAttribute('data-theme',t);})();</script>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><rect width='32' height='32' rx='6' fill='url(%23g)'/><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23f59e0b'/><stop offset='1' stop-color='%231a56db'/></linearGradient></defs><text x='4' y='22' font-family='Arial Black,sans-serif' font-weight='900' font-size='13' fill='%230a1628'>CMM</text></svg>"/>
+<!-- the approved CMMS logo (Branding/cmms-logo.png, unchanged, 1254 x 1254) serves as favicon and header/login logo -->
+<link rel="icon" type="image/png" href="cmms-logo.png"/>
 <!-- CDN versions are pinned — update intentionally, never use floating tags -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.2/dist/umd/supabase.js"></script>
 <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
@@ -858,7 +859,7 @@ body,#root{background:var(--navy);color:var(--white);font-family:var(--fb);font-
 .app{background:var(--navy);min-height:100vh;background-image:radial-gradient(ellipse at 20% 20%,rgba(26,86,219,.12) 0%,transparent 60%),radial-gradient(ellipse at 80% 80%,rgba(245,158,11,.06) 0%,transparent 60%);}
 .topbar{background:var(--navy2);border-bottom:2px solid var(--accent);padding:0 28px;height:58px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:var(--shadow-bar);}
 .logo{display:flex;align-items:center;gap:12px;}
-.logo-icon{width:52px;height:36px;background:linear-gradient(135deg,var(--accent-fill),var(--blue));border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:700;font-size:12px;color:var(--on-accent);letter-spacing:.5px;flex-shrink:0;}
+.logo-icon{display:block;width:42px;height:42px;object-fit:contain;flex-shrink:0;}   /* square logo image: equal sides, never stretched */
 .logo-text{font-family:var(--fh);font-size:20px;font-weight:700;letter-spacing:1.5px;}
 .logo-sub{font-size:10px;color:var(--accent);font-family:var(--fm);letter-spacing:2px;}
 .topbar-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
@@ -1188,7 +1189,7 @@ select.sb-base{cursor:pointer;-webkit-appearance:none;appearance:none;padding:2p
 @keyframes lv-pulse{0%,100%{opacity:.2;}50%{opacity:.75;}}
 .login-intro-inner{position:relative;z-index:1;max-width:520px;}
 .login-brand{display:flex;width:fit-content;max-width:100%;align-items:center;gap:14px;margin-bottom:34px;}
-.login-logo-icon{width:58px;height:44px;background:linear-gradient(135deg,var(--accent-fill),var(--blue));border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-family:var(--fh);font-weight:700;font-size:15px;color:var(--on-accent);letter-spacing:1px;flex-shrink:0;box-shadow:0 6px 18px rgba(26,86,219,.25);}
+.login-logo-icon{display:block;width:60px;height:60px;object-fit:contain;flex-shrink:0;}
 .login-title{font-family:var(--fh);font-size:22px;font-weight:700;letter-spacing:1.5px;color:var(--li-text);}
 .login-sub{font-size:10px;color:var(--accent);font-family:var(--fm);letter-spacing:2px;margin-top:2px;}
 .login-intro .login-sub{color:var(--accent-fill);}
@@ -2629,7 +2630,7 @@ function App() {
         <div className="topbar">
           <div className="topbar-left">
           <div className="logo">
-            <div className="logo-icon">CMMS</div>
+            <img className="logo-icon" src="cmms-logo.png" alt="CMMS" width="42" height="42"/>
             <div>
               <div className="logo-text">VHPL TIC</div>
               <div className="logo-phone">CMMS</div>
@@ -2961,7 +2962,7 @@ function LoginPage({onLogin, recoveryService=RECOVERY_SERVICE}) {
       <section className="login-intro" aria-label="About the CMMS">
         <div className="login-intro-inner">
           <div className="login-brand">
-            <div className="login-logo-icon">CMMS</div>
+            <img className="login-logo-icon" src="cmms-logo.png" alt="CMMS" width="60" height="60"/>
             <div>
               <div className="login-title">VHPL TIC</div>
               <div className="login-sub">ENGINEERING SOLUTIONS DEPARTMENT</div>
