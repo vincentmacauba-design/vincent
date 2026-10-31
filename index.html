@@ -4099,9 +4099,9 @@ function SettingsPage({users, currentUser, onSaveUser, onDeleteUser, onResetData
                   <th>#</th><th>Full Name</th><th>Employee ID</th><th>Role</th><th>Assignment</th><th>Status</th><th>Actions</th>
                 </tr></thead>
                 <tbody>
-                  {users.map(u=>(
+                  {users.map((u,i)=>(
                     <tr key={u.id}>
-                      <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--gray)'}}>{u.id}</td>
+                      <td style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--gray)'}}>{i+1}</td>
                       <td>
                         <strong>{u.fullName}</strong>
                         {u.id===currentUser.id&&<span style={{fontSize:10,color:'var(--accent)',fontFamily:'var(--fm)',marginLeft:7,letterSpacing:1}}>(YOU)</span>}
