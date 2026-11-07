@@ -283,6 +283,14 @@ const DESIGNATIONS = {
   'Admin':'Technical Operations Supervisor',
   'Senior Engineer':'Senior Manager, Engineering & Maintenance',
 };
+// The designation an account shows and records in approvals/closures (2026-11-07): the one an Admin stored on the account
+// (public.profiles.designation, SQL 0015), else the role's (DESIGNATIONS), else the role name. Same rule as private.designation_of.
+function designationOf(user) {
+  if (!user) return '';
+  const d = String(user.designation == null ? '' : user.designation).trim();
+  return d || DESIGNATIONS[user.role] || user.role || '';
+}
+const DESIGNATION_MAX = 120;
 // ─── PERMISSIONS (docs/FEATURE_PLAN.md §5, §6, §12) ───────────────────────────
 // Explicit role → capability grants for exactly six roles (Viewer added in Phase 2B-3). A user's rights come from their ONE role: there are no
 // additive capability bundles (owner decision 2026-10-11, supersedes D13). Unknown or misspelled role → no capabilities.
@@ -295,7 +303,7 @@ const CAPS_EDITORS = ['asset.create','asset.edit','asset.status','asset.delete',
   'pm.edit','pm.recordService','pm.import','emp.statusUpdate',
   'jo.create','jo.edit.request','jo.edit.work','jo.delete','jo.import','jo.start','jo.complete'];
 const ROLE_CAPS = Object.freeze({
-  'Admin':              Object.freeze([...CAPS_EVERY_ROLE, ...CAPS_EDITORS, 'profile.edit', 'jo.approve','jo.close','jo.revert','asset.clearAll','emp.admin','users.admin','data.reset']),
+  'Admin':              Object.freeze([...CAPS_EVERY_ROLE, ...CAPS_EDITORS, 'profile.edit', 'jo.approve','jo.close','jo.revert','jo.reassign','asset.clearAll','emp.admin','users.admin','data.reset']),
   'Assistant Engineer': Object.freeze([...CAPS_EVERY_ROLE, ...CAPS_EDITORS, 'profile.edit', 'jo.approve','jo.close']),
   'Senior Engineer':    Object.freeze([...CAPS_EVERY_ROLE, 'profile.edit', 'jo.approve','jo.close']),   // profile.edit = own name/email (Admin, AE, SE only)
   'Job Card Editor':    Object.freeze([...CAPS_EVERY_ROLE, 'jo.start','jo.complete','jo.edit.work']),
@@ -489,7 +497,7 @@ function workChanged(a, b) { return JO_WORK_FIELDS.some(k => normWork(a && a[k])
 function withStoredFields(jo, stored, keys) { const out = {...jo}; keys.forEach(k => { if (stored && hasOwn(stored, k)) out[k] = stored[k]; else delete out[k]; }); return out; }
 function withoutApprover(jo) { const out = {...jo}; JO_APPROVER_FIELDS.forEach(k => delete out[k]); return out; }
 function approvalEvent(user, event, reason, extra) {
-  const e = {event, by: user ? user.fullName : '', byId: user ? user.id : null, designation: user ? (DESIGNATIONS[user.role] || user.role) : '', at: new Date().toISOString()};
+  const e = {event, by: user ? user.fullName : '', byId: user ? user.id : null, designation: user ? designationOf(user) : '', at: new Date().toISOString()};
   if (reason) e.reason = reason;
   if (extra) Object.assign(e, extra);
   return e;
@@ -601,6 +609,7 @@ function profileFromRow(row) {
   if (row.department != null) u.department = row.department;
   if (Array.isArray(row.assigned_categories)) u.assignedCategories = row.assigned_categories;
   if (row.section != null) u.section = row.section;
+  if (typeof row.designation === 'string' && row.designation.trim()) u.designation = row.designation;
   return u;
 }
 function signedInState(adapter, profile) {
@@ -2282,16 +2291,31 @@ function App() {
         if (res.status === 200 && (user.active !== false) !== (target.active !== false))
           res = await serverFunction('admin-users', {action: 'set_active', userId: target.userId, active: user.active !== false});
       }
+      // Designation (2026-11-07): its own Admin-only server step (SQL 0015 profile_set_designation), only when it changed.
+      const desigErr = res.status === 200 ? await saveDesignation(editId || (res.body && res.body.legacyId), user.designation, editId ? (users.find(u => u.id === editId) || {}).designation : '') : null;
       await loadUsers();
       if (res.status !== 200) { setSyncStatus('error'); addToast(accountError(res, unsavedMsg(['users'])), true); return null; }
-      setSyncStatus('ok');
+      if (desigErr) { setSyncStatus('error'); addToast(desigErr, true); } else setSyncStatus('ok');
       addToast(editId ? 'User updated.' : 'User added. Give the temporary password to the user: it is shown only once.');
       return editId ? null : {temporaryPassword: res.body.temporaryPassword, name: user.fullName};
     }
     // Own account (also an Admin's own record): only the own name may change here (S4); the server enforces the same.
     const r = await serverChange('profile_update_self', {p_full_name: user.fullName}, ['users']);
-    if (r) { await recheckProfile(); addToast('User updated.'); }
+    // An Admin may also set their own designation (Admin only; nobody else can change a designation, the server refuses it).
+    const desigErr = r && can(currentUser,'users.admin') ? await saveDesignation(currentUser.id, user.designation, currentUser.designation) : null;
+    if (desigErr) addToast(desigErr, true);
+    if (r) { if (desigErr === null && can(currentUser,'users.admin')) await loadUsers(); await recheckProfile(); addToast('User updated.'); }
     return null;
+  }
+  // Admin: store a changed designation. Returns null (nothing to do, or saved) or the error message to show.
+  async function saveDesignation(legacyId, wanted, stored) {
+    const want = String(wanted == null ? '' : wanted).trim(), have = String(stored == null ? '' : stored).trim();
+    if (want === have) return null;
+    if (!can(currentUser,'users.admin') || !Number.isInteger(legacyId)) return MSG_NO_PERMISSION;
+    if (want.length > DESIGNATION_MAX) return 'A designation has at most ' + DESIGNATION_MAX + ' characters.';
+    const r = await serverCall('profile_set_designation', {p_legacy_id: legacyId, p_designation: want || null});
+    if (!r.error) return null;
+    return r.error.kind === 'denied' ? MSG_NO_PERMISSION : r.error.kind === 'invalid' && r.error.message ? r.error.message : 'The account was saved, but its designation was not. Please try again.';
   }
   // Admin: a new temporary password for another account (forced change at its next sign-in; its sessions end).
   async function resetUserPassword(id) {
@@ -2406,8 +2430,18 @@ function App() {
         if (!allow(!!a && canSeeAsset(currentUser, a))) return;
         if (jo.repairType !== DU_REPAIR_TYPE) { addToast('Department Users can only raise Unplanned repairs.', true); return; }
       }
+      // Assigned person (2026-11-07): changed only by an Admin, not on CLOSED (mayEditJO), to an active Job Card Editor; the
+      // server (jo_update, SQL 0015) checks the same and refuses it for every other role. Otherwise it is not sent at all.
+      const fields = {...jo}; delete fields.assignedTo; delete fields.assignedToId;
+      const reassign = jo.assignedToId != null && jo.assignedToId !== stored.assignedToId;
+      if (reassign) {
+        if (!allow(can(currentUser,'jo.reassign') && stored.status !== 'CLOSED')) return;
+        const ed = users.find(u => u.id === jo.assignedToId);
+        if (!isEligibleEditor(ed)) { addToast(`${editJobNo}: select an active Job Card Editor (with a section) to assign the work to.`, true); return; }
+        fields.assignedToId = ed.id;
+      }
       setJoModal(null);
-      const r = await serverChange('jo_update', {p_job_no: editJobNo, p_fields: jo}, ['jobOrders'], `Job Order ${editJobNo} updated.`);
+      const r = await serverChange('jo_update', {p_job_no: editJobNo, p_fields: fields}, ['jobOrders'], reassign ? `Job Order ${editJobNo} updated: reassigned from ${stored.assignedTo || 'nobody'} to ${(users.find(u => u.id === jo.assignedToId) || {}).fullName}.` : `Job Order ${editJobNo} updated.`);
       const now = r && r.fresh.jobOrders && r.fresh.jobOrders.find(j => j.jobNo === editJobNo);
       if (now && isApproved(stored) && !isApproved(now)) addToast(`${editJobNo}: completion details changed — approval reset to pending.`, true);
     } else {
@@ -2789,7 +2823,7 @@ function App() {
         )}
         {joModal && (
           <JOFormModal mode={joModal.mode} jo={joModal.jo} preAsset={joModal.preAsset}
-            assets={visibleAssets} joCounter={joCounter} employees={employees} currentUser={currentUser}
+            assets={visibleAssets} joCounter={joCounter} employees={employees} currentUser={currentUser} editors={eligibleEditors}
             onClose={()=>setJoModal(null)} onSave={saveJO}/>
         )}
         {assetImport && (
@@ -3775,7 +3809,7 @@ function JobOrdersPage({assets, jobOrders, eligibleEditors=[], setJoModal, setJo
             <div className="modal-body">
               <div style={{fontSize:13,marginBottom:8}}>Approve the completed work on <span style={{fontFamily:'var(--fm)',color:'var(--accent)'}}>{confirmModal.jo.jobNo}</span>?</div>
               <div style={{fontSize:12,color:'var(--gray)',marginBottom:12}}>Asset: <strong style={{color:'var(--white)'}}>{confirmModal.jo.assetNum} — {confirmModal.jo.assetDesc||'—'}</strong></div>
-              <div style={{fontSize:12,color:'var(--gray)',marginBottom:16}}>Approved by <strong style={{color:'var(--white)'}}>{currentUser.fullName}</strong> ({DESIGNATIONS[currentUser.role]||currentUser.role}). The status stays <span className="sb-base jcp">COMPLETED</span>; closing is a separate step.</div>
+              <div style={{fontSize:12,color:'var(--gray)',marginBottom:16}}>Approved by <strong style={{color:'var(--white)'}}>{currentUser.fullName}</strong> ({designationOf(currentUser)}). The status stays <span className="sb-base jcp">COMPLETED</span>; closing is a separate step.</div>
               <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
                 <button className="btn btn-ghost" onClick={()=>setConfirmModal(null)}>Cancel</button>
                 <button className="btn btn-success" onClick={doApprove}>✓ Approve Completion</button>
@@ -3812,7 +3846,7 @@ function JobOrdersPage({assets, jobOrders, eligibleEditors=[], setJoModal, setJo
                 <div className="close-card-title">Closure (this step)</div>
                 <div className="form-row">
                   <div className="form-group"><label>Closed By</label><input readOnly value={currentUser.fullName}/></div>
-                  <div className="form-group"><label>Designation</label><input readOnly value={DESIGNATIONS[currentUser.role]||currentUser.role}/></div>
+                  <div className="form-group"><label>Designation</label><input readOnly value={designationOf(currentUser)}/></div>
                 </div>
                 <div className="form-row" style={{marginBottom:0}}>
                   <div className="form-group"><label>Closed Date * (selected)</label><input type="date" value={approvalDate} onChange={e=>setApprovalDate(e.target.value)}/></div>
@@ -4158,6 +4192,7 @@ function SettingsPage({users, currentUser, onSaveUser, onDeleteUser, onResetData
                         {!currentUser.recoveryEmailVerified&&<div className="pw-hint">Unverified: this address has not completed the verification step, so it cannot be used for password recovery.</div>}</>
                     : 'None set'],
                   ['Role',currentUser.role],
+                  ['Designation',designationOf(currentUser)],
                   ['Account Status',currentUser.active!==false?'Active':'Inactive'],
                   ...(isDeptUser(currentUser)?[['Department',currentUser.department||'—'],['Asset Categories',isAllCategories(currentUser.assignedCategories) ? 'All' : (currentUser.assignedCategories||[]).join(', ')||'—']]:[]),
                   ...(isJobCardEditor(currentUser)?[['Section',currentUser.section||'—']]:[]),
@@ -4210,6 +4245,7 @@ function SettingsPage({users, currentUser, onSaveUser, onDeleteUser, onResetData
           mode={userModal.mode}
           user={userModal.user}
           selfOnly={!canAdminUsers || (userModal.mode === 'edit' && !!userModal.user && !!currentUser && userModal.user.id === currentUser.id)}
+          canEditDesignation={canAdminUsers}
           customPlants={customPlants}
           users={users}
           onClose={()=>setUserModal(null)}
@@ -4451,7 +4487,7 @@ function AssetFormModal({mode, asset, assets, onClose, onSave, customPlants=[], 
 }
 
 // ─── JO FORM MODAL ────────────────────────────────────────────────────────────
-function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave, employees=[], currentUser=null}) {
+function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave, employees=[], currentUser=null, editors=[]}) {
   // Form mode (FEATURE_PLAN §3.2): 'full' = Admin/AE (unchanged); 'request' = Department User (sections 1-3; requester and
   // department locked from the profile); 'work' = Job Card Editor / editor bundle (sections 4-7; 1-3 read-only). saveJO enforces the same.
   const formMode = isDeptUser(currentUser) ? 'request' : (can(currentUser,'jo.edit.request') && can(currentUser,'jo.edit.work')) || mode==='add' ? 'full' : 'work';
@@ -4500,6 +4536,11 @@ function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave, em
   function addPart() { setF(prev=>({...prev,parts:[...(prev.parts||[]),{itemCode:'',desc:'',qty:'',unit:''}]})); }
   function removePart(idx) { setF(prev=>({...prev,parts:(prev.parts||[]).filter((_,i)=>i!==idx)})); }
 
+  // Reassignment (2026-11-07): Admin only, an existing job order that is not CLOSED; the choice is an active Job Card Editor.
+  const canReassign = mode==='edit' && !!jo && jo.status!=='CLOSED' && can(currentUser,'jo.reassign');
+  const reassigned = canReassign && f.assignedToId!=null && f.assignedToId!==jo.assignedToId;
+  const newEditor = reassigned ? editors.find(x => x.id === f.assignedToId) : null;
+  const sectionDiffers = !!newEditor && normSection(newEditor.section) !== normSection(f.section);
   function handleSave() {
     if (!f.assetNum) { alert('Please select an asset'); return; }
     if (!f.date) { alert('Please enter a date'); return; }
@@ -4631,7 +4672,21 @@ function JOFormModal({mode, jo, preAsset, assets, joCounter, onClose, onSave, em
           {showWork&&<>
           <div className="jc-section">
             <div className="jc-section-title">Work Assigned To</div>
-            <div className="form-row single"><div className="form-group"><label>Work Assigned To</label><input value={f.assignedTo||''} readOnly placeholder="Set automatically when work is started"/></div></div>
+            {canReassign
+              ? <div className="form-row single"><div className="form-group">
+                  <label>Work Assigned To {reassigned&&<span className="sb-base sm" style={{marginLeft:6}}>CHANGED</span>}</label>
+                  <select value={f.assignedToId==null?'':String(f.assignedToId)} aria-label="Work Assigned To"
+                    onChange={e=>{ const ed = editors.find(x => String(x.id) === e.target.value);
+                      setF(prev => ed ? {...prev, assignedToId: ed.id, assignedTo: ed.fullName}
+                        : withStoredFields(prev, jo, ['assignedTo','assignedToId'])); }}>
+                    <option value="">{jo && jo.assignedTo ? 'Current: ' + jo.assignedTo + ' (keep)' : '— Not assigned —'}</option>
+                    {jo && jo.assignedToId!=null && !editors.some(x => x.id === jo.assignedToId) && <option value={String(jo.assignedToId)}>{jo.assignedTo || 'Current assignee'} (current; no longer an active Job Card Editor)</option>}
+                    {editors.map(x=><option key={x.id} value={String(x.id)}>{x.fullName} — {x.section}{jo && x.id===jo.assignedToId ? ' (current)' : ''}</option>)}
+                  </select>
+                  <div className="pw-hint">Admin only. Currently assigned: <strong>{(jo && jo.assignedTo) || 'nobody'}</strong>.{reassigned ? ' New assignee on saving: ' + f.assignedTo + '. Only the assignment changes; Section, Received By and the status stay as they are.' : ''}
+                    {reassigned && sectionDiffers ? ' Note: this editor works in ' + newEditor.section + ', but the Section of this job order is ' + (f.section || 'empty') + ': they can edit it only when the Section matches.' : ''}</div>
+                </div></div>
+              : <div className="form-row single"><div className="form-group"><label>Work Assigned To</label><input value={f.assignedTo||''} readOnly placeholder="Set automatically when work is started"/></div></div>}
             <div className="form-row">{fld('Received By','recvName')}{fld('Section Assigned','section',{readonly:isJobCardEditor(currentUser)})}</div>
             <div className="form-row">
               <div className="form-group"><label>Start Date</label><input type="date" value={f.target||''} onChange={e=>setF({...f,target:e.target.value})}/></div>
@@ -5072,13 +5127,14 @@ function CategoryPicker({categories=[], selected=[], disabled=false, onChange}) 
   );
 }
 
-function UserFormModal({mode, user, onClose, onSave, selfOnly=false, customPlants=[], users=[]}) {
+function UserFormModal({mode, user, onClose, onSave, selfOnly=false, customPlants=[], users=[], canEditDesignation=false}) {
   // selfOnly: editing the own profile (name only; the server enforces the same). Passwords are never entered here: a new
   // account gets a server-generated temporary password, shown once after saving.
   const [f, setF] = useState(user ? {...user} : {employeeId:'', fullName:'', recoveryEmail:'', role:'Assistant Engineer', active:true});
 
   function handleSave() {
     if (!String(f.fullName || '').trim()) { alert('Full name is required'); return; }
+    if (canEditDesignation && String(f.designation || '').trim().length > DESIGNATION_MAX) { alert('A designation has at most ' + DESIGNATION_MAX + ' characters.'); return; }
     if (!selfOnly) {
       const err = validateUserRecord(f, customPlants, {users, editId: mode==='edit' && user ? user.id : undefined, isNew: mode==='add'});
       if (err) { alert(err); return; }   // includes the mandatory, valid, unique email for a new account
@@ -5094,7 +5150,7 @@ function UserFormModal({mode, user, onClose, onSave, selfOnly=false, customPlant
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         <div className="modal-body">
-          {mode==='edit'&&<div className="edit-mode-banner">{selfOnly?'✏ Editing your profile — you can change your name. Use Change Password for your password. Employee ID, recovery email, role, status and assignments are managed by an Admin (for your own Admin account: by another Admin).':'✏ Editing user account — passwords are not entered here: use Reset for a new temporary password'}</div>}
+          {mode==='edit'&&<div className="edit-mode-banner">{selfOnly?(canEditDesignation?'✏ Editing your profile — you can change your name and designation.':'✏ Editing your profile — you can change your name.')+' Use Change Password for your password. Employee ID, recovery email, role, status and assignments are managed by an Admin (for your own Admin account: by another Admin).':'✏ Editing user account — passwords are not entered here: use Reset for a new temporary password'}</div>}
           <div className="form-row">
             <div className="form-group">
               <label>Full Name</label>
@@ -5131,6 +5187,16 @@ function UserFormModal({mode, user, onClose, onSave, selfOnly=false, customPlant
                 <option value="true">Active</option>
                 <option value="false">Inactive</option>
               </select>
+            </div>
+          </div>
+          <div className="form-row single">
+            <div className="form-group">
+              <label>Designation</label>
+              <input value={canEditDesignation ? (f.designation||'') : designationOf(f)} onChange={e=>setF({...f,designation:e.target.value})} placeholder={DESIGNATIONS[f.role]||f.role||'Designation'}
+                maxLength={DESIGNATION_MAX} readOnly={!canEditDesignation} disabled={!canEditDesignation} autoComplete="off" aria-label="Designation"/>
+              <div className="pw-hint">{canEditDesignation
+                ? 'Shown in the profile and recorded when this user approves or closes a job order. Empty = the designation of the role' + (DESIGNATIONS[f.role] ? ' (' + DESIGNATIONS[f.role] + ')' : '') + '. Changing the role does not change it.'
+                : 'Set by an Admin.'}</div>
             </div>
           </div>
           {f.role==='Department User'&&(
